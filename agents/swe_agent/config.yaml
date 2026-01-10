@@ -40,6 +40,13 @@ tools:
   - name: grep
     type: builtin
 
+# Available sub-agents (optional - for complex tasks)
+subagents:
+  - name: explore
+    type: builtin
+  - name: plan
+    type: builtin
+
 # Output configuration
 output:
   type: stdout

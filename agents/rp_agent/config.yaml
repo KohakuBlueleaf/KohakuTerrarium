@@ -1,0 +1,55 @@
+# RP Agent Configuration
+# A role-playing chatbot with memory and output sub-agent pattern
+
+name: rp_agent
+version: "1.0"
+
+# LLM Configuration - Controller (orchestration)
+controller:
+  model: "${OPENROUTER_MODEL:qwen/qwen3-32b}"
+  temperature: 0.7
+  max_tokens: 65536
+  api_key_env: OPENROUTER_API_KEY
+  base_url: https://openrouter.ai/api/v1
+
+# System prompt (loaded from file)
+system_prompt_file: prompts/system.md
+
+# Input configuration
+input:
+  type: cli
+  prompt: "User: "
+
+# Available tools (minimal - orchestrator doesn't need many)
+tools:
+  - name: read
+    type: builtin
+  - name: glob
+    type: builtin
+
+# Sub-agents - the core of the RP architecture
+subagents:
+  # Memory agents - background memory operations
+  - name: memory_read
+    type: builtin
+  - name: memory_write
+    type: builtin
+  # Response agent - user-facing output (could be made interactive/external)
+  - name: response
+    type: builtin
+
+# Output configuration
+output:
+  type: stdout
+  controller_direct: true  # For now, controller output is direct
+
+# Memory configuration
+memory:
+  path: ./memory
+  init_files:
+    - character.md  # Role/character definition (read-only)
+    - rules.md      # Protected rules
+  writable_files:
+    - context.md
+    - facts.md
+    - preferences.md
