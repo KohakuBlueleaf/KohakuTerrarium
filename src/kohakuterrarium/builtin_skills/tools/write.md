@@ -7,17 +7,37 @@ tags: [file, io]
 
 # write
 
-Write content to a file. Creates the file if it doesn't exist, overwrites if it does.
+Write content to a file. Creates if doesn't exist, overwrites if it does.
+
+## WHEN TO USE
+
+- Creating new files
+- Replacing entire file contents
+- Writing generated code or configs
+
+## HOW TO USE
+
+```
+##tool##
+name: write
+args:
+  path: <file path>
+  content: |
+    <file content>
+##tool##
+```
 
 ## Arguments
 
-- `path` (required): Path to the file to write
-- `content` (required): Content to write to the file
+| Arg | Required | Description |
+|-----|----------|-------------|
+| `path` | Yes | Path to file |
+| `content` | Yes | Content to write |
 
 ## Examples
 
-Create a new Python file:
-```
+```yaml
+# Create Python file
 ##tool##
 name: write
 args:
@@ -29,17 +49,33 @@ args:
     if __name__ == "__main__":
         hello()
 ##tool##
+
+# Create config
+##tool##
+name: write
+args:
+  path: config.json
+  content: |
+    {
+      "name": "my-app",
+      "version": "1.0.0"
+    }
+##tool##
 ```
 
 ## Output Format
 
-Returns confirmation with file info:
 ```
 Created /path/to/file.py (15 lines, 342 bytes)
 ```
 
-## Notes
+## LIMITATIONS
 
-- Creates parent directories automatically if they don't exist
-- Overwrites existing files completely (no merge/append)
-- Content uses YAML multiline syntax (`|`) for proper formatting
+- Overwrites entire file (no partial edit)
+- Creates parent directories automatically
+
+## TIPS
+
+- Use `read` first to understand existing content
+- Use YAML multiline syntax (`|`) for content
+- For partial edits, use `edit` tool (when available)
