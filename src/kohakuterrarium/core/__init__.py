@@ -2,6 +2,8 @@
 Core module - fundamental abstractions and runtime components.
 
 Exports:
+- Agent: Main agent orchestrator
+- AgentConfig: Agent configuration
 - TriggerEvent: Universal event type for all components
 - EventType: Common event type constants
 - Conversation: Message history management
@@ -11,6 +13,15 @@ Exports:
 - Registry: Module registration
 """
 
+from kohakuterrarium.core.agent import Agent, run_agent
+from kohakuterrarium.core.config import (
+    AgentConfig,
+    InputConfig,
+    OutputConfig,
+    ToolConfigItem,
+    TriggerConfig,
+    load_agent_config,
+)
 from kohakuterrarium.core.conversation import Conversation, ConversationConfig
 from kohakuterrarium.core.controller import (
     Controller,
@@ -36,6 +47,16 @@ from kohakuterrarium.core.job import (
 from kohakuterrarium.core.registry import Registry, get_registry, register_tool
 
 __all__ = [
+    # Agent
+    "Agent",
+    "run_agent",
+    # Config
+    "AgentConfig",
+    "InputConfig",
+    "OutputConfig",
+    "ToolConfigItem",
+    "TriggerConfig",
+    "load_agent_config",
     # Events
     "TriggerEvent",
     "EventType",
