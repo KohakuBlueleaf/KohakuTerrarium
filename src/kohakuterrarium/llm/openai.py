@@ -4,6 +4,7 @@ OpenAI-compatible LLM provider.
 Supports OpenAI API and compatible services like OpenRouter, Together AI, etc.
 """
 
+import asyncio
 import json
 from typing import Any, AsyncIterator
 
@@ -54,6 +55,8 @@ class OpenAIProvider(BaseLLMProvider):
         max_tokens: int = 4096,
         timeout: float = 60.0,
         extra_headers: dict[str, str] | None = None,
+        max_retries: int = 3,
+        retry_delay: float = 1.0,
     ):
         """
         Initialize the OpenAI provider.
@@ -66,6 +69,8 @@ class OpenAIProvider(BaseLLMProvider):
             max_tokens: Maximum tokens to generate
             timeout: Request timeout in seconds
             extra_headers: Additional headers (e.g., for OpenRouter HTTP-Referer)
+            max_retries: Maximum retry attempts for 5xx errors
+            retry_delay: Base delay between retries (exponential backoff)
         """
         super().__init__(
             LLMConfig(
@@ -85,6 +90,8 @@ class OpenAIProvider(BaseLLMProvider):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.extra_headers = extra_headers or {}
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
 
         # httpx client for async requests
         self._client: httpx.AsyncClient | None = None
@@ -94,6 +101,22 @@ class OpenAIProvider(BaseLLMProvider):
             model=model,
             base_url=self.base_url,
         )
+
+    def _should_retry(self, status_code: int) -> bool:
+        """Check if request should be retried based on status code."""
+        # Retry on 5xx server errors and 429 rate limit
+        return status_code >= 500 or status_code == 429
+
+    def _is_retryable_error(self, error: Exception) -> bool:
+        """Check if exception is a retryable network error."""
+        # Retry on connection errors, incomplete reads, etc.
+        retryable_types = (
+            httpx.RemoteProtocolError,  # incomplete chunked read, etc.
+            httpx.ReadError,
+            httpx.ConnectError,
+            httpx.WriteError,
+        )
+        return isinstance(error, retryable_types)
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create httpx client."""
@@ -155,120 +178,218 @@ class OpenAIProvider(BaseLLMProvider):
         messages: list[dict[str, Any]],
         **kwargs: Any,
     ) -> AsyncIterator[str]:
-        """Stream chat completion."""
+        """Stream chat completion with retry for 5xx errors."""
         client = await self._get_client()
         url = f"{self.base_url}/chat/completions"
         headers = self._build_headers()
         body = self._build_request_body(messages, stream=True, **kwargs)
 
-        logger.debug("Starting streaming request", model=body["model"])
+        last_error: Exception | None = None
 
-        try:
-            async with client.stream(
-                "POST",
-                url,
-                headers=headers,
-                json=body,
-            ) as response:
-                if response.status_code != 200:
-                    error_text = await response.aread()
-                    logger.error(
-                        "API request failed",
-                        status=response.status_code,
-                        error=error_text.decode(),
-                    )
-                    raise httpx.HTTPStatusError(
-                        f"API request failed: {response.status_code}",
-                        request=response.request,
-                        response=response,
-                    )
+        for attempt in range(self.max_retries + 1):
+            if attempt > 0:
+                delay = self.retry_delay * (2 ** (attempt - 1))  # Exponential backoff
+                logger.warning(
+                    "Retrying streaming request",
+                    attempt=attempt,
+                    max_retries=self.max_retries,
+                    delay=delay,
+                )
+                await asyncio.sleep(delay)
 
-                async for line in response.aiter_lines():
-                    if not line:
-                        continue
+            logger.debug(
+                "Starting streaming request", model=body["model"], attempt=attempt
+            )
 
-                    # SSE format: "data: {...}" or "data: [DONE]"
-                    if line.startswith("data: "):
-                        data = line[6:]  # Remove "data: " prefix
+            try:
+                async with client.stream(
+                    "POST",
+                    url,
+                    headers=headers,
+                    json=body,
+                ) as response:
+                    if response.status_code != 200:
+                        error_text = await response.aread()
+                        logger.error(
+                            "API request failed",
+                            status=response.status_code,
+                            error=error_text.decode(),
+                        )
 
-                        if data == "[DONE]":
-                            logger.debug("Stream completed")
-                            break
+                        # Check if should retry
+                        if (
+                            self._should_retry(response.status_code)
+                            and attempt < self.max_retries
+                        ):
+                            last_error = httpx.HTTPStatusError(
+                                f"API request failed: {response.status_code}",
+                                request=response.request,
+                                response=response,
+                            )
+                            continue  # Retry
 
-                        try:
-                            chunk = json.loads(data)
-                            choices = chunk.get("choices", [])
-                            if choices:
-                                delta = choices[0].get("delta", {})
-                                content = delta.get("content", "")
-                                if content:
-                                    yield content
-                        except json.JSONDecodeError as e:
-                            logger.warning("Failed to parse SSE chunk", error=str(e))
+                        raise httpx.HTTPStatusError(
+                            f"API request failed: {response.status_code}",
+                            request=response.request,
+                            response=response,
+                        )
+
+                    async for line in response.aiter_lines():
+                        if not line:
                             continue
 
-        except httpx.TimeoutException:
-            logger.error("Request timed out", timeout=self.timeout)
-            raise
-        except httpx.HTTPStatusError:
-            raise
-        except Exception as e:
-            logger.error("Unexpected error during streaming", error=str(e))
-            raise
+                        # SSE format: "data: {...}" or "data: [DONE]"
+                        if line.startswith("data: "):
+                            data = line[6:]  # Remove "data: " prefix
+
+                            if data == "[DONE]":
+                                logger.debug("Stream completed")
+                                return  # Success, exit generator
+
+                            try:
+                                chunk = json.loads(data)
+                                choices = chunk.get("choices", [])
+                                if choices:
+                                    delta = choices[0].get("delta", {})
+                                    content = delta.get("content", "")
+                                    if content:
+                                        yield content
+                            except json.JSONDecodeError as e:
+                                logger.warning(
+                                    "Failed to parse SSE chunk", error=str(e)
+                                )
+                                continue
+
+                    return  # Success, exit generator
+
+            except httpx.TimeoutException as e:
+                logger.error("Request timed out", timeout=self.timeout, attempt=attempt)
+                last_error = e
+                if attempt < self.max_retries:
+                    continue  # Retry on timeout
+                raise
+            except httpx.HTTPStatusError:
+                raise
+            except Exception as e:
+                # Check if it's a retryable network error
+                if self._is_retryable_error(e) and attempt < self.max_retries:
+                    logger.warning(
+                        "Retryable network error during streaming",
+                        error=str(e),
+                        attempt=attempt,
+                    )
+                    last_error = e
+                    continue  # Retry
+                logger.error("Unexpected error during streaming", error=str(e))
+                raise
+
+        # If we get here, all retries failed
+        if last_error:
+            raise last_error
 
     async def _complete_chat(
         self,
         messages: list[dict[str, Any]],
         **kwargs: Any,
     ) -> ChatResponse:
-        """Non-streaming chat completion."""
+        """Non-streaming chat completion with retry for 5xx errors."""
         client = await self._get_client()
         url = f"{self.base_url}/chat/completions"
         headers = self._build_headers()
         body = self._build_request_body(messages, stream=False, **kwargs)
 
-        logger.debug("Starting non-streaming request", model=body["model"])
+        last_error: Exception | None = None
 
-        try:
-            response = await client.post(url, headers=headers, json=body)
-            response.raise_for_status()
-
-            data = response.json()
-            choices = data.get("choices", [])
-
-            if not choices:
-                raise ValueError("No choices in API response")
-
-            choice = choices[0]
-            message = choice.get("message", {})
-            usage = data.get("usage", {})
+        for attempt in range(self.max_retries + 1):
+            if attempt > 0:
+                delay = self.retry_delay * (2 ** (attempt - 1))  # Exponential backoff
+                logger.warning(
+                    "Retrying request",
+                    attempt=attempt,
+                    max_retries=self.max_retries,
+                    delay=delay,
+                )
+                await asyncio.sleep(delay)
 
             logger.debug(
-                "Request completed",
-                tokens_in=usage.get("prompt_tokens"),
-                tokens_out=usage.get("completion_tokens"),
+                "Starting non-streaming request", model=body["model"], attempt=attempt
             )
 
-            return ChatResponse(
-                content=message.get("content", ""),
-                finish_reason=choice.get("finish_reason", "unknown"),
-                usage=usage,
-                model=data.get("model", self.config.model),
-            )
+            try:
+                response = await client.post(url, headers=headers, json=body)
 
-        except httpx.TimeoutException:
-            logger.error("Request timed out", timeout=self.timeout)
-            raise
-        except httpx.HTTPStatusError as e:
-            logger.error(
-                "API request failed",
-                status=e.response.status_code,
-                error=e.response.text,
-            )
-            raise
-        except Exception as e:
-            logger.error("Unexpected error", error=str(e))
-            raise
+                # Check for retryable errors before raise_for_status
+                if (
+                    self._should_retry(response.status_code)
+                    and attempt < self.max_retries
+                ):
+                    logger.error(
+                        "API request failed (will retry)",
+                        status=response.status_code,
+                        error=response.text,
+                    )
+                    last_error = httpx.HTTPStatusError(
+                        f"API request failed: {response.status_code}",
+                        request=response.request,
+                        response=response,
+                    )
+                    continue  # Retry
+
+                response.raise_for_status()
+
+                data = response.json()
+                choices = data.get("choices", [])
+
+                if not choices:
+                    raise ValueError("No choices in API response")
+
+                choice = choices[0]
+                message = choice.get("message", {})
+                usage = data.get("usage", {})
+
+                logger.debug(
+                    "Request completed",
+                    tokens_in=usage.get("prompt_tokens"),
+                    tokens_out=usage.get("completion_tokens"),
+                )
+
+                return ChatResponse(
+                    content=message.get("content", ""),
+                    finish_reason=choice.get("finish_reason", "unknown"),
+                    usage=usage,
+                    model=data.get("model", self.config.model),
+                )
+
+            except httpx.TimeoutException as e:
+                logger.error("Request timed out", timeout=self.timeout, attempt=attempt)
+                last_error = e
+                if attempt < self.max_retries:
+                    continue  # Retry on timeout
+                raise
+            except httpx.HTTPStatusError as e:
+                logger.error(
+                    "API request failed",
+                    status=e.response.status_code,
+                    error=e.response.text,
+                )
+                raise
+            except Exception as e:
+                # Check if it's a retryable network error
+                if self._is_retryable_error(e) and attempt < self.max_retries:
+                    logger.warning(
+                        "Retryable network error",
+                        error=str(e),
+                        attempt=attempt,
+                    )
+                    last_error = e
+                    continue  # Retry
+                logger.error("Unexpected error", error=str(e))
+                raise
+
+        # If we get here, all retries failed
+        if last_error:
+            raise last_error
+        raise RuntimeError("Unexpected: no error but no response")
 
     async def __aenter__(self) -> "OpenAIProvider":
         """Async context manager entry."""
