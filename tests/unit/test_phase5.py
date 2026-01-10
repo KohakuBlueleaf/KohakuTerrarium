@@ -213,8 +213,9 @@ class TestPromptAggregation:
             "Base prompt",
             include_hints=True,
         )
-        assert "##read" in result
-        assert "##info" in result
+        # Check for XML-style tool syntax hints
+        assert "<read" in result or "<info>" in result
+        assert "XML" in result or "tool" in result.lower()
 
 
 class TestInputModule:

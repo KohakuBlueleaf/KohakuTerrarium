@@ -3,7 +3,7 @@ Phase 2 Unit Tests - Stream Parsing
 
 Tests for:
 - ParseEvent types
-- Pattern parsing (YAML-like)
+- XML-style tag parsing
 - StreamParser state machine
 - Tool, sub-agent, and command detection
 
@@ -13,7 +13,6 @@ These tests run offline without API keys.
 import pytest
 
 from kohakuterrarium.parsing import (
-    BlockPattern,
     CommandEvent,
     ParserConfig,
     ParserState,
@@ -26,10 +25,15 @@ from kohakuterrarium.parsing import (
     extract_tool_calls,
     is_action_event,
     is_text_event,
-    parse_command,
     parse_complete,
-    parse_tool_content,
-    parse_yaml_like,
+    parse_opening_tag,
+    parse_closing_tag,
+    parse_attributes,
+    build_tool_args,
+    is_tool_tag,
+    is_command_tag,
+    KNOWN_TOOLS,
+    KNOWN_COMMANDS,
 )
 
 
@@ -59,9 +63,9 @@ class TestParseEvents:
 
     def test_command_event(self):
         """Test CommandEvent creation."""
-        event = CommandEvent(command="read", args="job_123 --lines 50")
-        assert event.command == "read"
-        assert "job_123" in event.args
+        event = CommandEvent(command="info", args="bash")
+        assert event.command == "info"
+        assert "bash" in event.args
 
     def test_is_action_event(self):
         """Test is_action_event helper."""
@@ -76,71 +80,74 @@ class TestParseEvents:
         assert not is_text_event(ToolCallEvent("test", {}))
 
 
-class TestYamlLikeParsing:
-    """Tests for YAML-like content parsing."""
+class TestXMLParsing:
+    """Tests for XML-style tag parsing."""
 
-    def test_simple_key_value(self):
-        """Test simple key: value parsing."""
-        content = "name: bash\ncommand: ls -la"
-        result = parse_yaml_like(content)
-        assert result["name"] == "bash"
-        assert result["command"] == "ls -la"
+    def test_parse_opening_tag(self):
+        """Test parsing opening tags."""
+        tag, attrs, self_closing = parse_opening_tag("<bash>")
+        assert tag == "bash"
+        assert attrs == {}
+        assert self_closing is False
 
-    def test_multiline_value(self):
-        """Test multi-line value parsing."""
-        content = """name: test
-description: This is
-  a multi-line
-  description"""
-        result = parse_yaml_like(content)
-        assert result["name"] == "test"
-        assert "multi-line" in result["description"]
+    def test_parse_opening_tag_with_attrs(self):
+        """Test parsing opening tags with attributes."""
+        tag, attrs, self_closing = parse_opening_tag('<read path="test.py"/>')
+        assert tag == "read"
+        assert attrs["path"] == "test.py"
+        assert self_closing is True
 
-    def test_nested_args(self):
-        """Test nested args parsing."""
-        content = """name: bash
-args:
-  command: ls
-  flags: -la"""
-        result = parse_yaml_like(content)
-        assert result["name"] == "bash"
-        assert "command: ls" in result["args"]
-
-    def test_parse_tool_content(self):
-        """Test parse_tool_content function."""
-        content = """name: bash
-args:
-  command: echo hello"""
-        name, args = parse_tool_content(content)
-        assert name == "bash"
-        assert args.get("command") == "echo hello"
-
-    def test_parse_command(self):
-        """Test parse_command function."""
-        command, args = parse_command("##read job_123 --lines 50##")
-        assert command == "read"
-        assert "job_123" in args
-        assert "--lines 50" in args
-
-
-class TestBlockPattern:
-    """Tests for BlockPattern."""
-
-    def test_simple_pattern(self):
-        """Test simple block pattern."""
-        pattern = BlockPattern(start="##tool##", end="##tool##")
-        assert pattern.matches_start("##tool##")
-        assert not pattern.matches_start("##other##")
-
-    def test_name_in_start_pattern(self):
-        """Test pattern with name in start marker."""
-        pattern = BlockPattern(
-            start="##subagent:",
-            end="##subagent##",
-            name_in_start=True,
+    def test_parse_opening_tag_multi_attrs(self):
+        """Test parsing opening tags with multiple attributes."""
+        tag, attrs, self_closing = parse_opening_tag(
+            '<grep path="src/" glob="*.py">pattern</grep>'
         )
-        name = pattern.extract_name_from_start("##subagent:explore##")
-        assert name == "explore"
+        assert tag == "grep"
+        assert attrs["path"] == "src/"
+        assert attrs["glob"] == "*.py"
+
+    def test_parse_closing_tag(self):
+        """Test parsing closing tags."""
+        tag = parse_closing_tag("</bash>")
+        assert tag == "bash"
+
+        tag = parse_closing_tag("</read>")
+        assert tag == "read"
+
+    def test_parse_attributes(self):
+        """Test attribute parsing."""
+        attrs = parse_attributes('path="test.py" limit="10"')
+        assert attrs["path"] == "test.py"
+        assert attrs["limit"] == "10"
+
+    def test_is_tool_tag(self):
+        """Test tool tag detection."""
+        assert is_tool_tag("bash")
+        assert is_tool_tag("python")
+        assert is_tool_tag("read")
+        assert not is_tool_tag("unknown")
+
+    def test_is_command_tag(self):
+        """Test command tag detection."""
+        assert is_command_tag("info")
+        assert is_command_tag("read_job")
+        assert not is_command_tag("bash")
+
+    def test_build_tool_args_bash(self):
+        """Test building args for bash tool."""
+        args = build_tool_args("bash", {}, "ls -la")
+        assert args["command"] == "ls -la"
+
+    def test_build_tool_args_read(self):
+        """Test building args for read tool."""
+        args = build_tool_args("read", {"path": "test.py"}, "")
+        assert args["path"] == "test.py"
+
+    def test_build_tool_args_write(self):
+        """Test building args for write tool."""
+        args = build_tool_args("write", {"path": "test.py"}, "content here")
+        assert args["path"] == "test.py"
+        assert args["content"] == "content here"
 
 
 class TestStreamParser:
@@ -166,11 +173,7 @@ class TestStreamParser:
         """Test parsing a single tool call."""
         text = """Some text before.
 
-##tool##
-name: bash
-args:
-  command: ls -la
-##tool##
+<bash>ls -la</bash>
 
 Some text after."""
 
@@ -181,53 +184,62 @@ Some text after."""
         assert tools[0].name == "bash"
         assert tools[0].args.get("command") == "ls -la"
 
+    def test_tool_with_attributes(self):
+        """Test parsing tool call with attributes."""
+        text = '<read path="src/main.py"/>'
+
+        events = parse_complete(text)
+        tools = extract_tool_calls(events)
+
+        assert len(tools) == 1
+        assert tools[0].name == "read"
+        assert tools[0].args.get("path") == "src/main.py"
+
+    def test_tool_with_attrs_and_content(self):
+        """Test parsing tool with both attributes and content."""
+        text = """<write path="test.py">
+def hello():
+    print("Hello")
+</write>"""
+
+        events = parse_complete(text)
+        tools = extract_tool_calls(events)
+
+        assert len(tools) == 1
+        assert tools[0].name == "write"
+        assert tools[0].args.get("path") == "test.py"
+        assert "def hello" in tools[0].args.get("content", "")
+
     def test_multiple_tool_calls(self):
         """Test parsing multiple tool calls."""
-        text = """##tool##
-name: tool1
-##tool##
+        text = """<bash>ls</bash>
 
-##tool##
-name: tool2
-##tool##"""
+<bash>pwd</bash>"""
 
         events = parse_complete(text)
         tools = extract_tool_calls(events)
 
         assert len(tools) == 2
-        assert tools[0].name == "tool1"
-        assert tools[1].name == "tool2"
-
-    def test_subagent_call(self):
-        """Test parsing sub-agent call."""
-        text = """##subagent:explore##
-query: find files
-##subagent##"""
-
-        events = parse_complete(text)
-        subagents = extract_subagent_calls(events)
-
-        assert len(subagents) == 1
-        assert subagents[0].name == "explore"
-        assert subagents[0].args.get("query") == "find files"
+        assert tools[0].args.get("command") == "ls"
+        assert tools[1].args.get("command") == "pwd"
 
     def test_command(self):
         """Test parsing framework command."""
-        text = "Check this: ##read job_123##"
+        text = "Check this: <info>bash</info>"
 
         events = parse_complete(text)
         commands = [e for e in events if isinstance(e, CommandEvent)]
 
         assert len(commands) == 1
-        assert commands[0].command == "read"
-        assert "job_123" in commands[0].args
+        assert commands[0].command == "info"
+        assert "bash" in commands[0].args
 
     def test_streaming_chunks(self):
         """Test that streaming works correctly."""
         parser = StreamParser()
 
         # Feed in small chunks
-        chunks = ["##to", "ol##\nna", "me: test\n##tool##"]
+        chunks = ["<ba", "sh>l", "s -la</bash>"]
 
         all_events = []
         for chunk in chunks:
@@ -237,11 +249,11 @@ query: find files
 
         tools = extract_tool_calls(all_events)
         assert len(tools) == 1
-        assert tools[0].name == "test"
+        assert tools[0].args.get("command") == "ls -la"
 
     def test_character_by_character(self):
         """Test feeding character by character."""
-        text = "##tool##\nname: test\n##tool##"
+        text = "<bash>test</bash>"
         parser = StreamParser()
 
         all_events = []
@@ -260,10 +272,10 @@ query: find files
         assert parser.get_state() == ParserState.NORMAL
         assert not parser.is_in_block()
 
-        parser.feed("##tool##\n")
+        parser.feed("<bash>")
         assert parser.is_in_block()
 
-        parser.feed("name: test\n##tool##")
+        parser.feed("test</bash>")
         parser.flush()
         assert parser.get_state() == ParserState.NORMAL
 
@@ -271,7 +283,7 @@ query: find files
         """Test handling of incomplete block at stream end."""
         parser = StreamParser()
 
-        events = parser.feed("##tool##\nname: test")
+        events = parser.feed("<bash>test")
         # No tool event yet (block not closed)
         tools = extract_tool_calls(events)
         assert len(tools) == 0
@@ -284,37 +296,29 @@ query: find files
 
     def test_false_marker(self):
         """Test that false markers are handled as text."""
-        text = "Use # for comments and ## for headers"
+        text = "Use < for less than and > for greater than"
 
         events = parse_complete(text)
         text_content = extract_text(events)
 
-        assert "#" in text_content or "##" in text_content
+        assert "<" in text_content or ">" in text_content
 
     def test_mixed_content(self):
-        """Test response with all content types."""
+        """Test response with various content types."""
         text = """Text before
 
-##tool##
-name: tool1
-##tool##
+<bash>ls</bash>
 
-##subagent:agent1##
-query: test
-##subagent##
-
-##read job_1##
+<info>bash</info>
 
 Text after"""
 
         events = parse_complete(text)
 
         tools = extract_tool_calls(events)
-        subagents = extract_subagent_calls(events)
         commands = [e for e in events if isinstance(e, CommandEvent)]
 
         assert len(tools) == 1
-        assert len(subagents) == 1
         assert len(commands) == 1
 
 
@@ -324,8 +328,6 @@ class TestParserConfig:
     def test_default_config(self):
         """Test default configuration."""
         config = ParserConfig()
-        assert config.tool_pattern.start == "##tool##"
-        assert config.subagent_pattern.start == "##subagent:"
         assert config.emit_block_events is False
 
     def test_custom_config(self):
@@ -376,3 +378,17 @@ class TestExtractFunctions:
 
         text = extract_text(events)
         assert text == "Hello World"
+
+
+class TestKnownTags:
+    """Tests for known tool and command tags."""
+
+    def test_known_tools(self):
+        """Test that all expected tools are in KNOWN_TOOLS."""
+        expected = {"bash", "python", "read", "write", "edit", "glob", "grep"}
+        assert expected.issubset(KNOWN_TOOLS)
+
+    def test_known_commands(self):
+        """Test that all expected commands are in KNOWN_COMMANDS."""
+        expected = {"info", "read_job"}
+        assert expected.issubset(KNOWN_COMMANDS)

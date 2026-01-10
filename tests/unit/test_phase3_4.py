@@ -26,11 +26,11 @@ from kohakuterrarium.core.job import (
 from kohakuterrarium.core.registry import Registry
 from kohakuterrarium.modules.tool import (
     BaseTool,
-    BashTool,
     ExecutionMode,
     ToolConfig,
     ToolResult,
 )
+from kohakuterrarium.builtins.tools import BashTool
 
 
 class TestJobStatus:
