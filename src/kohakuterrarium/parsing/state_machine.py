@@ -1,12 +1,13 @@
 """
 Streaming state machine parser for LLM output.
 
-Parses tool calls, sub-agent calls, and commands from streaming text.
-Handles partial chunks correctly (markers split across chunks).
+Parses XML-style tool calls and commands from streaming text.
+Format: <tool_name attr="value">content</tool_name>
+
+Handles partial chunks correctly (tags split across chunks).
 """
 
 from enum import Enum, auto
-from typing import Any
 
 from kohakuterrarium.parsing.events import (
     BlockEndEvent,
@@ -18,10 +19,14 @@ from kohakuterrarium.parsing.events import (
     ToolCallEvent,
 )
 from kohakuterrarium.parsing.patterns import (
+    KNOWN_COMMANDS,
+    KNOWN_TOOLS,
     ParserConfig,
-    parse_command,
-    parse_subagent_content,
-    parse_tool_content,
+    build_tool_args,
+    is_command_tag,
+    is_tool_tag,
+    parse_closing_tag,
+    parse_opening_tag,
 )
 from kohakuterrarium.utils.logging import get_logger
 
@@ -32,20 +37,19 @@ class ParserState(Enum):
     """Parser state machine states."""
 
     NORMAL = auto()  # Normal text streaming
-    MAYBE_MARKER = auto()  # Might be starting a marker
-    IN_TOOL_BLOCK = auto()  # Inside ##tool## block
-    IN_SUBAGENT_BLOCK = auto()  # Inside ##subagent:name## block
-    IN_COMMAND = auto()  # Inside ##command## (single line)
+    IN_OPENING_TAG = auto()  # Inside < ... > (buffering tag)
+    IN_CONTENT = auto()  # Inside tag content, waiting for </tag>
+    IN_CLOSING_TAG = auto()  # Inside </ ... > (buffering closing tag)
 
 
 class StreamParser:
     """
     Streaming parser for LLM output.
 
-    Detects and parses:
-    - Tool calls: ##tool##...##tool##
-    - Sub-agent calls: ##subagent:name##...##subagent##
-    - Commands: ##read job_id## (single line)
+    Detects and parses XML-style:
+    - Tool calls: <bash>command</bash>, <edit path="file">diff</edit>
+    - Commands: <info>tool_name</info>, <read_job>job_id</read_job>
+    - Self-closing: <read path="file.py"/>
 
     Usage:
         parser = StreamParser()
@@ -57,10 +61,6 @@ class StreamParser:
         final_events = parser.flush()
     """
 
-    # Marker that starts all special blocks
-    MARKER_START = "##"
-    MARKER_CHAR = "#"
-
     def __init__(self, config: ParserConfig | None = None):
         self.config = config or ParserConfig()
         self._reset()
@@ -68,11 +68,12 @@ class StreamParser:
     def _reset(self) -> None:
         """Reset parser state."""
         self.state = ParserState.NORMAL
-        self.buffer = ""  # Current buffer
         self.text_buffer = ""  # Buffered text to emit
-        self.block_content = ""  # Content inside current block
-        self.block_name = ""  # Name for subagent blocks
-        self.marker_buffer = ""  # Buffer for potential marker
+        self.tag_buffer = ""  # Current tag being parsed
+        self.content_buffer = ""  # Content inside current tag
+        self.current_tag_name = ""  # Name of current open tag
+        self.current_tag_attrs: dict[str, str] = {}  # Attributes of current tag
+        self._last_progress_log = 0  # For progress logging
 
     def feed(self, chunk: str) -> list[ParseEvent]:
         """
@@ -103,65 +104,62 @@ class StreamParser:
         """
         events: list[ParseEvent] = []
 
-        # Emit any buffered marker as text (incomplete marker)
-        if self.marker_buffer:
-            self.text_buffer += self.marker_buffer
-            self.marker_buffer = ""
+        # Handle incomplete states
+        if self.state == ParserState.IN_OPENING_TAG:
+            # Incomplete tag, emit as text
+            self.text_buffer += "<" + self.tag_buffer
+            self.tag_buffer = ""
+
+        elif self.state == ParserState.IN_CONTENT:
+            # Stream ended inside a tag
+            logger.warning(
+                "Stream ended with incomplete tag",
+                tag_name=self.current_tag_name,
+            )
+            if self.config.emit_block_events:
+                events.append(
+                    BlockEndEvent(
+                        block_type="tool",
+                        success=False,
+                        error="Stream ended before tag closed",
+                    )
+                )
+
+        elif self.state == ParserState.IN_CLOSING_TAG:
+            # Incomplete closing tag, treat content + partial close as text
+            self.text_buffer += self.content_buffer + "</" + self.tag_buffer
+            self.tag_buffer = ""
+            self.content_buffer = ""
 
         # Emit any remaining text
         if self.text_buffer:
             events.append(TextEvent(self.text_buffer))
             self.text_buffer = ""
 
-        # Handle incomplete blocks
-        if self.state in (ParserState.IN_TOOL_BLOCK, ParserState.IN_SUBAGENT_BLOCK):
-            logger.warning("Stream ended with incomplete block", state=self.state.name)
-            if self.config.emit_block_events:
-                events.append(
-                    BlockEndEvent(
-                        block_type=(
-                            "tool"
-                            if self.state == ParserState.IN_TOOL_BLOCK
-                            else "subagent"
-                        ),
-                        success=False,
-                        error="Stream ended before block completed",
-                    )
-                )
-
         self._reset()
         return events
 
     def _process_char(self, char: str) -> list[ParseEvent]:
         """Process a single character."""
-        events: list[ParseEvent] = []
-
         match self.state:
             case ParserState.NORMAL:
-                events.extend(self._handle_normal(char))
-
-            case ParserState.MAYBE_MARKER:
-                events.extend(self._handle_maybe_marker(char))
-
-            case ParserState.IN_TOOL_BLOCK:
-                events.extend(self._handle_in_tool_block(char))
-
-            case ParserState.IN_SUBAGENT_BLOCK:
-                events.extend(self._handle_in_subagent_block(char))
-
-            case ParserState.IN_COMMAND:
-                events.extend(self._handle_in_command(char))
-
-        return events
+                return self._handle_normal(char)
+            case ParserState.IN_OPENING_TAG:
+                return self._handle_in_opening_tag(char)
+            case ParserState.IN_CONTENT:
+                return self._handle_in_content(char)
+            case ParserState.IN_CLOSING_TAG:
+                return self._handle_in_closing_tag(char)
+        return []
 
     def _handle_normal(self, char: str) -> list[ParseEvent]:
         """Handle character in NORMAL state."""
         events: list[ParseEvent] = []
 
-        if char == self.MARKER_CHAR:
-            # Might be starting a marker
-            self.marker_buffer = char
-            self.state = ParserState.MAYBE_MARKER
+        if char == "<":
+            # Might be starting a tag
+            self.tag_buffer = ""
+            self.state = ParserState.IN_OPENING_TAG
         else:
             self.text_buffer += char
             # Emit text if buffer reaches threshold
@@ -174,142 +172,184 @@ class StreamParser:
 
         return events
 
-    def _handle_maybe_marker(self, char: str) -> list[ParseEvent]:
-        """Handle character when we might be in a marker."""
+    def _handle_in_opening_tag(self, char: str) -> list[ParseEvent]:
+        """Handle character while parsing an opening tag."""
         events: list[ParseEvent] = []
-        self.marker_buffer += char
 
-        # Check if we have enough to determine marker type
-        if len(self.marker_buffer) >= 2:
-            if self.marker_buffer == "##":
-                # Confirmed marker start, now determine type
-                # Keep reading until we can identify the block type
-                pass
-            elif not self.marker_buffer.startswith("#"):
-                # False alarm, emit as text
-                self.text_buffer += self.marker_buffer
-                self.marker_buffer = ""
-                self.state = ParserState.NORMAL
+        if char == ">":
+            # Tag complete, parse it
+            full_tag = "<" + self.tag_buffer + ">"
+            parsed = parse_opening_tag(full_tag)
 
-        # Check for complete markers
-        if self.marker_buffer.endswith("##") and len(self.marker_buffer) > 2:
-            # We have a complete marker, determine type
-            events.extend(self._process_complete_marker())
+            if parsed:
+                tag_name, attrs, is_self_closing = parsed
 
-        return events
-
-    def _process_complete_marker(self) -> list[ParseEvent]:
-        """Process a complete marker (##...##)."""
-        events: list[ParseEvent] = []
-        marker = self.marker_buffer
-
-        # Check if it's the tool block start
-        if marker == self.config.tool_pattern.start:
-            self.state = ParserState.IN_TOOL_BLOCK
-            self.block_content = ""
-            self.marker_buffer = ""
-            if self.config.emit_block_events:
-                events.append(BlockStartEvent(block_type="tool"))
-            logger.debug("Entered tool block")
-
-        # Check if it's a subagent block start (##subagent:name##)
-        elif marker.startswith("##subagent:") and marker.endswith("##"):
-            name = marker[11:-2]  # Extract name from ##subagent:name##
-            self.state = ParserState.IN_SUBAGENT_BLOCK
-            self.block_content = ""
-            self.block_name = name
-            self.marker_buffer = ""
-            if self.config.emit_block_events:
-                events.append(BlockStartEvent(block_type="subagent", name=name))
-            logger.debug("Entered subagent block", subagent_name=name)
-
-        # Check if it's a simple command (##command args##)
-        elif marker.startswith("##") and marker.endswith("##"):
-            # Single-line command like ##read job_123##
-            content = marker[2:-2]
-            # Check if it looks like a command (no newlines, starts with word)
-            if (
-                content
-                and not content.startswith("tool")
-                and not content.startswith("subagent")
-            ):
-                command, args = parse_command(marker)
-                events.append(CommandEvent(command=command, args=args, raw=marker))
-                self.marker_buffer = ""
-                self.state = ParserState.NORMAL
-                logger.debug("Parsed command", command=command)
+                # Check if it's a known tool or command
+                if is_tool_tag(tag_name) or is_command_tag(tag_name):
+                    if is_self_closing:
+                        # Self-closing tag, emit immediately
+                        events.extend(self._emit_tag_event(tag_name, attrs, ""))
+                        self.state = ParserState.NORMAL
+                    else:
+                        # Need to collect content until closing tag
+                        self.current_tag_name = tag_name
+                        self.current_tag_attrs = attrs
+                        self.content_buffer = ""
+                        self._last_progress_log = 0  # Reset progress counter
+                        self.state = ParserState.IN_CONTENT
+                        if self.config.emit_block_events:
+                            events.append(BlockStartEvent(block_type="tool"))
+                        logger.debug("Entered tag", tag_name=tag_name)
+                else:
+                    # Not a known tag, emit as text
+                    self.text_buffer += full_tag
+                    self.state = ParserState.NORMAL
             else:
-                # Not a recognized pattern, emit as text
-                self.text_buffer += marker
-                self.marker_buffer = ""
+                # Invalid tag format, emit as text
+                self.text_buffer += full_tag
                 self.state = ParserState.NORMAL
+
+            self.tag_buffer = ""
+
+        elif char == "<":
+            # Another < before > - previous was not a tag
+            self.text_buffer += "<" + self.tag_buffer
+            self.tag_buffer = ""
+            # Stay in IN_OPENING_TAG for this new <
+
         else:
-            # Not a recognized marker, continue buffering
-            pass
+            self.tag_buffer += char
+
+            # Safety: if tag buffer gets too long, it's not a real tag
+            if len(self.tag_buffer) > 200:
+                self.text_buffer += "<" + self.tag_buffer
+                self.tag_buffer = ""
+                self.state = ParserState.NORMAL
 
         return events
 
-    def _handle_in_tool_block(self, char: str) -> list[ParseEvent]:
-        """Handle character inside a tool block."""
+    def _handle_in_content(self, char: str) -> list[ParseEvent]:
+        """Handle character while inside tag content."""
         events: list[ParseEvent] = []
-        self.block_content += char
+        self.content_buffer += char
 
-        # Check for end marker
-        if self.block_content.endswith(self.config.tool_pattern.end):
-            # Remove end marker from content
-            content = self.block_content[: -len(self.config.tool_pattern.end)]
-            # Parse tool call
-            name, args = parse_tool_content(content)
-            events.append(
-                ToolCallEvent(
-                    name=name,
-                    args=args,
-                    raw=self.config.tool_pattern.start
-                    + content
-                    + self.config.tool_pattern.end,
-                )
+        # Log progress periodically (every 500 chars)
+        current_len = len(self.content_buffer)
+        if current_len - self._last_progress_log >= 500:
+            logger.debug(
+                "Buffering tool content",
+                tag_name=self.current_tag_name,
+                chars=current_len,
             )
-            if self.config.emit_block_events:
-                events.append(BlockEndEvent(block_type="tool", success=True))
-            logger.debug("Parsed tool call", tool_name=name)
-            self.block_content = ""
-            self.state = ParserState.NORMAL
+            self._last_progress_log = current_len
+
+        # Check if we're starting a closing tag
+        if self.content_buffer.endswith("</"):
+            # Might be closing tag, switch to closing tag state
+            # Remove </ from content buffer
+            self.content_buffer = self.content_buffer[:-2]
+            self.tag_buffer = ""
+            self.state = ParserState.IN_CLOSING_TAG
 
         return events
 
-    def _handle_in_subagent_block(self, char: str) -> list[ParseEvent]:
-        """Handle character inside a subagent block."""
+    def _handle_in_closing_tag(self, char: str) -> list[ParseEvent]:
+        """Handle character while parsing a closing tag."""
         events: list[ParseEvent] = []
-        self.block_content += char
 
-        # Check for end marker
-        if self.block_content.endswith(self.config.subagent_pattern.end):
-            # Remove end marker from content
-            content = self.block_content[: -len(self.config.subagent_pattern.end)]
-            # Parse subagent call
-            args = parse_subagent_content(content)
-            events.append(
-                SubAgentCallEvent(
-                    name=self.block_name,
-                    args=args,
-                    raw=f"##subagent:{self.block_name}##"
-                    + content
-                    + self.config.subagent_pattern.end,
+        if char == ">":
+            # Closing tag complete
+            closing_name = self.tag_buffer
+
+            if closing_name == self.current_tag_name:
+                # Matching close, emit the tool/command
+                events.extend(
+                    self._emit_tag_event(
+                        self.current_tag_name,
+                        self.current_tag_attrs,
+                        self.content_buffer,
+                    )
                 )
-            )
-            if self.config.emit_block_events:
-                events.append(BlockEndEvent(block_type="subagent", success=True))
-            logger.debug("Parsed subagent call", subagent_name=self.block_name)
-            self.block_content = ""
-            self.block_name = ""
-            self.state = ParserState.NORMAL
+                if self.config.emit_block_events:
+                    events.append(BlockEndEvent(block_type="tool", success=True))
+                logger.debug("Closed tag", tag_name=self.current_tag_name)
+
+                self.current_tag_name = ""
+                self.current_tag_attrs = {}
+                self.content_buffer = ""
+                self.state = ParserState.NORMAL
+            else:
+                # Not matching, put back as content
+                self.content_buffer += "</" + self.tag_buffer + ">"
+                self.state = ParserState.IN_CONTENT
+
+            self.tag_buffer = ""
+
+        elif char == "<":
+            # Another < inside closing tag - malformed, treat as content
+            self.content_buffer += "</" + self.tag_buffer
+            self.tag_buffer = ""
+            self.state = ParserState.IN_OPENING_TAG
+
+        else:
+            self.tag_buffer += char
+
+            # Safety: closing tag name shouldn't be too long
+            if len(self.tag_buffer) > 50:
+                self.content_buffer += "</" + self.tag_buffer
+                self.tag_buffer = ""
+                self.state = ParserState.IN_CONTENT
 
         return events
 
-    def _handle_in_command(self, char: str) -> list[ParseEvent]:
-        """Handle character inside a command (not used in current impl)."""
-        # Commands are single-line, handled in MAYBE_MARKER
-        return []
+    def _emit_tag_event(
+        self,
+        tag_name: str,
+        attrs: dict[str, str],
+        content: str,
+    ) -> list[ParseEvent]:
+        """Create appropriate event for a completed tag."""
+        events: list[ParseEvent] = []
+
+        # Build args from attributes and content
+        args = build_tool_args(tag_name, attrs, content)
+
+        if is_tool_tag(tag_name):
+            # Tool call
+            raw = self._build_raw_tag(tag_name, attrs, content)
+            events.append(ToolCallEvent(name=tag_name, args=args, raw=raw))
+            logger.debug("Parsed tool call", tool_name=tag_name)
+
+        elif is_command_tag(tag_name):
+            # Framework command
+            if tag_name == "info":
+                cmd_name = "info"
+                cmd_args = args.get("tool_name", content.strip())
+            elif tag_name == "read_job":
+                cmd_name = "read"
+                cmd_args = args.get("job_id", content.strip())
+            else:
+                cmd_name = tag_name
+                cmd_args = content.strip()
+
+            raw = self._build_raw_tag(tag_name, attrs, content)
+            events.append(CommandEvent(command=cmd_name, args=cmd_args, raw=raw))
+            logger.debug("Parsed command", command=cmd_name)
+
+        return events
+
+    def _build_raw_tag(
+        self,
+        tag_name: str,
+        attrs: dict[str, str],
+        content: str,
+    ) -> str:
+        """Reconstruct the raw tag string."""
+        attr_str = "".join(f' {k}="{v}"' for k, v in attrs.items())
+        if content:
+            return f"<{tag_name}{attr_str}>{content}</{tag_name}>"
+        else:
+            return f"<{tag_name}{attr_str}/>"
 
     def get_state(self) -> ParserState:
         """Get current parser state."""
@@ -317,11 +357,7 @@ class StreamParser:
 
     def is_in_block(self) -> bool:
         """Check if parser is currently inside a block."""
-        return self.state in (
-            ParserState.IN_TOOL_BLOCK,
-            ParserState.IN_SUBAGENT_BLOCK,
-            ParserState.IN_COMMAND,
-        )
+        return self.state in (ParserState.IN_CONTENT, ParserState.IN_CLOSING_TAG)
 
 
 def parse_complete(text: str, config: ParserConfig | None = None) -> list[ParseEvent]:

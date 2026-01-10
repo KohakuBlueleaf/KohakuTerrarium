@@ -44,6 +44,15 @@ def _supports_color() -> bool:
 SUPPORTS_COLOR = _supports_color()
 
 
+class FlushingStreamHandler(logging.StreamHandler):
+    """StreamHandler that flushes after every emit."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Emit a record and flush immediately."""
+        super().emit(record)
+        self.flush()
+
+
 class ColoredFormatter(logging.Formatter):
     """Custom formatter that adds colors and structured format."""
 
@@ -175,7 +184,8 @@ def get_logger(name: str, level: int | str = logging.DEBUG) -> logging.Logger:
 
     # Only add handler once (to root logger)
     if _handler is None:
-        _handler = logging.StreamHandler(sys.stderr)
+        # Use flushing handler for immediate log output
+        _handler = FlushingStreamHandler(sys.stderr)
         _handler.setFormatter(ColoredFormatter(use_color=True))
         _handler.setLevel(logging.DEBUG)
 

@@ -26,26 +26,29 @@ logger = get_logger(__name__)
 DEFAULT_FRAMEWORK_HINTS = """
 ## Tool Call Syntax
 
-To call a tool, use this format:
+Use XML-style tags to call tools. The tag name is the tool name.
+
+### Single-argument tools (content is the argument):
 ```
-##tool##
-name: <tool_name>
-args:
-  <key>: <value>
-##tool##
+<bash>ls -la</bash>
+<python>print("Hello")</python>
+```
+
+### Multi-argument tools (use attributes + content):
+```
+<read path="src/main.py"/>
+<write path="new_file.py">file content here</write>
+<edit path="src/main.py">
+@@ -1,1 +1,2 @@
+ import os
++import sys
+</edit>
 ```
 
 ## Framework Commands
 
-To get full documentation for a tool:
-```
-##info <tool_name>##
-```
-
-To read output from a background job:
-```
-##read <job_id>##
-```
+- `<info>tool_name</info>` - Get full documentation for a tool
+- `<read_job>job_id</read_job>` - Read output from a background job
 """.strip()
 
 
@@ -121,7 +124,7 @@ def _build_tools_list(registry: Registry) -> str:
         lines.append(f"- `{name}`: {description}")
 
     lines.append("")
-    lines.append("Use `##info <tool_name>##` for full documentation.")
+    lines.append("Use `<info>tool_name</info>` for full documentation.")
 
     return "\n".join(lines)
 

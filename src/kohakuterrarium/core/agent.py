@@ -19,15 +19,7 @@ from kohakuterrarium.modules.input.cli import CLIInput
 from kohakuterrarium.modules.output.base import OutputModule
 from kohakuterrarium.modules.output.router import OutputRouter
 from kohakuterrarium.modules.output.stdout import StdoutOutput
-from kohakuterrarium.modules.tool import (
-    BashTool,
-    EditTool,
-    GlobTool,
-    GrepTool,
-    PythonTool,
-    ReadTool,
-    WriteTool,
-)
+from kohakuterrarium.builtins.tools import get_builtin_tool
 from kohakuterrarium.commands.read import InfoCommand, ReadCommand
 from kohakuterrarium.parsing import (
     CommandEvent,
@@ -152,25 +144,11 @@ class Agent:
                     self.registry.register_tool(tool)
 
     def _create_builtin_tool(self, name: str, options: dict[str, Any]) -> Any:
-        """Create a built-in tool by name."""
-        match name:
-            case "bash":
-                return BashTool()
-            case "python":
-                return PythonTool()
-            case "read":
-                return ReadTool()
-            case "write":
-                return WriteTool()
-            case "edit":
-                return EditTool()
-            case "glob":
-                return GlobTool()
-            case "grep":
-                return GrepTool()
-            case _:
-                logger.warning("Unknown built-in tool", tool_name=name)
-                return None
+        """Create a built-in tool by name using the tool registry."""
+        tool = get_builtin_tool(name)
+        if tool is None:
+            logger.warning("Unknown built-in tool", tool_name=name)
+        return tool
 
     def _init_executor(self) -> None:
         """Initialize background executor."""

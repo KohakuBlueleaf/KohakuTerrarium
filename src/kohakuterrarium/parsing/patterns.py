@@ -1,50 +1,11 @@
 """
 Pattern definitions for stream parsing.
 
-Configurable patterns for detecting tool calls, sub-agent calls, and commands.
+Supports XML-style tool calls: <tool_name attr="value">content</tool_name>
 """
 
+import re
 from dataclasses import dataclass, field
-
-import yaml
-
-
-@dataclass
-class BlockPattern:
-    """
-    Pattern definition for a block type.
-
-    Attributes:
-        start: Start marker (e.g., "##tool##")
-        end: End marker (e.g., "##tool##")
-        name_in_start: Whether name is embedded in start marker
-            If True: "##subagent:name##" extracts "name"
-            If False: name is parsed from content
-    """
-
-    start: str
-    end: str
-    name_in_start: bool = False
-    name_prefix: str = ""  # e.g., "subagent:" for "##subagent:name##"
-
-    def matches_start(self, text: str) -> bool:
-        """Check if text matches start pattern."""
-        if self.name_in_start:
-            # For patterns like ##subagent:name##
-            prefix = self.start.rstrip("#") + self.name_prefix
-            return text.startswith(prefix)
-        return text == self.start
-
-    def extract_name_from_start(self, text: str) -> str | None:
-        """Extract name from start marker if name_in_start is True."""
-        if not self.name_in_start:
-            return None
-        # e.g., "##subagent:explore##" -> "explore"
-        prefix = self.start.rstrip("#") + self.name_prefix
-        suffix = "##"
-        if text.startswith(prefix) and text.endswith(suffix):
-            return text[len(prefix) : -len(suffix)]
-        return None
 
 
 @dataclass
@@ -53,38 +14,10 @@ class ParserConfig:
     Configuration for the stream parser.
 
     Attributes:
-        tool_pattern: Pattern for tool call blocks
-        subagent_pattern: Pattern for sub-agent call blocks
-        command_pattern: Pattern for framework commands
         emit_block_events: Whether to emit BlockStart/BlockEnd events
         buffer_text: Whether to buffer text between blocks
+        text_buffer_size: Minimum chars to buffer before emitting
     """
-
-    tool_pattern: BlockPattern = field(
-        default_factory=lambda: BlockPattern(
-            start="##tool##",
-            end="##tool##",
-            name_in_start=False,
-        )
-    )
-
-    subagent_pattern: BlockPattern = field(
-        default_factory=lambda: BlockPattern(
-            start="##subagent:",
-            end="##subagent##",
-            name_in_start=True,
-            name_prefix="",  # name comes right after "##subagent:"
-        )
-    )
-
-    command_pattern: BlockPattern = field(
-        default_factory=lambda: BlockPattern(
-            start="##",
-            end="##",
-            name_in_start=True,
-            name_prefix="",
-        )
-    )
 
     # Whether to emit BlockStartEvent and BlockEndEvent
     emit_block_events: bool = False
@@ -96,179 +29,137 @@ class ParserConfig:
     text_buffer_size: int = 1
 
 
-@dataclass
-class ParsedBlock:
+# Regex for parsing XML-style opening tags with attributes
+# Matches: <tag_name attr1="value1" attr2="value2">
+# Or self-closing: <tag_name attr="value"/>
+OPENING_TAG_PATTERN = re.compile(
+    r"<([a-zA-Z_][a-zA-Z0-9_]*)"  # Tag name
+    r"((?:\s+[a-zA-Z_][a-zA-Z0-9_]*\s*=\s*\"[^\"]*\")*)"  # Attributes
+    r"\s*(/?)>"  # Optional self-closing /
+)
+
+# Regex for extracting individual attributes
+ATTR_PATTERN = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*"([^"]*)"')
+
+# Regex for closing tag
+CLOSING_TAG_PATTERN = re.compile(r"</([a-zA-Z_][a-zA-Z0-9_]*)>")
+
+
+def parse_attributes(attr_string: str) -> dict[str, str]:
     """
-    Represents a parsed block with its components.
+    Parse attributes from an opening tag.
 
-    Used internally by the parser.
-    """
-
-    block_type: str  # "tool", "subagent", "command"
-    name: str
-    content: str
-    raw: str
-
-
-def parse_yaml_like(content: str) -> dict[str, str]:
-    """
-    Parse simple YAML-like content (key: value pairs).
-
-    Handles:
-    - Simple key: value
-    - Multi-line values with indentation
-    - Nested keys (args: ...)
-
-    Returns flat dict - nested structures as strings.
-    """
-    result: dict[str, str] = {}
-    lines = content.strip().split("\n")
-
-    current_key: str | None = None
-    current_value_lines: list[str] = []
-    base_indent = 0
-
-    for line in lines:
-        # Skip empty lines
-        if not line.strip():
-            if current_key:
-                current_value_lines.append("")
-            continue
-
-        # Count leading spaces
-        stripped = line.lstrip()
-        indent = len(line) - len(stripped)
-
-        # Check if this is a new key
-        if ":" in stripped and not stripped.startswith("-"):
-            # Might be a new key
-            colon_pos = stripped.find(":")
-            potential_key = stripped[:colon_pos].strip()
-            rest = stripped[colon_pos + 1 :].strip()
-
-            # Is it a top-level key? (minimal indent or first key)
-            if current_key is None or indent <= base_indent:
-                # Save previous key if exists
-                if current_key:
-                    result[current_key] = "\n".join(current_value_lines).strip()
-
-                current_key = potential_key
-                base_indent = indent
-
-                if rest:
-                    # Value on same line
-                    current_value_lines = [rest]
-                else:
-                    # Value on next lines
-                    current_value_lines = []
-            else:
-                # It's part of the current value (nested)
-                if current_key:
-                    current_value_lines.append(line)
-        else:
-            # Continuation of current value
-            if current_key:
-                current_value_lines.append(line)
-
-    # Save last key
-    if current_key:
-        result[current_key] = "\n".join(current_value_lines).strip()
-
-    return result
-
-
-def parse_tool_content(content: str) -> tuple[str, dict[str, str]]:
-    """
-    Parse tool block content to extract name and args.
-
-    Expected format:
-        name: tool_name
-        args:
-          arg1: value1
-          arg2: value2
-
-    Or simple:
-        name: tool_name
-        command: ls -la
+    Args:
+        attr_string: String like ' path="src/main.py" limit="50"'
 
     Returns:
-        (tool_name, args_dict)
+        Dict of attribute name -> value
     """
-    # Use PyYAML for proper YAML parsing (handles | multiline, etc.)
-    try:
-        parsed = yaml.safe_load(content)
-        if not isinstance(parsed, dict):
-            # Fallback to simple parser
-            parsed = parse_yaml_like(content)
-    except yaml.YAMLError:
-        # Fallback to simple parser on YAML errors
-        parsed = parse_yaml_like(content)
-
-    name = str(parsed.pop("name", "")) if parsed else ""
-
-    # If there's an "args" key, flatten it
-    if parsed and "args" in parsed:
-        args = parsed.pop("args")
-        if isinstance(args, dict):
-            # Convert all values to strings for consistency
-            for key, value in args.items():
-                parsed[key] = str(value) if not isinstance(value, str) else value
-        elif isinstance(args, str):
-            # Parse nested args string
-            nested = parse_yaml_like(args)
-            parsed.update(nested)
-
-    # Ensure all values are strings
-    result = {}
-    if parsed:
-        for key, value in parsed.items():
-            result[key] = str(value) if not isinstance(value, str) else value
-
-    return name, result
+    attrs = {}
+    for match in ATTR_PATTERN.finditer(attr_string):
+        name, value = match.groups()
+        attrs[name] = value
+    return attrs
 
 
-def parse_subagent_content(content: str) -> dict[str, str]:
+def parse_opening_tag(tag_text: str) -> tuple[str, dict[str, str], bool] | None:
     """
-    Parse sub-agent block content (name already extracted from start marker).
+    Parse an opening XML tag.
 
-    Returns args dict.
-    """
-    # Use PyYAML for proper YAML parsing
-    try:
-        parsed = yaml.safe_load(content)
-        if not isinstance(parsed, dict):
-            parsed = parse_yaml_like(content)
-    except yaml.YAMLError:
-        parsed = parse_yaml_like(content)
-
-    # Ensure all values are strings
-    result = {}
-    if parsed:
-        for key, value in parsed.items():
-            result[key] = str(value) if not isinstance(value, str) else value
-
-    return result
-
-
-def parse_command(raw: str) -> tuple[str, str]:
-    """
-    Parse a command like "##read job_123 --lines 50##".
+    Args:
+        tag_text: Full tag like '<bash>' or '<edit path="file.py">' or '<read/>'
 
     Returns:
-        (command_name, args_string)
+        (tag_name, attributes, is_self_closing) or None if invalid
     """
-    # Remove ## delimiters
-    content = raw.strip()
-    if content.startswith("##"):
-        content = content[2:]
-    if content.endswith("##"):
-        content = content[:-2]
+    match = OPENING_TAG_PATTERN.match(tag_text)
+    if not match:
+        return None
 
+    tag_name = match.group(1)
+    attr_string = match.group(2)
+    is_self_closing = match.group(3) == "/"
+
+    attrs = parse_attributes(attr_string) if attr_string else {}
+
+    return tag_name, attrs, is_self_closing
+
+
+def parse_closing_tag(tag_text: str) -> str | None:
+    """
+    Parse a closing XML tag.
+
+    Args:
+        tag_text: Tag like '</bash>'
+
+    Returns:
+        Tag name or None if invalid
+    """
+    match = CLOSING_TAG_PATTERN.match(tag_text)
+    if match:
+        return match.group(1)
+    return None
+
+
+def build_tool_args(
+    tag_name: str,
+    attributes: dict[str, str],
+    content: str,
+) -> dict[str, str]:
+    """
+    Build tool arguments from tag attributes and content.
+
+    For tools like bash/python, content is the main argument.
+    For tools like edit, content is the diff and path is an attribute.
+
+    Args:
+        tag_name: The tool name
+        attributes: Parsed attributes from the tag
+        content: Content between opening and closing tags
+
+    Returns:
+        Complete args dict for the tool
+    """
+    args = dict(attributes)  # Copy attributes
+
+    # Map content to the appropriate argument based on tool type
     content = content.strip()
+    if content:
+        # Determine what to call the content arg based on tool
+        content_arg_map = {
+            "bash": "command",
+            "python": "code",
+            "edit": "diff",
+            "write": "content",
+            "read": "path",  # For <read>path</read> style
+            "glob": "pattern",
+            "grep": "pattern",
+            # Commands
+            "info": "tool_name",
+            "read_job": "job_id",
+        }
 
-    # Split into command and args
-    parts = content.split(None, 1)
-    command = parts[0] if parts else ""
-    args = parts[1] if len(parts) > 1 else ""
+        content_arg = content_arg_map.get(tag_name, "content")
 
-    return command, args
+        # Don't override if already set via attribute
+        if content_arg not in args:
+            args[content_arg] = content
+
+    return args
+
+
+# Known tool names for validation
+KNOWN_TOOLS = {"bash", "python", "read", "write", "edit", "glob", "grep"}
+
+# Known command names
+KNOWN_COMMANDS = {"info", "read_job"}
+
+
+def is_tool_tag(tag_name: str) -> bool:
+    """Check if tag name is a known tool."""
+    return tag_name in KNOWN_TOOLS
+
+
+def is_command_tag(tag_name: str) -> bool:
+    """Check if tag name is a known command."""
+    return tag_name in KNOWN_COMMANDS

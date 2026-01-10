@@ -1,8 +1,10 @@
 """
 Parsing module - Stream parsing for LLM output.
 
-Provides state machine parser for detecting tool calls, sub-agent calls,
+Provides state machine parser for detecting XML-style tool calls
 and framework commands from streaming LLM output.
+
+Format: <tool_name attr="value">content</tool_name>
 
 Exports:
 - StreamParser: Main streaming parser
@@ -22,11 +24,15 @@ from kohakuterrarium.parsing.events import (
     is_text_event,
 )
 from kohakuterrarium.parsing.patterns import (
-    BlockPattern,
+    KNOWN_COMMANDS,
+    KNOWN_TOOLS,
     ParserConfig,
-    parse_command,
-    parse_tool_content,
-    parse_yaml_like,
+    build_tool_args,
+    is_command_tag,
+    is_tool_tag,
+    parse_attributes,
+    parse_closing_tag,
+    parse_opening_tag,
 )
 from kohakuterrarium.parsing.state_machine import (
     ParserState,
@@ -54,11 +60,16 @@ __all__ = [
     "is_text_event",
     # Config
     "ParserConfig",
-    "BlockPattern",
-    # Utilities
-    "parse_yaml_like",
-    "parse_tool_content",
-    "parse_command",
+    # Pattern utilities
+    "KNOWN_TOOLS",
+    "KNOWN_COMMANDS",
+    "is_tool_tag",
+    "is_command_tag",
+    "parse_opening_tag",
+    "parse_closing_tag",
+    "parse_attributes",
+    "build_tool_args",
+    # Extract utilities
     "extract_tool_calls",
     "extract_subagent_calls",
     "extract_text",
