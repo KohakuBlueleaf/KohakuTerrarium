@@ -9,25 +9,44 @@ tags: [file, io]
 
 Read file contents with optional line range.
 
+## WHEN TO USE
+
+- Examining source code or config files
+- Checking file contents before editing
+- Reading logs or text data
+- Understanding existing code
+
+## HOW TO USE
+
+```
+##tool##
+name: read
+args:
+  path: <file path>
+  offset: <start line, optional>
+  limit: <max lines, optional>
+##tool##
+```
+
 ## Arguments
 
-- `path` (required): Path to the file to read
-- `offset` (optional): Starting line number (0-based, default: 0)
-- `limit` (optional): Maximum number of lines to read (default: all)
+| Arg | Required | Description |
+|-----|----------|-------------|
+| `path` | Yes | Path to file |
+| `offset` | No | Starting line (0-based, default: 0) |
+| `limit` | No | Max lines to read (default: all) |
 
 ## Examples
 
-Read entire file:
-```
+```yaml
+# Read entire file
 ##tool##
 name: read
 args:
   path: src/main.py
 ##tool##
-```
 
-Read lines 10-30:
-```
+# Read specific section
 ##tool##
 name: read
 args:
@@ -39,20 +58,19 @@ args:
 
 ## Output Format
 
-Returns file contents with line numbers:
 ```
      1→first line content
      2→second line content
      3→...
 ```
 
-If limit is applied, shows truncation notice:
-```
-... (showing lines 11-30 of 500)
-```
+## LIMITATIONS
 
-## Notes
+- UTF-8 encoding (binary files show replacement chars)
+- Very large files should use offset/limit
 
-- Uses UTF-8 encoding with error replacement for binary data
-- Long lines are preserved (no truncation within lines)
-- Use offset/limit for large files to avoid context overflow
+## TIPS
+
+- Use `glob` first to find files
+- Use `grep` to locate relevant lines, then `read` to examine
+- For large files, read in chunks with offset/limit
