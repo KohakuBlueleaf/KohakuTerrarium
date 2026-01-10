@@ -1,11 +1,21 @@
 """
 Prompt aggregation - build system prompts from components.
 
-Combines base prompt, tool list (name + one-line description), and framework hints.
+Supports two modes:
+1. Legacy: Combines base prompt, tool list, and framework hints
+2. Plugin-based: Uses modular plugins for flexible composition
+
 Full tool documentation is loaded on-demand via ##info## command.
 """
 
+from pathlib import Path
+
 from kohakuterrarium.core.registry import Registry
+from kohakuterrarium.prompt.plugins import (
+    BasePlugin,
+    PluginContext,
+    get_default_plugins,
+)
 from kohakuterrarium.prompt.template import render_template_safe
 from kohakuterrarium.utils.logging import get_logger
 
@@ -14,14 +24,25 @@ logger = get_logger(__name__)
 
 # Default framework hints included in system prompt
 DEFAULT_FRAMEWORK_HINTS = """
+## Tool Call Syntax
+
+To call a tool, use this format:
+```
+##tool##
+name: <tool_name>
+args:
+  <key>: <value>
+##tool##
+```
+
 ## Framework Commands
 
-To get full documentation for a tool or sub-agent:
+To get full documentation for a tool:
 ```
-##info <name>##
+##info <tool_name>##
 ```
 
-To read output from a completed job:
+To read output from a background job:
 ```
 ##read <job_id>##
 ```
@@ -127,3 +148,70 @@ def build_context_message(
     parts.append(events_content)
 
     return "\n\n".join(parts)
+
+
+def aggregate_with_plugins(
+    base_prompt: str,
+    plugins: list[BasePlugin] | None = None,
+    *,
+    registry: Registry | None = None,
+    working_dir: Path | None = None,
+    agent_path: Path | None = None,
+    extra_context: dict | None = None,
+) -> str:
+    """
+    Build system prompt using plugin architecture.
+
+    Plugins are sorted by priority and their content is appended
+    after the base prompt.
+
+    Args:
+        base_prompt: Base system prompt (agent personality/guidelines)
+        plugins: List of plugins to use (default: tool_list + framework_hints)
+        registry: Registry with registered tools
+        working_dir: Working directory for context
+        agent_path: Agent folder path
+        extra_context: Extra variables for template rendering
+
+    Returns:
+        Complete system prompt
+    """
+    # Use default plugins if none provided
+    if plugins is None:
+        plugins = get_default_plugins()
+
+    # Create context for plugins
+    context = PluginContext(
+        registry=registry,
+        working_dir=working_dir or Path.cwd(),
+        agent_path=agent_path,
+        extra=extra_context or {},
+    )
+
+    # Start with rendered base prompt
+    template_vars = extra_context or {}
+    rendered_base = render_template_safe(base_prompt, **template_vars)
+    parts = [rendered_base]
+
+    # Sort plugins by priority and collect content
+    sorted_plugins = sorted(plugins, key=lambda p: p.priority)
+    for plugin in sorted_plugins:
+        try:
+            content = plugin.get_content(context)
+            if content:
+                parts.append(content)
+                logger.debug(
+                    "Plugin contributed content",
+                    plugin=plugin.name,
+                    length=len(content),
+                )
+        except Exception as e:
+            logger.warning("Plugin failed", plugin=plugin.name, error=str(e))
+
+    result = "\n\n".join(parts)
+    logger.debug(
+        "Aggregated system prompt with plugins",
+        length=len(result),
+        plugin_count=len(plugins),
+    )
+    return result

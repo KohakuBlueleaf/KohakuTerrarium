@@ -240,6 +240,173 @@ args:
 """
 
 
+class EditTool(BaseTool):
+    """
+    Tool for editing files via string replacement.
+
+    Finds old_string and replaces with new_string.
+    Requires unique match in file.
+    """
+
+    @property
+    def tool_name(self) -> str:
+        return "edit"
+
+    @property
+    def description(self) -> str:
+        return "Edit file by replacing text"
+
+    @property
+    def execution_mode(self) -> ExecutionMode:
+        return ExecutionMode.DIRECT
+
+    async def _execute(self, args: dict[str, Any]) -> ToolResult:
+        """Edit file by string replacement."""
+        path = args.get("path", "")
+        old_string = args.get("old_string", "")
+        new_string = args.get("new_string", "")
+
+        if not path:
+            return ToolResult(error="No path provided")
+        if not old_string:
+            return ToolResult(error="No old_string provided")
+        if old_string == new_string:
+            return ToolResult(error="old_string and new_string are identical")
+
+        # Resolve path
+        file_path = Path(path).expanduser().resolve()
+
+        if not file_path.exists():
+            return ToolResult(error=f"File not found: {path}")
+
+        if not file_path.is_file():
+            return ToolResult(error=f"Not a file: {path}")
+
+        try:
+            # Read current content
+            with open(file_path, encoding="utf-8") as f:
+                content = f.read()
+
+            # Check for match
+            count = content.count(old_string)
+
+            if count == 0:
+                # Try to find similar matches for better error message
+                lines_with_partial = []
+                for i, line in enumerate(content.split("\n"), 1):
+                    # Check first 20 chars of old_string
+                    if old_string[:20] in line:
+                        lines_with_partial.append(f"  Line {i}: {line[:80]}...")
+
+                hint = ""
+                if lines_with_partial:
+                    hint = "\n\nPartial matches found:\n" + "\n".join(
+                        lines_with_partial[:3]
+                    )
+
+                return ToolResult(
+                    error=f"old_string not found in file.{hint}\n\n"
+                    "Tip: Use 'read' tool first to see exact content."
+                )
+
+            if count > 1:
+                return ToolResult(
+                    error=f"old_string found {count} times. Must be unique.\n"
+                    "Add more context (surrounding lines) to make it unique."
+                )
+
+            # Perform replacement
+            new_content = content.replace(old_string, new_string, 1)
+
+            # Write back
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(new_content)
+
+            # Calculate diff stats
+            old_lines = old_string.count("\n") + 1
+            new_lines = new_string.count("\n") + 1
+            diff = new_lines - old_lines
+
+            diff_str = ""
+            if diff > 0:
+                diff_str = f" (+{diff} lines)"
+            elif diff < 0:
+                diff_str = f" ({diff} lines)"
+
+            logger.debug(
+                "File edited",
+                file_path=str(file_path),
+                old_lines=old_lines,
+                new_lines=new_lines,
+            )
+
+            return ToolResult(
+                output=f"Edited {file_path}: replaced {old_lines} lines with {new_lines} lines{diff_str}",
+                exit_code=0,
+            )
+
+        except PermissionError:
+            return ToolResult(error=f"Permission denied: {path}")
+        except Exception as e:
+            logger.error("Edit failed", error=str(e))
+            return ToolResult(error=str(e))
+
+    def get_full_documentation(self) -> str:
+        return """# edit
+
+Edit file by replacing text. Finds old_string and replaces with new_string.
+
+## Arguments
+
+- path (required): Path to the file to edit
+- old_string (required): Exact text to find and replace
+- new_string (required): Text to replace with
+
+## Examples
+
+Replace a function:
+```
+##tool##
+name: edit
+args:
+  path: src/main.py
+  old_string: |
+    def hello():
+        print("Hi")
+  new_string: |
+    def hello():
+        print("Hello, World!")
+##tool##
+```
+
+Add import at top:
+```
+##tool##
+name: edit
+args:
+  path: src/utils.py
+  old_string: |
+    import os
+  new_string: |
+    import os
+    import sys
+##tool##
+```
+
+## Requirements
+
+- old_string must exist exactly once in file
+- If multiple matches, add more context to make unique
+- Use 'read' tool first to see exact content
+
+## Notes
+
+- Preserves file encoding (UTF-8)
+- Whitespace and indentation must match exactly
+- Use YAML multiline syntax (|) for multi-line content
+"""
+
+
 class GlobTool(BaseTool):
     """
     Tool for finding files by pattern.

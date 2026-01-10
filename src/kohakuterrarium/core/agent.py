@@ -21,6 +21,7 @@ from kohakuterrarium.modules.output.router import OutputRouter
 from kohakuterrarium.modules.output.stdout import StdoutOutput
 from kohakuterrarium.modules.tool import (
     BashTool,
+    EditTool,
     GlobTool,
     GrepTool,
     PythonTool,
@@ -161,6 +162,8 @@ class Agent:
                 return ReadTool()
             case "write":
                 return WriteTool()
+            case "edit":
+                return EditTool()
             case "glob":
                 return GlobTool()
             case "grep":
@@ -182,6 +185,8 @@ class Agent:
     def _init_controller(self) -> None:
         """Initialize controller."""
         # Build system prompt
+        # Aggregator auto-adds: tool list (name + description), framework hints
+        # system.md should only contain agent personality/guidelines
         system_prompt = aggregate_system_prompt(
             self.config.system_prompt,
             self.registry,
@@ -311,63 +316,107 @@ class Agent:
         if hasattr(self.output_router.default_output, "reset"):
             self.output_router.default_output.reset()
 
+        # Track running tool tasks (started during streaming)
+        running_tasks: dict[str, asyncio.Task] = {}
+        tool_job_ids: list[str] = []
+
         # Run controller and process output
         async for parse_event in self.controller.run_once():
-            await self.output_router.route(parse_event)
+            # Handle tool calls immediately - start async task right away
+            if isinstance(parse_event, ToolCallEvent):
+                job_id, task = await self._start_tool_async(parse_event)
+                running_tasks[job_id] = task
+                tool_job_ids.append(job_id)
+                logger.debug(
+                    "Tool started async", tool_name=parse_event.name, job_id=job_id
+                )
+            else:
+                # Route other events (text, blocks, etc.)
+                await self.output_router.route(parse_event)
 
         # Flush output
         await self.output_router.flush()
 
-        # Handle pending tool calls
-        tool_calls = self.output_router.pending_tool_calls
-        if tool_calls:
-            await self._handle_tool_calls(tool_calls)
+        # Wait for all direct tools to complete (parallel)
+        if running_tasks:
+            await self._wait_and_collect_results(tool_job_ids, running_tasks)
 
         # Handle pending commands
         commands = self.output_router.pending_commands
         for cmd in commands:
             await self._handle_command(cmd)
 
-    async def _handle_tool_calls(self, tool_calls: list[ToolCallEvent]) -> None:
-        """Execute all tool calls and feed combined results back to controller."""
-        results: list[str] = []
+    async def _start_tool_async(
+        self, tool_call: ToolCallEvent
+    ) -> tuple[str, asyncio.Task]:
+        """
+        Start a tool execution immediately as an async task.
 
-        for tool_call in tool_calls:
-            logger.info("Executing tool", tool_name=tool_call.name)
+        Does NOT wait for completion - returns task handle.
 
-            try:
-                # Submit to executor
-                job_id = await self.executor.submit_from_event(tool_call)
+        Args:
+            tool_call: Tool call event from parser
 
-                # Wait for result
-                result = await self.executor.wait_for(job_id, timeout=60.0)
+        Returns:
+            (job_id, task) tuple
+        """
+        logger.info("Starting tool", tool_name=tool_call.name)
 
-                if result:
-                    # Format result for context
-                    output = result.output[:2000] if result.output else ""
-                    if result.error:
-                        results.append(
-                            f"## {tool_call.name} ({job_id}) - ERROR\n{result.error}\n{output}"
-                        )
-                    else:
-                        status = (
-                            "OK"
-                            if result.exit_code == 0
-                            else f"exit={result.exit_code}"
-                        )
-                        results.append(
-                            f"## {tool_call.name} ({job_id}) - {status}\n{output}"
-                        )
+        # Submit to executor - this creates the task internally
+        job_id = await self.executor.submit_from_event(tool_call)
 
-            except Exception as e:
-                logger.error(
-                    "Tool execution failed", tool_name=tool_call.name, error=str(e)
-                )
-                results.append(f"## {tool_call.name} - FAILED\n{str(e)}")
+        # Get the task handle from executor
+        task = self.executor._tasks.get(job_id)
+        if task is None:
+            # Fallback: create a dummy completed task if already done
+            async def _get_result():
+                return self.executor.get_result(job_id)
 
-        # Send combined results back to controller (single event)
-        if results:
-            combined_content = "\n\n".join(results)
+            task = asyncio.create_task(_get_result())
+
+        return job_id, task
+
+    async def _wait_and_collect_results(
+        self,
+        job_ids: list[str],
+        tasks: dict[str, asyncio.Task],
+    ) -> None:
+        """
+        Wait for all tools to complete in parallel and send results to controller.
+
+        Args:
+            job_ids: List of job IDs in order
+            tasks: Dict of job_id -> asyncio.Task
+        """
+        if not tasks:
+            return
+
+        logger.info("Waiting for tools", count=len(tasks))
+
+        # Wait for all tasks in parallel
+        results_list = await asyncio.gather(
+            *[tasks[jid] for jid in job_ids],
+            return_exceptions=True,
+        )
+
+        # Format results
+        result_strs: list[str] = []
+        for job_id, result in zip(job_ids, results_list):
+            if isinstance(result, Exception):
+                result_strs.append(f"## {job_id} - FAILED\n{str(result)}")
+            elif result is not None:
+                output = result.output[:2000] if result.output else ""
+                if result.error:
+                    result_strs.append(f"## {job_id} - ERROR\n{result.error}\n{output}")
+                else:
+                    status = (
+                        "OK" if result.exit_code == 0 else f"exit={result.exit_code}"
+                    )
+                    result_strs.append(f"## {job_id} - {status}\n{output}")
+
+        # Send combined results back to controller
+        if result_strs:
+            combined_content = "\n\n".join(result_strs)
             completion = create_tool_complete_event(
                 job_id="batch",
                 content=combined_content,

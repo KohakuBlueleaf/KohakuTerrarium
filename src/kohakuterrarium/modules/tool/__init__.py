@@ -8,6 +8,7 @@ Exports:
 - PythonTool: Python code execution
 - ReadTool: File reading
 - WriteTool: File writing
+- EditTool: File editing (string replacement)
 - GlobTool: File pattern matching
 - GrepTool: Content search
 """
@@ -22,6 +23,7 @@ from kohakuterrarium.modules.tool.base import (
 )
 from kohakuterrarium.modules.tool.bash import BashTool, PythonTool
 from kohakuterrarium.modules.tool.file_tools import (
+    EditTool,
     GlobTool,
     GrepTool,
     ReadTool,
@@ -41,6 +43,7 @@ __all__ = [
     "PythonTool",
     "ReadTool",
     "WriteTool",
+    "EditTool",
     "GlobTool",
     "GrepTool",
 ]
