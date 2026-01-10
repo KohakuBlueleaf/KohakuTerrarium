@@ -9,9 +9,9 @@ version: "1.0"
 #          mistralai/devstral-small-2505 (free, agentic coding)
 #          qwen/qwen3-32b (good balance)
 controller:
-  model: "${OPENROUTER_MODEL:mistralai/mistral-small-3.1-24b-instruct}"
+  model: "${OPENROUTER_MODEL:qwen/qwen3-32b}"
   temperature: 0.7
-  max_tokens: 4096
+  max_tokens: 65536
   api_key_env: OPENROUTER_API_KEY
   base_url: https://openrouter.ai/api/v1
 
