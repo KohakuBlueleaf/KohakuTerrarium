@@ -49,6 +49,14 @@ Use XML-style tags to call tools. The tag name is the tool name.
 
 - `<info>tool_name</info>` - Get full documentation for a tool
 - `<read_job>job_id</read_job>` - Read output from a background job
+
+## Sub-Agent Syntax (if available)
+
+Dispatch tasks to specialized sub-agents:
+```
+<agent type="explore">Find files related to authentication</agent>
+<agent type="plan">Design the implementation for user login</agent>
+```
 """.strip()
 
 

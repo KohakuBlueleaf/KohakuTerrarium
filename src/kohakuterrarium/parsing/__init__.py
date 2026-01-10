@@ -25,10 +25,12 @@ from kohakuterrarium.parsing.events import (
 )
 from kohakuterrarium.parsing.patterns import (
     KNOWN_COMMANDS,
+    KNOWN_SUBAGENTS,
     KNOWN_TOOLS,
     ParserConfig,
     build_tool_args,
     is_command_tag,
+    is_subagent_tag,
     is_tool_tag,
     parse_attributes,
     parse_closing_tag,
@@ -62,8 +64,10 @@ __all__ = [
     "ParserConfig",
     # Pattern utilities
     "KNOWN_TOOLS",
+    "KNOWN_SUBAGENTS",
     "KNOWN_COMMANDS",
     "is_tool_tag",
+    "is_subagent_tag",
     "is_command_tag",
     "parse_opening_tag",
     "parse_closing_tag",

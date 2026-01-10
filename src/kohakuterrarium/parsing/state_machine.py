@@ -20,10 +20,12 @@ from kohakuterrarium.parsing.events import (
 )
 from kohakuterrarium.parsing.patterns import (
     KNOWN_COMMANDS,
+    KNOWN_SUBAGENTS,
     KNOWN_TOOLS,
     ParserConfig,
     build_tool_args,
     is_command_tag,
+    is_subagent_tag,
     is_tool_tag,
     parse_closing_tag,
     parse_opening_tag,
@@ -184,8 +186,12 @@ class StreamParser:
             if parsed:
                 tag_name, attrs, is_self_closing = parsed
 
-                # Check if it's a known tool or command
-                if is_tool_tag(tag_name) or is_command_tag(tag_name):
+                # Check if it's a known tool, sub-agent, or command
+                if (
+                    is_tool_tag(tag_name)
+                    or is_subagent_tag(tag_name)
+                    or is_command_tag(tag_name)
+                ):
                     if is_self_closing:
                         # Self-closing tag, emit immediately
                         events.extend(self._emit_tag_event(tag_name, attrs, ""))
@@ -319,6 +325,19 @@ class StreamParser:
             raw = self._build_raw_tag(tag_name, attrs, content)
             events.append(ToolCallEvent(name=tag_name, args=args, raw=raw))
             logger.debug("Parsed tool call", tool_name=tag_name)
+
+        elif is_subagent_tag(tag_name):
+            # Sub-agent call: <agent type="explore">task</agent>
+            subagent_type = attrs.get("type", "explore")
+            subagent_args = {
+                "task": content.strip(),
+                **{k: v for k, v in attrs.items() if k != "type"},
+            }
+            raw = self._build_raw_tag(tag_name, attrs, content)
+            events.append(
+                SubAgentCallEvent(name=subagent_type, args=subagent_args, raw=raw)
+            )
+            logger.debug("Parsed sub-agent call", subagent_type=subagent_type)
 
         elif is_command_tag(tag_name):
             # Framework command

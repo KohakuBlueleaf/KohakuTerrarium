@@ -151,6 +151,9 @@ def build_tool_args(
 # Known tool names for validation
 KNOWN_TOOLS = {"bash", "python", "read", "write", "edit", "glob", "grep"}
 
+# Known sub-agent names
+KNOWN_SUBAGENTS = {"agent"}  # Generic agent tag, type specified via attribute
+
 # Known command names
 KNOWN_COMMANDS = {"info", "read_job"}
 
@@ -158,6 +161,11 @@ KNOWN_COMMANDS = {"info", "read_job"}
 def is_tool_tag(tag_name: str) -> bool:
     """Check if tag name is a known tool."""
     return tag_name in KNOWN_TOOLS
+
+
+def is_subagent_tag(tag_name: str) -> bool:
+    """Check if tag name is a sub-agent call."""
+    return tag_name in KNOWN_SUBAGENTS
 
 
 def is_command_tag(tag_name: str) -> bool:
