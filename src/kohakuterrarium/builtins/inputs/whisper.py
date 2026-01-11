@@ -288,6 +288,9 @@ class WhisperASR(ASRModule):
             text = result["text"].strip()
 
             if text:
+                # Print ASR result for debugging (visible effect)
+                print(f"\n[ASR] {text}")
+
                 asr_result = ASRResult(
                     text=text,
                     language=result.get("language", "unknown"),
