@@ -14,6 +14,8 @@ import pytest
 
 from kohakuterrarium.parsing import (
     CommandEvent,
+    DEFAULT_COMMANDS,
+    DEFAULT_CONTENT_ARG_MAP,
     ParserConfig,
     ParserState,
     StreamParser,
@@ -32,9 +34,25 @@ from kohakuterrarium.parsing import (
     build_tool_args,
     is_tool_tag,
     is_command_tag,
-    KNOWN_TOOLS,
-    KNOWN_COMMANDS,
 )
+
+
+# Test helper: common tools for parsing tests
+TEST_KNOWN_TOOLS = {"bash", "python", "read", "write", "edit", "glob", "grep", "tree"}
+
+
+def get_test_parser() -> StreamParser:
+    """Create a parser configured for testing with common tools."""
+    config = ParserConfig(known_tools=TEST_KNOWN_TOOLS)
+    return StreamParser(config)
+
+
+def parse_complete_with_tools(text: str) -> list:
+    """Parse complete text with test tools configured."""
+    parser = get_test_parser()
+    events = parser.feed(text)
+    events.extend(parser.flush())
+    return events
 
 
 class TestParseEvents:
@@ -121,14 +139,19 @@ class TestXMLParsing:
         assert attrs["limit"] == "10"
 
     def test_is_tool_tag(self):
-        """Test tool tag detection."""
-        assert is_tool_tag("bash")
-        assert is_tool_tag("python")
-        assert is_tool_tag("read")
-        assert not is_tool_tag("unknown")
+        """Test tool tag detection with known_tools set."""
+        known_tools = {"bash", "python", "read", "write", "edit"}
+        assert is_tool_tag("bash", known_tools)
+        assert is_tool_tag("python", known_tools)
+        assert is_tool_tag("read", known_tools)
+        assert not is_tool_tag("unknown", known_tools)
+        # Without known_tools, nothing is a tool
+        assert not is_tool_tag("bash", None)
+        assert not is_tool_tag("bash", set())
 
     def test_is_command_tag(self):
         """Test command tag detection."""
+        # Uses DEFAULT_COMMANDS when None provided
         assert is_command_tag("info")
         assert is_command_tag("read_job")
         assert not is_command_tag("bash")
@@ -155,14 +178,14 @@ class TestStreamParser:
 
     def test_empty_input(self):
         """Test parser with empty input."""
-        parser = StreamParser()
+        parser = get_test_parser()
         events = parser.feed("")
         events.extend(parser.flush())
         assert len(events) == 0
 
     def test_text_only(self):
         """Test parser with text only (no blocks)."""
-        parser = StreamParser()
+        parser = get_test_parser()
         events = parser.feed("Hello world!")
         events.extend(parser.flush())
 
@@ -177,7 +200,7 @@ class TestStreamParser:
 
 Some text after."""
 
-        events = parse_complete(text)
+        events = parse_complete_with_tools(text)
         tools = extract_tool_calls(events)
 
         assert len(tools) == 1
@@ -188,7 +211,7 @@ Some text after."""
         """Test parsing tool call with attributes."""
         text = '<read path="src/main.py"/>'
 
-        events = parse_complete(text)
+        events = parse_complete_with_tools(text)
         tools = extract_tool_calls(events)
 
         assert len(tools) == 1
@@ -202,7 +225,7 @@ def hello():
     print("Hello")
 </write>"""
 
-        events = parse_complete(text)
+        events = parse_complete_with_tools(text)
         tools = extract_tool_calls(events)
 
         assert len(tools) == 1
@@ -216,7 +239,7 @@ def hello():
 
 <bash>pwd</bash>"""
 
-        events = parse_complete(text)
+        events = parse_complete_with_tools(text)
         tools = extract_tool_calls(events)
 
         assert len(tools) == 2
@@ -227,7 +250,7 @@ def hello():
         """Test parsing framework command."""
         text = "Check this: <info>bash</info>"
 
-        events = parse_complete(text)
+        events = parse_complete_with_tools(text)
         commands = [e for e in events if isinstance(e, CommandEvent)]
 
         assert len(commands) == 1
@@ -236,7 +259,7 @@ def hello():
 
     def test_streaming_chunks(self):
         """Test that streaming works correctly."""
-        parser = StreamParser()
+        parser = get_test_parser()
 
         # Feed in small chunks
         chunks = ["<ba", "sh>l", "s -la</bash>"]
@@ -254,7 +277,7 @@ def hello():
     def test_character_by_character(self):
         """Test feeding character by character."""
         text = "<bash>test</bash>"
-        parser = StreamParser()
+        parser = get_test_parser()
 
         all_events = []
         for char in text:
@@ -267,7 +290,7 @@ def hello():
 
     def test_parser_state(self):
         """Test parser state tracking."""
-        parser = StreamParser()
+        parser = get_test_parser()
 
         assert parser.get_state() == ParserState.NORMAL
         assert not parser.is_in_block()
@@ -281,7 +304,7 @@ def hello():
 
     def test_incomplete_block(self):
         """Test handling of incomplete block at stream end."""
-        parser = StreamParser()
+        parser = get_test_parser()
 
         events = parser.feed("<bash>test")
         # No tool event yet (block not closed)
@@ -298,7 +321,7 @@ def hello():
         """Test that false markers are handled as text."""
         text = "Use < for less than and > for greater than"
 
-        events = parse_complete(text)
+        events = parse_complete_with_tools(text)
         text_content = extract_text(events)
 
         assert "<" in text_content or ">" in text_content
@@ -313,7 +336,7 @@ def hello():
 
 Text after"""
 
-        events = parse_complete(text)
+        events = parse_complete_with_tools(text)
 
         tools = extract_tool_calls(events)
         commands = [e for e in events if isinstance(e, CommandEvent)]
@@ -383,12 +406,12 @@ class TestExtractFunctions:
 class TestKnownTags:
     """Tests for known tool and command tags."""
 
-    def test_known_tools(self):
-        """Test that all expected tools are in KNOWN_TOOLS."""
-        expected = {"bash", "python", "read", "write", "edit", "glob", "grep"}
-        assert expected.issubset(KNOWN_TOOLS)
+    def test_default_content_arg_map(self):
+        """Test that default content arg map has expected tools."""
+        expected = {"bash", "python", "read", "write", "edit", "glob", "grep", "tree"}
+        assert expected.issubset(set(DEFAULT_CONTENT_ARG_MAP.keys()))
 
     def test_known_commands(self):
-        """Test that all expected commands are in KNOWN_COMMANDS."""
+        """Test that all expected commands are in DEFAULT_COMMANDS."""
         expected = {"info", "read_job"}
-        assert expected.issubset(KNOWN_COMMANDS)
+        assert expected.issubset(DEFAULT_COMMANDS)

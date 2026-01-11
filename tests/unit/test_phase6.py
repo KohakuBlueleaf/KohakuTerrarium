@@ -28,11 +28,26 @@ from kohakuterrarium.modules.subagent import (
     SubAgentResult,
 )
 from kohakuterrarium.parsing import (
+    ParserConfig,
+    StreamParser,
     SubAgentCallEvent,
     extract_subagent_calls,
     is_subagent_tag,
     parse_complete,
 )
+
+
+# Test helper: common tools for parsing tests
+TEST_KNOWN_TOOLS = {"bash", "python", "read", "write", "edit", "glob", "grep", "tree"}
+
+
+def parse_complete_with_tools(text: str) -> list:
+    """Parse complete text with test tools configured."""
+    config = ParserConfig(known_tools=TEST_KNOWN_TOOLS)
+    parser = StreamParser(config)
+    events = parser.feed(text)
+    events.extend(parser.flush())
+    return events
 
 
 class TestSubAgentConfig:
@@ -282,7 +297,7 @@ class TestAgentTagParsing:
 
 <read path="main.py"/>
 """
-        events = parse_complete(text)
+        events = parse_complete_with_tools(text)
         from kohakuterrarium.parsing import extract_tool_calls
 
         tools = extract_tool_calls(events)
