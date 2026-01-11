@@ -13,7 +13,12 @@ from dataclasses import dataclass, field
 from typing import Any, AsyncIterator
 
 from kohakuterrarium.commands.base import Command, CommandResult
-from kohakuterrarium.commands.read import InfoCommand, ReadCommand
+from kohakuterrarium.commands.read import (
+    InfoCommand,
+    JobsCommand,
+    ReadCommand,
+    WaitCommand,
+)
 from kohakuterrarium.core.conversation import Conversation
 from kohakuterrarium.core.events import TriggerEvent
 from kohakuterrarium.core.executor import Executor
@@ -153,6 +158,8 @@ class Controller:
         self._commands: dict[str, Command] = {
             "read": ReadCommand(),
             "info": InfoCommand(),
+            "jobs": JobsCommand(),
+            "wait": WaitCommand(),
         }
 
         # Context for commands
@@ -166,10 +173,14 @@ class Controller:
         self._setup_system_prompt()
 
     def _get_parser(self) -> StreamParser:
-        """Get parser with current registry tools."""
+        """Get parser with current registry tools and sub-agents."""
         # Build config from current registry state
         known_tools = set(self.registry.list_tools())
-        self._parser_config = ParserConfig(known_tools=known_tools)
+        known_subagents = set(self.registry.list_subagents())
+        self._parser_config = ParserConfig(
+            known_tools=known_tools,
+            known_subagents=known_subagents,
+        )
         return StreamParser(self._parser_config)
 
     def _setup_system_prompt(self) -> None:
@@ -327,7 +338,12 @@ class Controller:
             logger.warning("Unknown command", command=event.command)
             return CommandResult(error=f"Unknown command: {event.command}")
 
-        return await command.execute(event.args, self._context)
+        logger.info("Executing command: %s", event.command)
+        result = await command.execute(event.args, self._context)
+        logger.debug(
+            "Command result", command=event.command, has_content=bool(result.content)
+        )
+        return result
 
     def register_job(self, status: JobStatus) -> None:
         """Register a job status (for external tracking)."""

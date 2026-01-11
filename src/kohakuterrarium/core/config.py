@@ -99,6 +99,11 @@ class AgentConfig:
     system_prompt: str = "You are a helpful assistant."
     system_prompt_file: str | None = None
 
+    # Skill loading mode: "dynamic" or "static"
+    # - dynamic: Model uses [/info] to read tool docs on demand (less tokens upfront)
+    # - static: All tool docs included in system prompt (no [/info] needed)
+    skill_mode: str = "dynamic"
+
     # Module configs
     input: InputConfig = field(default_factory=InputConfig)
     triggers: list[TriggerConfig] = field(default_factory=list)
@@ -242,6 +247,7 @@ def _parse_output_config(data: dict[str, Any] | None) -> OutputConfig:
 
 def _parse_subagent_config(data: dict[str, Any]) -> SubAgentConfigItem:
     """Parse sub-agent configuration."""
+    # Fields that are handled explicitly
     reserved = {
         "name",
         "type",
@@ -252,6 +258,8 @@ def _parse_subagent_config(data: dict[str, Any]) -> SubAgentConfigItem:
         "can_modify",
         "interactive",
     }
+    # All other fields (prompt_file, output_to, context_mode, max_turns, etc.)
+    # go into options for inline custom sub-agent configs
     return SubAgentConfigItem(
         name=data.get("name", ""),
         type=data.get("type", "builtin"),
@@ -319,6 +327,9 @@ def load_agent_config(agent_path: str | Path) -> AgentConfig:
         ),
         system_prompt=config_data.get("system_prompt", "You are a helpful assistant."),
         system_prompt_file=config_data.get("system_prompt_file"),
+        skill_mode=controller_data.get(
+            "skill_mode", config_data.get("skill_mode", "dynamic")
+        ),
         input=_parse_input_config(config_data.get("input")),
         triggers=[_parse_trigger_config(t) for t in config_data.get("triggers", [])],
         tools=[_parse_tool_config(t) for t in config_data.get("tools", [])],

@@ -24,6 +24,42 @@ from kohakuterrarium.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
+# Framework hints for sub-agents (simplified version)
+SUBAGENT_FRAMEWORK_HINTS = """
+## Tool Calling Format
+
+Format: `[/name]` opens, `[name/]` closes
+
+```
+[/tool_name]
+@@arg=value
+content here
+[tool_name/]
+```
+
+Examples:
+
+```
+[/glob]@@pattern=**/*.py[glob/]
+```
+
+```
+[/grep]@@pattern=class.*Config[grep/]
+```
+
+```
+[/read]@@path=src/main.py[read/]
+```
+
+## CRITICAL: You MUST use tools to complete your task
+
+- Call tools using the [/tool]...[tool/] format above
+- After calling a tool, STOP and wait for results
+- Do NOT just describe what you would do - actually DO it
+- Continue calling tools until task is complete
+""".strip()
+
+
 @dataclass
 class SubAgentResult:
     """
@@ -146,6 +182,36 @@ class SubAgent:
         modifying_tools = {"write", "edit", "bash", "python"}
         return tool_name in modifying_tools
 
+    def _build_system_prompt(self) -> str:
+        """Build complete system prompt with framework hints and tool list."""
+        parts = []
+
+        # Base prompt from config
+        base_prompt = self.config.load_prompt(self.agent_path)
+        parts.append(base_prompt)
+
+        # Tool list
+        tool_names = self.registry.list_tools()
+        if tool_names:
+            tool_lines = ["## Available Tools", ""]
+            for name in tool_names:
+                info = self.registry.get_tool_info(name)
+                desc = info.description if info else "Tool"
+                tool_lines.append(f"- `{name}`: {desc}")
+            parts.append("\n".join(tool_lines))
+
+        # Framework hints
+        parts.append(SUBAGENT_FRAMEWORK_HINTS)
+
+        result = "\n\n".join(parts)
+        logger.info(
+            "Sub-agent system prompt built",
+            subagent_name=self.config.name,
+            tool_count=len(tool_names),
+            prompt_length=len(result),
+        )
+        return result
+
     async def run(self, task: str) -> SubAgentResult:
         """
         Execute the sub-agent with a task.
@@ -196,7 +262,7 @@ class SubAgent:
         """Internal run logic."""
         # Setup conversation
         self.conversation = Conversation()
-        system_prompt = self.config.load_prompt(self.agent_path)
+        system_prompt = self._build_system_prompt()
         self.conversation.append("system", system_prompt)
 
         # Add task as user message
@@ -252,6 +318,11 @@ class SubAgent:
 
             # If no tool calls, we're done
             if not tool_calls:
+                logger.info(
+                    "Sub-agent no tools called - finishing",
+                    subagent_name=self.config.name,
+                    response_preview=assistant_content[:300].replace("\n", "\\n"),
+                )
                 logger.debug(
                     "Sub-agent completed (no more tool calls)",
                     subagent_name=self.config.name,

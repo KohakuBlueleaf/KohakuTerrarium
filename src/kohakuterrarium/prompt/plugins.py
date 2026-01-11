@@ -108,7 +108,7 @@ class ToolListPlugin(BasePlugin):
             lines.append(f"- `{name}`: {description}")
 
         lines.append("")
-        lines.append("Use `<info>tool_name</info>` for full documentation.")
+        lines.append("Use `[/info]tool_name[info/]` for full documentation.")
 
         return "\n".join(lines)
 
@@ -131,31 +131,43 @@ class FrameworkHintsPlugin(BasePlugin):
     def get_content(self, context: PluginContext) -> str | None:
         return """## Tool Call Syntax
 
-Use XML-style tags to call tools. The tag name is the tool name.
+Use this format to call tools:
 
-### Single-argument tools (content is the argument):
 ```
-<bash>ls -la</bash>
-<python>print("Hello")</python>
+[/tool_name]
+@@arg=value
+content here
+[tool_name/]
 ```
 
-### Multi-argument tools (use attributes + content):
+### Examples:
+
 ```
-<read path="src/main.py"/>
-<write path="new_file.py">file content here</write>
-<edit path="src/main.py">
-@@ -1,1 +1,2 @@
- import os
-+import sys
-</edit>
-<grep pattern="TODO">src/</grep>
-<glob pattern="**/*.py"/>
+[/bash]ls -la[bash/]
+```
+
+```
+[/read]@@path=src/main.py[read/]
+```
+
+```
+[/write]
+@@path=new_file.py
+file content here
+[write/]
+```
+
+```
+[/grep]
+@@pattern=TODO
+@@path=src/
+[grep/]
 ```
 
 ## Framework Commands
 
-- `<info>tool_name</info>` - Get full documentation for a tool
-- `<read_job>job_id</read_job>` - Read output from a background job"""
+- `[/info]tool_name[info/]` - Get full documentation for a tool
+- `[/read_job]job_id[read_job/]` - Read output from a background job"""
 
 
 class EnvInfoPlugin(BasePlugin):

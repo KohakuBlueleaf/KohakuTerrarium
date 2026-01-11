@@ -126,7 +126,9 @@ class SubAgentManager:
             lines.append(info.to_prompt_line())
 
         lines.append("")
-        lines.append('Use: <agent type="name">task description</agent>')
+        lines.append(
+            "Use: `/name\\task description\\name/` (e.g., `/explore\\find auth code\\explore/`)"
+        )
 
         return "\n".join(lines)
 

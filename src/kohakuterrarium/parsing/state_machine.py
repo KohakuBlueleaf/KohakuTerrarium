@@ -1,10 +1,14 @@
 """
 Streaming state machine parser for LLM output.
 
-Parses XML-style tool calls and commands from streaming text.
-Format: <tool_name attr="value">content</tool_name>
+Parses custom format tool calls and commands from streaming text.
+Format:
+    [/function]
+    @@arg=value
+    content here
+    [function/]
 
-Handles partial chunks correctly (tags split across chunks).
+Handles partial chunks correctly (markers split across chunks).
 """
 
 from enum import Enum, auto
@@ -20,12 +24,9 @@ from kohakuterrarium.parsing.events import (
 )
 from kohakuterrarium.parsing.patterns import (
     ParserConfig,
-    build_tool_args,
     is_command_tag,
     is_subagent_tag,
     is_tool_tag,
-    parse_closing_tag,
-    parse_opening_tag,
 )
 from kohakuterrarium.utils.logging import get_logger
 
@@ -36,19 +37,27 @@ class ParserState(Enum):
     """Parser state machine states."""
 
     NORMAL = auto()  # Normal text streaming
-    IN_OPENING_TAG = auto()  # Inside < ... > (buffering tag)
-    IN_CONTENT = auto()  # Inside tag content, waiting for </tag>
-    IN_CLOSING_TAG = auto()  # Inside </ ... > (buffering closing tag)
+    MAYBE_OPEN = auto()  # Saw `[`, might be opening marker
+    OPEN_SLASH = auto()  # Saw `[/`, expecting name
+    IN_OPEN_NAME = auto()  # Reading function name after `[/`
+    IN_BLOCK = auto()  # Inside block, reading args/content
+    MAYBE_CLOSE = auto()  # Saw `[` inside block, might be closing
+    IN_CLOSE_NAME = auto()  # Reading function name after `[`
+    EXPECT_CLOSE_SLASH = auto()  # Expecting `/]` after close name
 
 
 class StreamParser:
     """
     Streaming parser for LLM output.
 
-    Detects and parses XML-style:
-    - Tool calls: <bash>command</bash>, <edit path="file">diff</edit>
-    - Commands: <info>tool_name</info>, <read_job>job_id</read_job>
-    - Self-closing: <read path="file.py"/>
+    Detects and parses custom format:
+    - Tool calls: [/bash]ls -la[bash/]
+    - Commands: [/info]bash[info/]
+    - With content:
+        [/write]
+        @@path=file.py
+        content here
+        [write/]
 
     Usage:
         parser = StreamParser()
@@ -68,11 +77,10 @@ class StreamParser:
         """Reset parser state."""
         self.state = ParserState.NORMAL
         self.text_buffer = ""  # Buffered text to emit
-        self.tag_buffer = ""  # Current tag being parsed
-        self.content_buffer = ""  # Content inside current tag
-        self.current_tag_name = ""  # Name of current open tag
-        self.current_tag_attrs: dict[str, str] = {}  # Attributes of current tag
-        self._last_progress_log = 0  # For progress logging
+        self.name_buffer = ""  # Current function name being parsed
+        self.block_buffer = ""  # Content inside current block
+        self.current_name = ""  # Name of current open block
+        self._last_progress_log = 0
 
     def feed(self, chunk: str) -> list[ParseEvent]:
         """
@@ -97,292 +105,317 @@ class StreamParser:
         Flush any remaining buffered content.
 
         Call this when the stream ends.
-
-        Returns:
-            List of any remaining ParseEvents
         """
         events: list[ParseEvent] = []
 
-        # Handle incomplete states
-        if self.state == ParserState.IN_OPENING_TAG:
-            # Incomplete tag, emit as text
-            self.text_buffer += "<" + self.tag_buffer
-            self.tag_buffer = ""
-
-        elif self.state == ParserState.IN_CONTENT:
-            # Stream ended inside a tag
-            logger.warning(
-                "Stream ended with incomplete tag",
-                tag_name=self.current_tag_name,
-            )
-            if self.config.emit_block_events:
-                events.append(
-                    BlockEndEvent(
-                        block_type="tool",
-                        success=False,
-                        error="Stream ended before tag closed",
-                    )
-                )
-
-        elif self.state == ParserState.IN_CLOSING_TAG:
-            # Incomplete closing tag, treat content + partial close as text
-            self.text_buffer += self.content_buffer + "</" + self.tag_buffer
-            self.tag_buffer = ""
-            self.content_buffer = ""
-
-        # Emit any remaining text
+        # Emit any buffered text
         if self.text_buffer:
             events.append(TextEvent(self.text_buffer))
             self.text_buffer = ""
+
+        # Handle incomplete states
+        if self.state == ParserState.MAYBE_OPEN:
+            events.append(TextEvent("["))
+        elif self.state == ParserState.OPEN_SLASH:
+            events.append(TextEvent("[/"))
+        elif self.state == ParserState.IN_OPEN_NAME:
+            events.append(TextEvent("[/" + self.name_buffer))
+        elif self.state == ParserState.IN_BLOCK:
+            logger.warning(
+                "Unclosed block at end of stream", block_name=self.current_name
+            )
+            raw = self._build_raw_open() + self.block_buffer
+            events.append(TextEvent(raw))
+        elif self.state == ParserState.MAYBE_CLOSE:
+            self.block_buffer += "["
+            raw = self._build_raw_open() + self.block_buffer
+            events.append(TextEvent(raw))
+        elif self.state == ParserState.IN_CLOSE_NAME:
+            self.block_buffer += "[" + self.name_buffer
+            raw = self._build_raw_open() + self.block_buffer
+            events.append(TextEvent(raw))
+        elif self.state == ParserState.EXPECT_CLOSE_SLASH:
+            self.block_buffer += "[" + self.name_buffer
+            raw = self._build_raw_open() + self.block_buffer
+            events.append(TextEvent(raw))
 
         self._reset()
         return events
 
     def _process_char(self, char: str) -> list[ParseEvent]:
         """Process a single character."""
+        events: list[ParseEvent] = []
+
         match self.state:
             case ParserState.NORMAL:
-                return self._handle_normal(char)
-            case ParserState.IN_OPENING_TAG:
-                return self._handle_in_opening_tag(char)
-            case ParserState.IN_CONTENT:
-                return self._handle_in_content(char)
-            case ParserState.IN_CLOSING_TAG:
-                return self._handle_in_closing_tag(char)
-        return []
+                events.extend(self._handle_normal(char))
+            case ParserState.MAYBE_OPEN:
+                events.extend(self._handle_maybe_open(char))
+            case ParserState.OPEN_SLASH:
+                events.extend(self._handle_open_slash(char))
+            case ParserState.IN_OPEN_NAME:
+                events.extend(self._handle_in_open_name(char))
+            case ParserState.IN_BLOCK:
+                events.extend(self._handle_in_block(char))
+            case ParserState.MAYBE_CLOSE:
+                events.extend(self._handle_maybe_close(char))
+            case ParserState.IN_CLOSE_NAME:
+                events.extend(self._handle_in_close_name(char))
+            case ParserState.EXPECT_CLOSE_SLASH:
+                events.extend(self._handle_expect_close_slash(char))
+
+        return events
 
     def _handle_normal(self, char: str) -> list[ParseEvent]:
         """Handle character in NORMAL state."""
         events: list[ParseEvent] = []
 
-        if char == "<":
-            # Might be starting a tag
-            self.tag_buffer = ""
-            self.state = ParserState.IN_OPENING_TAG
-        else:
-            self.text_buffer += char
-            # Emit text if buffer reaches threshold
-            if (
-                not self.config.buffer_text
-                or len(self.text_buffer) >= self.config.text_buffer_size
-            ):
+        if char == "[":
+            # Potential opening marker
+            if self.text_buffer:
                 events.append(TextEvent(self.text_buffer))
                 self.text_buffer = ""
-
-        return events
-
-    def _handle_in_opening_tag(self, char: str) -> list[ParseEvent]:
-        """Handle character while parsing an opening tag."""
-        events: list[ParseEvent] = []
-
-        if char == ">":
-            # Tag complete, parse it
-            full_tag = "<" + self.tag_buffer + ">"
-            parsed = parse_opening_tag(full_tag)
-
-            if parsed:
-                tag_name, attrs, is_self_closing = parsed
-
-                # Check if it's a known tool, sub-agent, or command
-                if (
-                    is_tool_tag(tag_name, self.config.known_tools)
-                    or is_subagent_tag(tag_name, self.config.known_subagents)
-                    or is_command_tag(tag_name, self.config.known_commands)
-                ):
-                    if is_self_closing:
-                        # Self-closing tag, emit immediately
-                        events.extend(self._emit_tag_event(tag_name, attrs, ""))
-                        self.state = ParserState.NORMAL
-                    else:
-                        # Need to collect content until closing tag
-                        self.current_tag_name = tag_name
-                        self.current_tag_attrs = attrs
-                        self.content_buffer = ""
-                        self._last_progress_log = 0  # Reset progress counter
-                        self.state = ParserState.IN_CONTENT
-                        if self.config.emit_block_events:
-                            events.append(BlockStartEvent(block_type="tool"))
-                        logger.debug("Entered tag", tag_name=tag_name)
-                else:
-                    # Not a known tag, emit as text
-                    self.text_buffer += full_tag
-                    self.state = ParserState.NORMAL
-            else:
-                # Invalid tag format, emit as text
-                self.text_buffer += full_tag
-                self.state = ParserState.NORMAL
-
-            self.tag_buffer = ""
-
-        elif char == "<":
-            # Another < before > - previous was not a tag
-            self.text_buffer += "<" + self.tag_buffer
-            self.tag_buffer = ""
-            # Stay in IN_OPENING_TAG for this new <
-
+            self.state = ParserState.MAYBE_OPEN
         else:
-            self.tag_buffer += char
-
-            # Safety: if tag buffer gets too long, it's not a real tag
-            if len(self.tag_buffer) > 200:
-                self.text_buffer += "<" + self.tag_buffer
-                self.tag_buffer = ""
-                self.state = ParserState.NORMAL
+            self.text_buffer += char
 
         return events
 
-    def _handle_in_content(self, char: str) -> list[ParseEvent]:
-        """Handle character while inside tag content."""
+    def _handle_maybe_open(self, char: str) -> list[ParseEvent]:
+        """Handle character after seeing `[`."""
         events: list[ParseEvent] = []
-        self.content_buffer += char
 
-        # Log progress periodically (every 500 chars)
-        current_len = len(self.content_buffer)
-        if current_len - self._last_progress_log >= 500:
-            logger.debug(
-                "Buffering tool content",
-                tag_name=self.current_tag_name,
-                chars=current_len,
-            )
-            self._last_progress_log = current_len
-
-        # Check if we're starting a closing tag
-        if self.content_buffer.endswith("</"):
-            # Might be closing tag, switch to closing tag state
-            # Remove </ from content buffer
-            self.content_buffer = self.content_buffer[:-2]
-            self.tag_buffer = ""
-            self.state = ParserState.IN_CLOSING_TAG
+        if char == "/":
+            # Got `[/` - start of opening tag
+            self.state = ParserState.OPEN_SLASH
+        else:
+            # Not a valid opening - emit `[` as text
+            self.text_buffer += "[" + char
+            self.state = ParserState.NORMAL
 
         return events
 
-    def _handle_in_closing_tag(self, char: str) -> list[ParseEvent]:
-        """Handle character while parsing a closing tag."""
+    def _handle_open_slash(self, char: str) -> list[ParseEvent]:
+        """Handle character after seeing `[/`."""
         events: list[ParseEvent] = []
 
-        if char == ">":
-            # Closing tag complete
-            closing_name = self.tag_buffer
+        if char.isalnum() or char == "_":
+            # Start of function name
+            self.name_buffer = char
+            self.state = ParserState.IN_OPEN_NAME
+        else:
+            # Not a valid tag - emit `[/` as text
+            self.text_buffer += "[/" + char
+            self.state = ParserState.NORMAL
 
-            if closing_name == self.current_tag_name:
-                # Matching close, emit the tool/command
-                events.extend(
-                    self._emit_tag_event(
-                        self.current_tag_name,
-                        self.current_tag_attrs,
-                        self.content_buffer,
-                    )
+        return events
+
+    def _handle_in_open_name(self, char: str) -> list[ParseEvent]:
+        """Handle character while reading opening function name."""
+        events: list[ParseEvent] = []
+
+        if char == "]":
+            # End of opening marker - `[/name]`
+            self.current_name = self.name_buffer
+            self.name_buffer = ""
+            self.block_buffer = ""
+            self.state = ParserState.IN_BLOCK
+
+            # Emit block start event
+            events.append(BlockStartEvent(self.current_name))
+            logger.debug("Block started", block_name=self.current_name)
+        elif char.isalnum() or char == "_":
+            # Continue reading name
+            self.name_buffer += char
+        else:
+            # Invalid character - not a valid marker, emit as text
+            self.text_buffer += "[/" + self.name_buffer + char
+            self.name_buffer = ""
+            self.state = ParserState.NORMAL
+
+        return events
+
+    def _handle_in_block(self, char: str) -> list[ParseEvent]:
+        """Handle character inside block content."""
+        events: list[ParseEvent] = []
+
+        if char == "[":
+            # Potential closing marker
+            self.state = ParserState.MAYBE_CLOSE
+        else:
+            self.block_buffer += char
+
+        return events
+
+    def _handle_maybe_close(self, char: str) -> list[ParseEvent]:
+        """Handle character after seeing `[` inside block."""
+        events: list[ParseEvent] = []
+
+        if char.isalnum() or char == "_":
+            # Start of closing name - `[name`
+            self.name_buffer = char
+            self.state = ParserState.IN_CLOSE_NAME
+        else:
+            # Not a closing marker - add `[` and char to content
+            self.block_buffer += "[" + char
+            self.state = ParserState.IN_BLOCK
+
+        return events
+
+    def _handle_in_close_name(self, char: str) -> list[ParseEvent]:
+        """Handle character while reading closing function name."""
+        events: list[ParseEvent] = []
+
+        if char == "/":
+            # Got `[name/` - expecting `]` next
+            self.state = ParserState.EXPECT_CLOSE_SLASH
+        elif char.isalnum() or char == "_":
+            # Continue reading close name
+            self.name_buffer += char
+        else:
+            # Invalid char - not a close marker, add to content
+            self.block_buffer += "[" + self.name_buffer + char
+            self.name_buffer = ""
+            self.state = ParserState.IN_BLOCK
+
+        return events
+
+    def _handle_expect_close_slash(self, char: str) -> list[ParseEvent]:
+        """Handle character after seeing `[name/` - expecting `]`."""
+        events: list[ParseEvent] = []
+
+        if char == "]":
+            # End of closing marker - `[name/]`
+            if self.name_buffer == self.current_name:
+                # Valid close - process the block
+                events.extend(self._complete_block())
+            else:
+                # Mismatched close - treat as content
+                logger.warning(
+                    "Mismatched close marker",
+                    expected=self.current_name,
+                    got=self.name_buffer,
                 )
-                if self.config.emit_block_events:
-                    events.append(BlockEndEvent(block_type="tool", success=True))
-                logger.debug("Closed tag", tag_name=self.current_tag_name)
-
-                self.current_tag_name = ""
-                self.current_tag_attrs = {}
-                self.content_buffer = ""
-                self.state = ParserState.NORMAL
-            else:
-                # Not matching, put back as content
-                self.content_buffer += "</" + self.tag_buffer + ">"
-                self.state = ParserState.IN_CONTENT
-
-            self.tag_buffer = ""
-
-        elif char == "<":
-            # Another < inside closing tag - malformed, treat as content
-            self.content_buffer += "</" + self.tag_buffer
-            self.tag_buffer = ""
-            self.state = ParserState.IN_OPENING_TAG
-
+                self.block_buffer += "[" + self.name_buffer + "/]"
+                self.name_buffer = ""
+                self.state = ParserState.IN_BLOCK
         else:
-            self.tag_buffer += char
-
-            # Safety: closing tag name shouldn't be too long
-            if len(self.tag_buffer) > 50:
-                self.content_buffer += "</" + self.tag_buffer
-                self.tag_buffer = ""
-                self.state = ParserState.IN_CONTENT
+            # Invalid - not a proper close, add to content
+            self.block_buffer += "[" + self.name_buffer + "/" + char
+            self.name_buffer = ""
+            self.state = ParserState.IN_BLOCK
 
         return events
 
-    def _emit_tag_event(
-        self,
-        tag_name: str,
-        attrs: dict[str, str],
-        content: str,
-    ) -> list[ParseEvent]:
-        """Create appropriate event for a completed tag."""
+    def _complete_block(self) -> list[ParseEvent]:
+        """Process a completed block and return appropriate events."""
         events: list[ParseEvent] = []
+        name = self.current_name
+        content = self.block_buffer
 
-        # Build args from attributes and content (using config's content_arg_map)
-        args = build_tool_args(tag_name, attrs, content, self.config.content_arg_map)
+        # Parse args and content from block
+        args, body = self._parse_block_content(content)
 
-        if is_tool_tag(tag_name, self.config.known_tools):
+        # Build raw representation
+        raw = self._build_raw(name, args, body)
+
+        # Determine block type and create event
+        if is_tool_tag(name, self.config.known_tools):
             # Tool call
-            raw = self._build_raw_tag(tag_name, attrs, content)
-            events.append(ToolCallEvent(name=tag_name, args=args, raw=raw))
-            logger.debug("Parsed tool call", tool_name=tag_name)
+            tool_args = {**args}
+            if body:
+                # Map body to appropriate arg based on tool
+                content_arg = self.config.content_arg_map.get(name, "content")
+                tool_args[content_arg] = body
+            events.append(ToolCallEvent(name=name, args=tool_args, raw=raw))
+            logger.debug("Parsed tool call", tool_name=name)
 
-        elif is_subagent_tag(tag_name, self.config.known_subagents):
-            # Sub-agent call: <agent type="explore">task</agent>
-            subagent_type = attrs.get("type", "explore")
-            subagent_args = {
-                "task": content.strip(),
-                **{k: v for k, v in attrs.items() if k != "type"},
-            }
-            raw = self._build_raw_tag(tag_name, attrs, content)
-            events.append(
-                SubAgentCallEvent(name=subagent_type, args=subagent_args, raw=raw)
-            )
-            logger.debug("Parsed sub-agent call", subagent_type=subagent_type)
+        elif is_subagent_tag(name, self.config.known_subagents):
+            # Sub-agent call
+            subagent_args = {"task": body.strip(), **args}
+            events.append(SubAgentCallEvent(name=name, args=subagent_args, raw=raw))
+            logger.debug("Parsed sub-agent call", subagent_type=name)
 
-        elif is_command_tag(tag_name, self.config.known_commands):
+        elif is_command_tag(name, self.config.known_commands):
             # Framework command
-            if tag_name == "info":
-                cmd_name = "info"
-                cmd_args = args.get("tool_name", content.strip())
-            elif tag_name == "read_job":
-                cmd_name = "read"
-                cmd_args = args.get("job_id", content.strip())
-            else:
-                cmd_name = tag_name
-                cmd_args = content.strip()
+            cmd_args = body.strip()
+            events.append(CommandEvent(command=name, args=cmd_args, raw=raw))
+            logger.debug("Parsed command", command=name)
 
-            raw = self._build_raw_tag(tag_name, attrs, content)
-            events.append(CommandEvent(command=cmd_name, args=cmd_args, raw=raw))
-            logger.debug("Parsed command", command=cmd_name)
+        else:
+            # Unknown block type - emit as text
+            logger.warning("Unknown block type", block_name=name)
+            events.append(TextEvent(raw))
+
+        # Emit block end event
+        events.append(BlockEndEvent(name))
+
+        # Reset state
+        self.current_name = ""
+        self.name_buffer = ""
+        self.block_buffer = ""
+        self.state = ParserState.NORMAL
 
         return events
 
-    def _build_raw_tag(
-        self,
-        tag_name: str,
-        attrs: dict[str, str],
-        content: str,
-    ) -> str:
-        """Reconstruct the raw tag string."""
-        attr_str = "".join(f' {k}="{v}"' for k, v in attrs.items())
-        if content:
-            return f"<{tag_name}{attr_str}>{content}</{tag_name}>"
-        else:
-            return f"<{tag_name}{attr_str}/>"
+    def _parse_block_content(self, content: str) -> tuple[dict[str, str], str]:
+        """
+        Parse block content into args and body.
 
-    def get_state(self) -> ParserState:
-        """Get current parser state."""
-        return self.state
+        Args start with @@ on their own line.
+        Everything else is body.
 
-    def is_in_block(self) -> bool:
-        """Check if parser is currently inside a block."""
-        return self.state in (ParserState.IN_CONTENT, ParserState.IN_CLOSING_TAG)
+        Returns:
+            (args_dict, body_string)
+        """
+        args: dict[str, str] = {}
+        body_lines: list[str] = []
+        in_args = True
+
+        for line in content.split("\n"):
+            # Skip empty lines while still in args section
+            if in_args and line.strip() == "":
+                continue
+            if in_args and line.startswith("@@"):
+                # Parse arg: @@key=value
+                arg_content = line[2:]  # Remove @@
+                if "=" in arg_content:
+                    key, value = arg_content.split("=", 1)
+                    args[key.strip()] = value.strip()
+                else:
+                    # Arg without value
+                    args[arg_content.strip()] = ""
+            else:
+                # Once we hit a non-arg line, everything is body
+                in_args = False
+                body_lines.append(line)
+
+        body = "\n".join(body_lines).strip()
+        return args, body
+
+    def _build_raw_open(self) -> str:
+        """Build raw opening marker."""
+        return f"[/{self.current_name}]\n"
+
+    def _build_raw(self, name: str, args: dict[str, str], body: str) -> str:
+        """Build raw representation of block."""
+        parts = [f"[/{name}]"]
+        for key, value in args.items():
+            parts.append(f"@@{key}={value}")
+        if body:
+            parts.append(body)
+        parts.append(f"[{name}/]")
+        return "\n".join(parts)
 
 
-def parse_complete(text: str, config: ParserConfig | None = None) -> list[ParseEvent]:
+# Convenience function for non-streaming parsing
+def parse_full(text: str, config: ParserConfig | None = None) -> list[ParseEvent]:
     """
-    Parse complete text (non-streaming convenience function).
+    Parse a complete text (non-streaming).
 
     Args:
-        text: Complete text to parse
-        config: Optional parser configuration
+        text: Full text to parse
+        config: Parser configuration
 
     Returns:
         List of all ParseEvents
@@ -391,18 +424,3 @@ def parse_complete(text: str, config: ParserConfig | None = None) -> list[ParseE
     events = parser.feed(text)
     events.extend(parser.flush())
     return events
-
-
-def extract_tool_calls(events: list[ParseEvent]) -> list[ToolCallEvent]:
-    """Extract only tool call events from event list."""
-    return [e for e in events if isinstance(e, ToolCallEvent)]
-
-
-def extract_subagent_calls(events: list[ParseEvent]) -> list[SubAgentCallEvent]:
-    """Extract only sub-agent call events from event list."""
-    return [e for e in events if isinstance(e, SubAgentCallEvent)]
-
-
-def extract_text(events: list[ParseEvent]) -> str:
-    """Extract and join all text from events."""
-    return "".join(e.text for e in events if isinstance(e, TextEvent))

@@ -1,7 +1,7 @@
 """
 Pattern definitions for stream parsing.
 
-Supports XML-style tool calls: <tool_name attr="value">content</tool_name>
+Supports custom format tool calls: [/tool_name]@@arg=value content[tool_name/]
 """
 
 import re
@@ -24,7 +24,7 @@ DEFAULT_CONTENT_ARG_MAP: dict[str, str] = {
 }
 
 # Default commands (framework-level, not tool-level)
-DEFAULT_COMMANDS: set[str] = {"info", "read_job"}
+DEFAULT_COMMANDS: set[str] = {"info", "read_job", "jobs", "wait"}
 
 # Default sub-agent tag (generic agent tag)
 DEFAULT_SUBAGENT_TAGS: set[str] = {"agent"}

@@ -249,6 +249,8 @@ class Agent:
             )
             if config:
                 self.subagent_manager.register(config)
+                # Also register with registry so parser knows about it
+                self.registry.register_subagent(config.name, config)
 
         if self.subagent_manager.list_subagents():
             logger.info(
@@ -258,6 +260,8 @@ class Agent:
 
     def _create_subagent_config(self, item: Any, get_builtin: Any) -> Any:
         """Create a SubAgentConfig from config item."""
+        from kohakuterrarium.modules.subagent.config import SubAgentConfig
+
         match item.type:
             case "builtin":
                 config = get_builtin(item.name)
@@ -266,21 +270,28 @@ class Agent:
                 return config
 
             case "custom" | "package":
-                if not item.module or not item.config_name:
-                    logger.warning(
-                        "Custom sub-agent missing module or config",
-                        subagent_name=item.name,
-                    )
-                    return None
-                try:
-                    return self._loader.load_config_object(
-                        module_path=item.module,
-                        object_name=item.config_name,
-                        module_type=item.type,
-                    )
-                except ModuleLoadError as e:
-                    logger.error("Failed to load custom sub-agent", error=str(e))
-                    return None
+                # If module and config_name provided, load from module
+                if item.module and item.config_name:
+                    try:
+                        return self._loader.load_config_object(
+                            module_path=item.module,
+                            object_name=item.config_name,
+                            module_type=item.type,
+                        )
+                    except ModuleLoadError as e:
+                        logger.error("Failed to load custom sub-agent", error=str(e))
+                        return None
+
+                # Otherwise, create inline config from options
+                config_dict = {
+                    "name": item.name,
+                    "description": item.description or f"{item.name} sub-agent",
+                    "tools": item.tools,
+                    "can_modify": item.can_modify,
+                    "interactive": item.interactive,
+                    **item.options,
+                }
+                return SubAgentConfig.from_dict(config_dict)
 
             case _:
                 logger.warning("Unknown sub-agent type", subagent_type=item.type)
@@ -337,6 +348,20 @@ class Agent:
                         prompt=self.config.input.prompt,
                         **self.config.input.options,
                     )
+                case "whisper":
+                    # Builtin Whisper ASR (requires RealtimeSTT)
+                    try:
+                        from kohakuterrarium.modules.input.whisper import (
+                            create_whisper_asr,
+                        )
+
+                        self.input = create_whisper_asr(self.config.input.options)
+                    except ImportError:
+                        logger.error(
+                            "RealtimeSTT not installed. "
+                            "Install with: pip install RealtimeSTT"
+                        )
+                        self.input = CLIInput(prompt=self.config.input.prompt)
                 case "custom" | "package":
                     if not self.config.input.module or not self.config.input.class_name:
                         logger.warning(
@@ -479,56 +504,118 @@ class Agent:
         await self._process_event(event)
 
     async def _process_event(self, event: TriggerEvent) -> None:
-        """Process a single event through the controller."""
+        """
+        Process a single event through the controller.
+
+        Loops until controller generates no new jobs.
+        - Direct tools: wait for completion, feed results back
+        - Background tools/sub-agents: report status, keep tracking until cleaned up
+
+        A job is "cleaned up" when its result/status has been sent back to the model.
+        """
         await self.controller.push_event(event)
 
-        # Reset output for new turn
-        self.output_router.reset()
-        if hasattr(self.output_router.default_output, "reset"):
-            self.output_router.default_output.reset()
+        # Track non-direct jobs that haven't been cleaned up yet
+        # These persist across loop iterations until their results are acknowledged
+        pending_background_ids: list[str] = []
+        pending_subagent_ids: list[str] = []
 
-        # Track running tool tasks (started during streaming)
-        running_tasks: dict[str, asyncio.Task] = {}
-        tool_job_ids: list[str] = []
-        subagent_job_ids: list[str] = []
+        while True:
+            # Reset output for this turn
+            self.output_router.reset()
+            if hasattr(self.output_router.default_output, "reset"):
+                self.output_router.default_output.reset()
 
-        # Run controller and process output
-        async for parse_event in self.controller.run_once():
-            # Handle tool calls immediately - start async task right away
-            if isinstance(parse_event, ToolCallEvent):
-                job_id, task = await self._start_tool_async(parse_event)
-                running_tasks[job_id] = task
-                tool_job_ids.append(job_id)
-                logger.debug(
-                    "Tool started async", tool_name=parse_event.name, job_id=job_id
+            # Track ALL jobs started during THIS generation
+            direct_tasks: dict[str, asyncio.Task] = {}
+            direct_job_ids: list[str] = []
+            new_background_ids: list[str] = []
+            new_subagent_ids: list[str] = []
+
+            # Run controller and process output
+            async for parse_event in self.controller.run_once():
+                if isinstance(parse_event, ToolCallEvent):
+                    job_id, task, is_direct = await self._start_tool_async(parse_event)
+                    if is_direct:
+                        direct_tasks[job_id] = task
+                        direct_job_ids.append(job_id)
+                    else:
+                        new_background_ids.append(job_id)
+                    logger.debug(
+                        "Tool started",
+                        tool_name=parse_event.name,
+                        job_id=job_id,
+                        direct=is_direct,
+                    )
+                elif isinstance(parse_event, SubAgentCallEvent):
+                    job_id = await self._start_subagent_async(parse_event)
+                    new_subagent_ids.append(job_id)
+                else:
+                    await self.output_router.route(parse_event)
+
+            # Flush output
+            await self.output_router.flush()
+
+            # Handle pending commands
+            commands = self.output_router.pending_commands
+            for cmd in commands:
+                await self._handle_command(cmd)
+
+            # Check if ANY jobs were started this round
+            jobs_started_this_round = bool(
+                direct_tasks or new_background_ids or new_subagent_ids
+            )
+
+            # Add new non-direct jobs to pending lists
+            pending_background_ids.extend(new_background_ids)
+            pending_subagent_ids.extend(new_subagent_ids)
+
+            # If no jobs started AND no pending non-direct jobs, we're done
+            if (
+                not jobs_started_this_round
+                and not pending_background_ids
+                and not pending_subagent_ids
+            ):
+                break
+
+            # Build feedback for controller
+            feedback_parts: list[str] = []
+
+            # Wait for direct tools and collect results
+            if direct_tasks:
+                logger.info("Waiting for %d direct tool(s)", len(direct_tasks))
+                results = await self._collect_tool_results(direct_job_ids, direct_tasks)
+                if results:
+                    feedback_parts.append(results)
+
+            # Get status of pending background jobs (and clean up completed ones)
+            if pending_background_ids or pending_subagent_ids:
+                bg_status, pending_background_ids, pending_subagent_ids = (
+                    self._get_and_cleanup_background_status(
+                        pending_background_ids, pending_subagent_ids
+                    )
                 )
-            elif isinstance(parse_event, SubAgentCallEvent):
-                # Handle sub-agent calls
-                job_id = await self._start_subagent_async(parse_event)
-                subagent_job_ids.append(job_id)
+                if bg_status:
+                    feedback_parts.append(bg_status)
+
+            # Feed results back to controller for next iteration
+            if feedback_parts:
+                combined = "\n\n".join(feedback_parts)
+                feedback_event = create_tool_complete_event(
+                    job_id="batch",
+                    content=combined,
+                    exit_code=0,
+                    error=None,
+                )
+                await self.controller.push_event(feedback_event)
             else:
-                # Route other events (text, blocks, etc.)
-                await self.output_router.route(parse_event)
-
-        # Flush output
-        await self.output_router.flush()
-
-        # Wait for all direct tools to complete (parallel)
-        if running_tasks:
-            await self._wait_and_collect_results(tool_job_ids, running_tasks)
-
-        # Wait for sub-agents (they run until completion, then return to controller)
-        if subagent_job_ids:
-            await self._wait_and_collect_subagent_results(subagent_job_ids)
-
-        # Handle pending commands
-        commands = self.output_router.pending_commands
-        for cmd in commands:
-            await self._handle_command(cmd)
+                # No feedback to send but we have pending jobs - just continue
+                # This shouldn't normally happen
+                break
 
     async def _start_tool_async(
         self, tool_call: ToolCallEvent
-    ) -> tuple[str, asyncio.Task]:
+    ) -> tuple[str, asyncio.Task, bool]:
         """
         Start a tool execution immediately as an async task.
 
@@ -538,9 +625,17 @@ class Agent:
             tool_call: Tool call event from parser
 
         Returns:
-            (job_id, task) tuple
+            (job_id, task, is_direct) tuple - is_direct indicates if we should wait
         """
-        logger.info("Starting tool", tool_name=tool_call.name)
+        logger.info("Running tool: %s", tool_call.name)
+
+        # Check if tool is direct (blocking) or background
+        tool = self.executor.get_tool(tool_call.name)
+        is_direct = True  # Default to direct
+        if tool and hasattr(tool, "execution_mode"):
+            from kohakuterrarium.modules.tool.base import ExecutionMode
+
+            is_direct = tool.execution_mode == ExecutionMode.DIRECT
 
         # Submit to executor - this creates the task internally
         job_id = await self.executor.submit_from_event(tool_call)
@@ -554,24 +649,25 @@ class Agent:
 
             task = asyncio.create_task(_get_result())
 
-        return job_id, task
+        return job_id, task, is_direct
 
-    async def _wait_and_collect_results(
+    async def _collect_tool_results(
         self,
         job_ids: list[str],
         tasks: dict[str, asyncio.Task],
-    ) -> None:
+    ) -> str:
         """
-        Wait for all tools to complete in parallel and send results to controller.
+        Wait for all tools to complete and return formatted results.
 
         Args:
             job_ids: List of job IDs in order
             tasks: Dict of job_id -> asyncio.Task
+
+        Returns:
+            Formatted results string
         """
         if not tasks:
-            return
-
-        logger.info("Waiting for tools", count=len(tasks))
+            return ""
 
         # Wait for all tasks in parallel
         results_list = await asyncio.gather(
@@ -584,26 +680,89 @@ class Agent:
         for job_id, result in zip(job_ids, results_list):
             if isinstance(result, Exception):
                 result_strs.append(f"## {job_id} - FAILED\n{str(result)}")
+                logger.info("Tool %s: failed", job_id.split("_")[0])
             elif result is not None:
                 output = result.output[:2000] if result.output else ""
                 if result.error:
                     result_strs.append(f"## {job_id} - ERROR\n{result.error}\n{output}")
+                    logger.info("Tool %s: error", job_id.split("_")[0])
                 else:
                     status = (
                         "OK" if result.exit_code == 0 else f"exit={result.exit_code}"
                     )
                     result_strs.append(f"## {job_id} - {status}\n{output}")
+                    logger.info("Tool %s: done", job_id.split("_")[0])
 
-        # Send combined results back to controller
-        if result_strs:
-            combined_content = "\n\n".join(result_strs)
-            completion = create_tool_complete_event(
-                job_id="batch",
-                content=combined_content,
-                exit_code=0,
-                error=None,
-            )
-            await self._process_event(completion)
+        return "\n\n".join(result_strs) if result_strs else ""
+
+    def _get_and_cleanup_background_status(
+        self,
+        background_job_ids: list[str],
+        subagent_job_ids: list[str],
+    ) -> tuple[str, list[str], list[str]]:
+        """
+        Get status of background jobs and sub-agents, cleaning up completed ones.
+
+        Completed jobs are removed from the pending lists after their status
+        is included in the output (so the model sees the result once).
+
+        Returns:
+            (status_string, remaining_background_ids, remaining_subagent_ids)
+        """
+        if not background_job_ids and not subagent_job_ids:
+            return "", [], []
+
+        status_lines: list[str] = []
+        remaining_bg: list[str] = []
+        remaining_sa: list[str] = []
+
+        # Check background tools
+        for job_id in background_job_ids:
+            status = self.executor.get_status(job_id)
+            if status:
+                if status.is_complete:
+                    # Completed - include result and DON'T add to remaining
+                    result = self.executor.get_result(job_id)
+                    if result and result.error:
+                        status_lines.append(f"- `{job_id}`: ERROR - {result.error}")
+                    else:
+                        output = result.output[:500] if result and result.output else ""
+                        status_lines.append(f"- `{job_id}`: DONE\n{output}")
+                else:
+                    # Still running - keep tracking
+                    status_lines.append(f"- `{job_id}`: {status.state.value}")
+                    remaining_bg.append(job_id)
+
+        # Check sub-agents
+        for job_id in subagent_job_ids:
+            if job_id.startswith("error_"):
+                # Error during spawn - don't keep tracking
+                status_lines.append(f"- `{job_id}`: ERROR - Sub-agent not registered")
+                continue
+
+            result = self.subagent_manager.get_result(job_id)
+            if result:
+                # Completed - include result and DON'T add to remaining
+                if result.success:
+                    output = result.truncated(max_chars=500)
+                    status_lines.append(
+                        f"- `{job_id}`: DONE (turns={result.turns})\n{output}"
+                    )
+                else:
+                    status_lines.append(f"- `{job_id}`: ERROR - {result.error}")
+            else:
+                # Still running - keep tracking
+                status_lines.append(f"- `{job_id}`: RUNNING")
+                remaining_sa.append(job_id)
+
+        if not status_lines:
+            return "", remaining_bg, remaining_sa
+
+        return (
+            "## Background Jobs\n\n" + "\n".join(status_lines),
+            remaining_bg,
+            remaining_sa,
+        )
 
     async def _start_subagent_async(self, event: SubAgentCallEvent) -> str:
         """
@@ -628,49 +787,6 @@ class Agent:
                 "Sub-agent not registered", subagent_name=event.name, error=str(e)
             )
             return f"error_{event.name}"
-
-    async def _wait_and_collect_subagent_results(
-        self,
-        job_ids: list[str],
-    ) -> None:
-        """
-        Wait for sub-agents to complete and send results to controller.
-
-        Args:
-            job_ids: List of sub-agent job IDs
-        """
-        if not job_ids:
-            return
-
-        logger.info("Waiting for sub-agents", count=len(job_ids))
-
-        result_strs: list[str] = []
-        for job_id in job_ids:
-            if job_id.startswith("error_"):
-                result_strs.append(f"## {job_id} - ERROR\nSub-agent not registered")
-                continue
-
-            result = await self.subagent_manager.wait_for(job_id)
-            if result:
-                if result.success:
-                    output = result.truncated(max_chars=2000)
-                    result_strs.append(
-                        f"## {job_id} - OK (turns={result.turns})\n{output}"
-                    )
-                else:
-                    result_strs.append(f"## {job_id} - ERROR\n{result.error}")
-            else:
-                result_strs.append(f"## {job_id} - TIMEOUT\nSub-agent did not complete")
-
-        # Send combined results back to controller
-        if result_strs:
-            combined_content = "\n\n".join(result_strs)
-            completion = TriggerEvent(
-                type="subagent_complete",
-                content=combined_content,
-                context={"job_ids": job_ids},
-            )
-            await self._process_event(completion)
 
     async def _handle_command(self, cmd: CommandEvent) -> None:
         """Execute a framework command and feed result back to controller."""

@@ -182,6 +182,119 @@ class InfoCommand(BaseCommand):
         return CommandResult(error=f"Not found: {target_name}")
 
 
+class JobsCommand(BaseCommand):
+    """
+    List running and recent background jobs.
+
+    Usage:
+        <jobs/>
+    """
+
+    @property
+    def command_name(self) -> str:
+        return "jobs"
+
+    @property
+    def description(self) -> str:
+        return "List running background jobs"
+
+    async def _execute(self, args: str, context: Any) -> CommandResult:
+        """List jobs."""
+        if not hasattr(context, "job_store"):
+            return CommandResult(error="No job store available")
+
+        job_store = context.job_store
+        running = job_store.get_running_jobs()
+
+        if not running:
+            return CommandResult(content="No running jobs.")
+
+        lines = ["## Running Jobs", ""]
+        for job in running:
+            lines.append(f"- `{job.job_id}`: {job.type_name} ({job.state.value})")
+
+        return CommandResult(content="\n".join(lines))
+
+
+class WaitCommand(BaseCommand):
+    """
+    Wait for a background job to complete.
+
+    Usage:
+        <wait>job_id</wait>
+        <wait timeout="30">job_id</wait>
+    """
+
+    @property
+    def command_name(self) -> str:
+        return "wait"
+
+    @property
+    def description(self) -> str:
+        return "Wait for a background job to complete"
+
+    async def _execute(self, args: str, context: Any) -> CommandResult:
+        """Wait for job."""
+        import asyncio
+
+        job_id, kwargs = parse_command_args(args)
+
+        if not job_id:
+            return CommandResult(error="No job_id provided. Usage: <wait>job_id</wait>")
+
+        timeout = float(kwargs.get("timeout", 60.0))
+
+        # Check if job exists
+        if not hasattr(context, "job_store"):
+            return CommandResult(error="No job store available")
+
+        status = context.job_store.get_status(job_id)
+        if status is None:
+            return CommandResult(error=f"Job not found: {job_id}")
+
+        # If already complete, return result
+        if status.is_complete:
+            result = context.job_store.get_result(job_id)
+            if result:
+                if result.error:
+                    return CommandResult(content=f"## {job_id} - ERROR\n{result.error}")
+                return CommandResult(
+                    content=f"## {job_id} - DONE\n{result.output[:2000]}"
+                )
+            return CommandResult(content=f"## {job_id} - DONE (no output)")
+
+        # Wait for completion
+        try:
+            # Poll for completion
+            elapsed = 0.0
+            interval = 0.5
+            while elapsed < timeout:
+                await asyncio.sleep(interval)
+                elapsed += interval
+
+                status = context.job_store.get_status(job_id)
+                if status and status.is_complete:
+                    result = context.job_store.get_result(job_id)
+                    if result:
+                        if result.error:
+                            return CommandResult(
+                                content=f"## {job_id} - ERROR\n{result.error}"
+                            )
+                        return CommandResult(
+                            content=f"## {job_id} - DONE\n{result.output[:2000]}"
+                        )
+                    return CommandResult(content=f"## {job_id} - DONE (no output)")
+
+            return CommandResult(
+                content=f"## {job_id} - TIMEOUT\nJob still running after {timeout}s"
+            )
+
+        except asyncio.CancelledError:
+            return CommandResult(content=f"## {job_id} - CANCELLED")
+
+
 # Default command instances
 read_command = ReadCommand()
 info_command = InfoCommand()
+jobs_command = JobsCommand()
+wait_command = WaitCommand()
