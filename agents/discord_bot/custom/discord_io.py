@@ -611,10 +611,11 @@ class DiscordInputModule(BaseInputModule):
             readonly_marker = "[READONLY] " if is_readonly else ""
             ping_marker = "[PINGED] " if msg.is_mention else ""
 
-            # Format: [You:BotName(id)] [Server:...] [#channel:...] [READONLY]? [PINGED]? [Author(msgid)]: content
+            # Format: [You:BotName(id)] [Server:...] [#channel:...]
+            # [HH:MM] [READONLY]? [PINGED]? [Author(msgid)]: content
             identity_header = f"[You:{bot_identity}]"
             context_header = f"{identity_header} {guild_part} {channel_part}".strip()
-            msg_header = f"{readonly_marker}{ping_marker}[{msg.author_display_name}({msg.short_msg_id})]"
+            msg_header = f"[{msg.timestamp}] {readonly_marker}{ping_marker}[{msg.author_display_name}({msg.short_msg_id})]"
 
             formatted_content = (
                 f"{history_context}{context_header}\n{msg_header}: {msg.content}"

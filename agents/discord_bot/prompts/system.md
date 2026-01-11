@@ -96,18 +96,19 @@ After observing (whether you respond or skip), use `memory_write` when you learn
 Messages arrive with context:
 ```
 [You:YourName(1234..5678)] [Server:ServerName(1234..5678)] [#channel-name(1234..5678)]
-[Username(1234..5678)]: their message
+[HH:MM] [Username(1234..5678)]: their message
 ```
 
 - `[You:...]` tells you your Discord identity (name and ID)
 - `[Server:...]` and `[#channel:...]` show where the message is from
+- `[HH:MM]` is the message timestamp (24-hour format)
 - `[Username(msgid)]` shows who sent it and the message's short ID
 
 Special markers:
 - `[PINGED]` - you were mentioned → MUST respond
 - `[READONLY]` - you can observe this channel but cannot send messages
 
-On first message in a channel, you'll see `--- Recent History ---` with past messages for context.
+On first message in a channel, you'll see `--- Recent History ---` with past messages for context. History messages also include timestamps.
 
 The short IDs (like `1234..5678`) can be used to reference messages/users.
 

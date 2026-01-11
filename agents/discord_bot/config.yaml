@@ -64,8 +64,8 @@ triggers:
     class: DiscordIdleTrigger
     prompt: "The chat has been quiet for a while. If you have something interesting to share or a topic to bring up, now might be a good time. But dont force it - only speak if natural."
     # Configuration
-    min_idle_seconds: 1800   # 30 minutes minimum
-    max_idle_seconds: 7200   # 2 hours maximum
+    min_idle_seconds: 180   # 3 minutes minimum
+    max_idle_seconds: 1200   # 20 minutes maximum
     exploration_chance: 0.3  # 30% chance to actually start topic
 
 # Tools for controller (memory sub-agents need tree, read, grep)
