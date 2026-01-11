@@ -1,0 +1,59 @@
+# Filtered Keywords
+# One keyword per line, case-insensitive
+# Lines starting with # are comments
+
+# === English Profanity ===
+fuck
+fucking
+fucked
+shit
+shitty
+bitch
+bastard
+asshole
+dick
+cock
+pussy
+cunt
+whore
+slut
+retard
+retarded
+faggot
+nigger
+nigga
+
+# === ZH-TW Profanity ===
+幹你娘
+操你媽
+他媽的
+媽的
+靠北
+靠杯
+靠邀
+機掰
+雞掰
+肏
+屌
+懶叫
+龜頭
+雞巴
+破麻
+臭婊子
+婊子
+賤人
+智障
+白癡
+廢物
+去死
+死全家
+
+# === Slurs/Discrimination ===
+支那
+黑鬼
+白癡
+死gay
+死同性戀
+變態
+
+# === Custom (add your own) ===

@@ -1,0 +1,105 @@
+# Discord Group Chat Bot Configuration
+# A group chat bot with memory, character, and smart response decisions
+
+name: discord_bot
+version: "1.0"
+
+# LLM Configuration - Controller (orchestration)
+controller:
+  model: "${OPENROUTER_MODEL:google/gemini-3-flash-preview}"
+  temperature: 0.7
+  max_tokens: 512000
+  api_key_env: OPENROUTER_API_KEY
+  base_url: https://openrouter.ai/api/v1
+
+# System prompt (loaded from file)
+system_prompt_file: prompts/system.md
+
+# Inject files directly into system prompt as template variables
+# These are rendered with Jinja2: {{ character }}, {{ rules }}
+prompt_context_files:
+  character: memory/character.md
+  rules: memory/rules.md
+
+# Startup trigger - remind agent to check group style
+startup_trigger:
+  prompt: "Agent starting. Your character is already loaded. Use memory_read to check group_style.md for any learned communication patterns, then wait for messages."
+
+# Custom Input - Discord messages
+input:
+  type: custom
+  module: ./custom/discord_io.py
+  class: DiscordInputModule
+  # Configuration passed to constructor
+  token_env: DISCORD_BOT_TOKEN
+  # Channels to listen and respond to
+  channel_ids: [775002061456408576, 1459909076099137730]
+  # Read-only channels: observe to learn, but cannot respond
+  readonly_channel_ids: [680728618770497552, 692243859970850907, 772472578933522442, 934172207758868510]
+  # Number of history messages to fetch on first message in channel
+  history_limit: 50
+
+# Custom Output - Discord message sending
+output:
+  type: custom
+  module: ./custom/discord_io.py
+  class: DiscordOutputModule
+  controller_direct: true  # Controller outputs directly to Discord
+  # Note: output module receives client from input module via shared state
+  # Keyword filter - replaces sensitive words with [filtered]
+  keywords_file: ./filtered_keywords.txt
+  # Or inline: filtered_keywords: [word1, word2, word3]
+
+# Triggers - autonomous events
+triggers:
+  # Ping trigger - fires when bot is mentioned
+  - type: custom
+    module: ./custom/discord_trigger.py
+    class: DiscordPingTrigger
+    prompt: "You were mentioned directly. This user expects a response. Reply to them."
+
+  # Idle trigger - fires after chat inactivity
+  - type: custom
+    module: ./custom/discord_trigger.py
+    class: DiscordIdleTrigger
+    prompt: "The chat has been quiet for a while. If you have something interesting to share or a topic to bring up, now might be a good time. But dont force it - only speak if natural."
+    # Configuration
+    min_idle_seconds: 1800   # 30 minutes minimum
+    max_idle_seconds: 7200   # 2 hours maximum
+    exploration_chance: 0.3  # 30% chance to actually start topic
+
+# Tools for controller (memory sub-agents need tree, read, grep)
+tools:
+  - name: tree
+    type: builtin
+  - name: read
+    type: builtin
+  - name: write
+    type: builtin
+  - name: edit
+    type: builtin
+  - name: glob
+    type: builtin
+  - name: grep
+    type: builtin
+
+# Sub-agents
+subagents:
+  # Memory read - retrieve context and facts
+  - name: memory_read
+    type: builtin
+
+  # Memory write - save new information
+  - name: memory_write
+    type: builtin
+
+# Memory configuration
+memory:
+  path: ./memory
+  init_files:
+    - character.md   # Character definition (read-only)
+    - rules.md       # Protected rules (read-only)
+  writable_files:
+    - context.md     # Current conversation context
+    - facts.md       # Remembered facts about users
+    - group_style.md # Learned group communication patterns
