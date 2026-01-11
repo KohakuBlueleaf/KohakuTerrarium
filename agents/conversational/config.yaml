@@ -1,0 +1,81 @@
+# Conversational Agent Configuration
+# A Neuro-sama style streaming conversational agent
+
+name: conversational
+version: "1.0"
+description: Interactive streaming conversational agent with ASR input and TTS output
+
+# LLM Configuration
+controller:
+  model: "${OPENROUTER_MODEL:google/gemini-3-flash-preview}"
+  temperature: 0.8
+  max_tokens: 512000
+  api_key_env: OPENROUTER_API_KEY
+  base_url: https://openrouter.ai/api/v1
+
+# System prompt (loaded from file)
+system_prompt_file: system.md
+
+# Input module - Real-time Whisper ASR with VAD
+# Requires: pip install RealtimeSTT
+input:
+  type: whisper
+  # Whisper model: tiny, base, small, medium, large-v2
+  model: base
+  # Device: cuda or cpu
+  device: cuda
+  # Language: auto, en, ja, etc.
+  language: auto
+  # VAD sensitivity (0.0-1.0)
+  silero_sensitivity: 0.6
+  # WebRTC VAD sensitivity (0-3)
+  webrtc_sensitivity: 3
+  # Silence duration to end utterance (seconds)
+  post_speech_silence: 0.5
+
+# Output configuration
+output:
+  type: custom
+  module: ./custom/output.py
+  class: StreamingTTS
+  controller_direct: false  # Output goes through sub-agent
+
+# Tools available to controller
+tools:
+  - name: read
+    type: builtin
+  - name: write
+    type: builtin
+
+# Sub-agents
+subagents:
+  # Memory read/write agents
+  - name: memory_read
+    type: builtin
+  - name: memory_write
+    type: builtin
+
+  # Output sub-agent - generates streaming responses
+  # Custom config for interactive output sub-agent
+  - name: output
+    type: custom
+    description: Generate conversational responses
+    prompt_file: output.md
+    interactive: true
+    context_mode: interrupt_restart
+    output_to: external
+    tools: []
+    max_turns: 3
+
+  # Memory writer - handles long-term memory updates
+  - name: memory_writer
+    type: custom
+    description: Update long-term memory
+    prompt_file: memory_writer.md
+    tools:
+      - write
+    max_turns: 2
+
+# Memory configuration
+memory:
+  path: ./memory

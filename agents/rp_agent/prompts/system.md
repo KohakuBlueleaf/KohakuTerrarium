@@ -24,10 +24,18 @@ If not done → Output only: `[WAITING]`
 ## Memory Commands
 
 Read from memory (character, past conversations, facts):
-<agent type="memory_read">what to find</agent>
+```
+[/memory_read]
+what to find
+[memory_read/]
+```
 
 Save something important to remember:
-<agent type="memory_write">what to store</agent>
+```
+[/memory_write]
+what to store
+[memory_write/]
+```
 
 ## Response Style
 

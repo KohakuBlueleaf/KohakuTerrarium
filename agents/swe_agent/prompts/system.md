@@ -18,5 +18,11 @@ You are a software engineering agent. You have full access to the local filesyst
 
 ## Commands
 
-`<info>[name]</info>` - Get full documentation
-- `[name]`: name of a tool (glob, grep, read, edit, write, bash) or sub-agent (explore, plan)
+`[/info]name[info/]` - Get full documentation for a tool or sub-agent
+
+Example:
+```
+[/info]
+glob
+[info/]
+```
