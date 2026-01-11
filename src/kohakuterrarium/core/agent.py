@@ -33,6 +33,7 @@ from kohakuterrarium.builtins.tools import get_builtin_tool
 from kohakuterrarium.modules.input.base import InputModule
 from kohakuterrarium.modules.output.base import OutputModule
 from kohakuterrarium.modules.output.router import OutputRouter
+from kohakuterrarium.modules.trigger import BaseTrigger
 from kohakuterrarium.commands.read import InfoCommand, ReadCommand
 from kohakuterrarium.parsing import (
     CommandEvent,
@@ -163,12 +164,14 @@ class Agent:
         self._init_commands()
         self._init_input(input_module)
         self._init_output(output_module)
+        self._init_triggers()
 
         logger.info(
             "Agent initialized",
             agent_name=config.name,
             model=config.model,
             tools=len(self.registry.list_tools()),
+            triggers=len(self._triggers),
         )
 
     def _init_llm(self) -> None:
@@ -433,12 +436,82 @@ class Agent:
 
         self.output_router = OutputRouter(output_module)
 
+    def _init_triggers(self) -> None:
+        """Initialize trigger modules from config."""
+        self._triggers: list[BaseTrigger] = []
+        self._trigger_tasks: list[asyncio.Task] = []
+
+        for trigger_config in self.config.triggers:
+            trigger = self._create_trigger(trigger_config)
+            if trigger:
+                self._triggers.append(trigger)
+                logger.debug(
+                    "Registered trigger",
+                    trigger_type=trigger_config.type,
+                    trigger_class=trigger_config.class_name,
+                )
+
+        if self._triggers:
+            logger.info("Triggers registered", count=len(self._triggers))
+
+    def _create_trigger(self, trigger_config: Any) -> BaseTrigger | None:
+        """Create a trigger from config."""
+        if trigger_config.type in ("custom", "package"):
+            if not trigger_config.module or not trigger_config.class_name:
+                logger.warning("Custom trigger missing module or class")
+                return None
+
+            try:
+                trigger = self._loader.load_instance(
+                    module_path=trigger_config.module,
+                    class_name=trigger_config.class_name,
+                    module_type=trigger_config.type,
+                    options={
+                        "prompt": trigger_config.prompt,
+                        **trigger_config.options,
+                    },
+                )
+                return trigger
+            except ModuleLoadError as e:
+                logger.error("Failed to load custom trigger", error=str(e))
+                return None
+        else:
+            # TODO: Add builtin triggers (timer, idle, etc.)
+            logger.warning("Unknown trigger type", trigger_type=trigger_config.type)
+            return None
+
+    async def _run_trigger(self, trigger: BaseTrigger) -> None:
+        """Run a single trigger loop."""
+        while self._running:
+            try:
+                event = await trigger.wait_for_trigger()
+                if event:
+                    logger.info(
+                        "Trigger fired",
+                        trigger_type=event.type,
+                    )
+                    await self._process_event(event)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Trigger error", error=str(e))
+                await asyncio.sleep(1.0)  # Backoff on error
+
     async def start(self) -> None:
         """Start all agent modules."""
         logger.info("Starting agent", agent_name=self.config.name)
 
         await self.input.start()
         await self.output_router.start()
+
+        # Start triggers
+        for trigger in self._triggers:
+            await trigger.start()
+            task = asyncio.create_task(self._run_trigger(trigger))
+            self._trigger_tasks.append(task)
+
+        if self._triggers:
+            logger.info("Triggers started", count=len(self._triggers))
 
         self._running = True
         self._shutdown_event.clear()
@@ -449,6 +522,14 @@ class Agent:
 
         self._running = False
         self._shutdown_event.set()
+
+        # Stop triggers
+        for task in self._trigger_tasks:
+            task.cancel()
+        if self._trigger_tasks:
+            await asyncio.gather(*self._trigger_tasks, return_exceptions=True)
+        for trigger in self._triggers:
+            await trigger.stop()
 
         await self.input.stop()
         await self.output_router.stop()
@@ -525,6 +606,13 @@ class Agent:
 
         A job is "cleaned up" when its result/status has been sent back to the model.
         """
+        # Notify triggers of context update (for idle timer reset, etc.)
+        for trigger in self._triggers:
+            try:
+                trigger._on_context_update(event.context)
+            except Exception:
+                pass  # Don't let trigger errors break event processing
+
         await self.controller.push_event(event)
 
         # Track non-direct jobs that haven't been cleaned up yet

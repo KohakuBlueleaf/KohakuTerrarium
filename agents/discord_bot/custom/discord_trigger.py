@@ -5,12 +5,32 @@ Provides ping detection and idle/exploration triggers.
 """
 
 import asyncio
+import sys
 from typing import Any
 
 from kohakuterrarium.core.events import TriggerEvent
 from kohakuterrarium.modules.trigger import BaseTrigger
+from kohakuterrarium.utils.logging import get_logger
 
-from .discord_io import DiscordClient, _get_client
+logger = get_logger("kohakuterrarium.custom.discord_trigger")
+
+
+# Get discord_io module - it should already be loaded by input module
+# We access the shared client registry directly
+def _get_discord_io():
+    """Get the discord_io module from sys.modules."""
+    for name, module in sys.modules.items():
+        if "discord_io" in name and hasattr(module, "_get_client"):
+            return module
+    return None
+
+
+def _get_client(name: str = "default") -> Any:
+    """Get Discord client from shared registry."""
+    io_module = _get_discord_io()
+    if io_module:
+        return io_module._get_client(name)
+    return None
 
 
 class DiscordPingTrigger(BaseTrigger):
@@ -23,7 +43,7 @@ class DiscordPingTrigger(BaseTrigger):
 
     def __init__(
         self,
-        client: DiscordClient | None = None,
+        client: Any = None,
         client_name: str = "default",
         prompt: str | None = None,
         **options: Any,
@@ -42,11 +62,11 @@ class DiscordPingTrigger(BaseTrigger):
         self.client_name = client_name
         self._pending_pings: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
 
-    def set_client(self, client: DiscordClient) -> None:
+    def set_client(self, client: Any) -> None:
         """Set Discord client (for delayed initialization)."""
         self.client = client
 
-    def _ensure_client(self) -> DiscordClient | None:
+    def _ensure_client(self) -> Any:
         """Get client, looking up from registry if needed."""
         if self.client is None:
             self.client = _get_client(self.client_name)
@@ -140,6 +160,10 @@ class DiscordIdleTrigger(BaseTrigger):
             self.min_idle_seconds,
             self.max_idle_seconds,
         )
+        logger.debug(
+            "Idle timer reset (activity detected)",
+            extra={"new_threshold": int(self._current_threshold)},
+        )
 
     async def _on_start(self) -> None:
         """Initialize threshold on start."""
@@ -149,6 +173,15 @@ class DiscordIdleTrigger(BaseTrigger):
         self._current_threshold = random.uniform(
             self.min_idle_seconds,
             self.max_idle_seconds,
+        )
+        logger.info(
+            "Idle trigger started",
+            extra={
+                "min_idle": int(self.min_idle_seconds),
+                "max_idle": int(self.max_idle_seconds),
+                "exploration_chance": f"{self.exploration_chance:.0%}",
+                "initial_threshold": int(self._current_threshold),
+            },
         )
 
     async def wait_for_trigger(self) -> TriggerEvent | None:
@@ -167,16 +200,41 @@ class DiscordIdleTrigger(BaseTrigger):
         current_time = asyncio.get_event_loop().time()
         idle_duration = current_time - self._last_activity
 
+        # Log idle status periodically (every check)
+        logger.debug(
+            "Idle check",
+            extra={
+                "idle_seconds": int(idle_duration),
+                "threshold": (
+                    int(self._current_threshold) if self._current_threshold else None
+                ),
+            },
+        )
+
         # Check if we've been idle long enough
         if self._current_threshold and idle_duration >= self._current_threshold:
             # Roll for exploration chance
-            if random.random() < self.exploration_chance:
+            roll = random.random()
+            logger.info(
+                "Idle threshold reached, rolling for exploration",
+                extra={
+                    "idle_seconds": int(idle_duration),
+                    "threshold": int(self._current_threshold),
+                    "roll": f"{roll:.2f}",
+                    "chance": f"{self.exploration_chance:.2f}",
+                    "will_trigger": roll < self.exploration_chance,
+                },
+            )
+
+            if roll < self.exploration_chance:
                 # Reset timer
                 self._last_activity = current_time
                 self._current_threshold = random.uniform(
                     self.min_idle_seconds,
                     self.max_idle_seconds,
                 )
+
+                logger.info("Idle trigger fired - starting exploration")
 
                 return TriggerEvent(
                     type="idle",
@@ -192,10 +250,15 @@ class DiscordIdleTrigger(BaseTrigger):
                 )
             else:
                 # Didn't explore this time, reset threshold
-                self._current_threshold = random.uniform(
+                new_threshold = random.uniform(
                     self.min_idle_seconds,
                     self.max_idle_seconds,
                 )
+                logger.debug(
+                    "Exploration skipped, new threshold set",
+                    extra={"new_threshold": int(new_threshold)},
+                )
+                self._current_threshold = new_threshold
 
         return None
 
@@ -210,7 +273,7 @@ class DiscordActivityMonitor(BaseTrigger):
 
     def __init__(
         self,
-        client: DiscordClient | None = None,
+        client: Any = None,
         client_name: str = "default",
         prompt: str | None = None,
         **options: Any,
@@ -229,11 +292,11 @@ class DiscordActivityMonitor(BaseTrigger):
         self.client_name = client_name
         self._activity_callbacks: list[callable] = []
 
-    def set_client(self, client: DiscordClient) -> None:
+    def set_client(self, client: Any) -> None:
         """Set Discord client."""
         self.client = client
 
-    def _ensure_client(self) -> DiscordClient | None:
+    def _ensure_client(self) -> Any:
         """Get client, looking up from registry if needed."""
         if self.client is None:
             self.client = _get_client(self.client_name)
