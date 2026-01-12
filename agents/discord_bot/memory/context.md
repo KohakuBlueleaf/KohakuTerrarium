@@ -1,28 +1,24 @@
 ---
-title: Current Context
+title: Context
 summary: Active topics and current state
 protected: false
-updated: 2024-05-24
+updated: 2026-01-12
 ---
-# Current Context
+# Active Topics
 
-## Recent Conversations
+- **系統狀態**：
+    - 剛經歷過多次系統重啟與更新。
 
-- **系統維護與宣傳討論**：KBlueLeaf 正在測試與維護安菲的系統，並與大家討論是否要開始宣傳這個頻道。
-- **Character 提供提議**：KBlueLeaf 提議大家可以提供自己的 character 給他，可能用於建立更多 bot。
-- **機器人養成計畫**：星星 (汐) 提議透過大量對話進行養成，並討論了安全過濾器 (Filter) 的必要性。
-- **龍娘 (Amphitrite) 與過濾機制**：討論圍繞著龍娘的開發，特別是關於內容過濾 (Filtered) 的機制與必要性。
-- **Bad Topic Limiter**：KBlueLeaf 準備套用壞話題限制器 (Bad Topic Limiter)，加強對敏感或不當內容的管控。
+- **近期討論主題**：
+    - **武士道發表會 (2026-01-12)**：討論了《BanG Dream!》新手遊及 MyGO/Mujica 世界觀分離。
+    - **起司悖論**：關於起司越多孔越多，孔越多起司越少的邏輯討論。
+    - **大氣生物**：討論關於生活在大氣中的未知生物概念。
+    - **水魔法與自我複製**：涉及魔法設定與自我複製的機制討論。
+    - **對火的看法**：成員間交流了對火的觀感。
+    - **喜歡的季節**：分享了各自偏好的季節。
 
-## Active Topics
-
-- **記憶系統調整**：KBlueLeaf 提到目前的記憶系統還比較陽春（不完整），計畫等完成度更高後，再單獨開設頻道進行宣傳。
-- **頻道宣傳**：目前傾向暫緩大規模宣傳，直到記憶系統等功能更完善。
-- **頻道限制**：目前安菲僅限在 `#調戲AI龍娘` 頻道發言，未來可能開放其他頻道。
-- **多 Bot 擴展計畫**：KBlueLeaf 正在考慮收集使用者提供的 character 設定。
-- **養成與過濾機制**：探討如何像 Neuro 一樣透過互動進化，同時針對敏感內容進行過濾 (Filtered)。
-- **安全機制實作**：KBlueLeaf 正在導入 Bad Topic Limiter 以確保對話內容符合規範。
-
-## Current Mood/State
-
-Ready to chat
+- **安菲特蒂 (Amphitrite) 養成計畫**：
+    - KBlueLeaf 正在測試記憶與過濾系統。
+    - 汐提議透過大量對話塑造個性。
+    - **群組活躍於 TRPG (跑團) 與各式遊戲。**
+    - **存在另一位機器人「栞」，成員常用 `~ask` 進行互動。**

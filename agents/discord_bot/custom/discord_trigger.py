@@ -83,6 +83,10 @@ class DiscordPingTrigger(BaseTrigger):
         if context.get("source") != "discord":
             return
 
+        # Skip if this is already a ping event (avoid re-triggering loop)
+        if context.get("force_reply"):
+            return
+
         is_mention = context.get("is_mention", False)
         if is_mention:
             # Queue the ping for processing
@@ -149,6 +153,7 @@ class DiscordIdleTrigger(BaseTrigger):
         self.exploration_chance = exploration_chance
         self._last_activity = asyncio.get_event_loop().time()
         self._current_threshold: float | None = None
+        self._check_count = 0  # For logging every N checks
 
     def _on_context_update(self, context: dict[str, Any]) -> None:
         """Reset idle timer on any activity."""
@@ -200,16 +205,21 @@ class DiscordIdleTrigger(BaseTrigger):
         current_time = asyncio.get_event_loop().time()
         idle_duration = current_time - self._last_activity
 
-        # Log idle status periodically (every check)
-        logger.debug(
-            "Idle check",
-            extra={
-                "idle_seconds": int(idle_duration),
-                "threshold": (
-                    int(self._current_threshold) if self._current_threshold else None
-                ),
-            },
-        )
+        # Log idle status every 10 checks (~5 minutes)
+        self._check_count += 1
+        if self._check_count >= 10:
+            self._check_count = 0
+            logger.debug(
+                "Idle status",
+                extra={
+                    "idle_minutes": int(idle_duration / 60),
+                    "threshold_minutes": (
+                        int(self._current_threshold / 60)
+                        if self._current_threshold
+                        else None
+                    ),
+                },
+            )
 
         # Check if we've been idle long enough
         if self._current_threshold and idle_duration >= self._current_threshold:

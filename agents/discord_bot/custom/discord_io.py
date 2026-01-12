@@ -49,6 +49,10 @@ def _short_id(full_id: int) -> str:
     return f"{s[:4]}..{s[-4:]}"
 
 
+# Pattern to match Discord mentions: <@123456> or <@!123456> (nickname mention)
+DISCORD_MENTION_PATTERN = re.compile(r"<@!?(\d+)>")
+
+
 @dataclass
 class DiscordMessage:
     """Represents a Discord message with metadata."""
@@ -65,6 +69,7 @@ class DiscordMessage:
     is_mention: bool
     mentioned_users: list[int]
     reply_to_id: int | None
+    reply_to_author: str | None = None  # Display name of replied-to message author
     timestamp: str = ""  # HH:MM format
     # Short identifiers for bot to reference
     short_msg_id: str = ""
@@ -210,9 +215,11 @@ class DiscordClient(discord.Client):
 
                 # Format for context (with timestamp)
                 short_msg_id = _short_id(msg.id)
-                # Format time as HH:MM (local time)
-                msg_time = msg.created_at.strftime("%H:%M")
-                formatted = f"[{msg_time}] [{msg.author.display_name}({short_msg_id})]: {msg.content}"
+                # Format time as YYYY-MM-DD HH:MM
+                msg_time = msg.created_at.strftime("%Y-%m-%d %H:%M")
+                # Parse mentions to readable names
+                parsed_content = self.parse_mentions(msg.content, msg.guild)
+                formatted = f"[{msg_time}] [{msg.author.display_name}({short_msg_id})]: {parsed_content}"
                 messages.append(formatted)
 
             # Reverse to chronological order
@@ -265,16 +272,6 @@ class DiscordClient(discord.Client):
             )
         )
 
-        logger.debug(
-            "Discord message received",
-            extra={
-                "author": message.author.display_name,
-                "channel": getattr(message.channel, "name", "DM"),
-                "guild": message.guild.name if message.guild else "DM",
-                "content_preview": message.content[:50] if message.content else "",
-            },
-        )
-
         # Check if bot is mentioned
         is_mention = self.user in message.mentions if self.user else False
 
@@ -283,13 +280,29 @@ class DiscordClient(discord.Client):
 
         # Get reply reference if exists
         reply_to_id = None
+        reply_to_author = None
         if message.reference and message.reference.message_id:
             reply_to_id = message.reference.message_id
+            # Try to get reply author from cached message
+            if message.reference.cached_message:
+                reply_to_author = message.reference.cached_message.author.display_name
+            else:
+                # Look up in recent messages
+                channel_id = message.channel.id
+                if channel_id in self._recent_messages:
+                    for recent in self._recent_messages[channel_id]:
+                        if recent.message_id == reply_to_id:
+                            reply_to_author = recent.author_name
+                            break
+
+        # Parse mentions in content to readable names
+        parsed_content = self.parse_mentions(message.content, message.guild)
 
         # Build message object
-        msg_time = message.created_at.strftime("%H:%M")
+        # Format: YYYY-MM-DD HH:MM
+        msg_time = message.created_at.strftime("%Y-%m-%d %H:%M")
         discord_msg = DiscordMessage(
-            content=message.content,
+            content=parsed_content,
             author_id=message.author.id,
             author_name=message.author.name,
             author_display_name=message.author.display_name,
@@ -301,10 +314,20 @@ class DiscordClient(discord.Client):
             is_mention=is_mention,
             mentioned_users=mentioned_users,
             reply_to_id=reply_to_id,
+            reply_to_author=reply_to_author,
             timestamp=msg_time,
         )
 
         await self._message_queue.put(discord_msg)
+        logger.info(
+            "Message queued",
+            extra={
+                "author": message.author.display_name,
+                "channel": getattr(message.channel, "name", "DM"),
+                "queue_size": self._message_queue.qsize(),
+                "is_mention": is_mention,
+            },
+        )
 
     async def get_message(self) -> DiscordMessage:
         """Get next message from queue."""
@@ -357,6 +380,41 @@ class DiscordClient(discord.Client):
     def find_user_id(self, name: str) -> int | None:
         """Find user ID from name."""
         return self._user_cache.get(name.lower())
+
+    def parse_mentions(self, content: str, guild: discord.Guild | None) -> str:
+        """
+        Convert Discord mention format to readable @Username.
+
+        <@123456> or <@!123456> → @Username
+        """
+        if not content:
+            return content
+
+        def replace_mention(match: re.Match) -> str:
+            user_id = int(match.group(1))
+
+            # Check if it's the bot itself
+            if self.user and user_id == self.user.id:
+                return f"@{self.user.display_name}"
+
+            # Try to find user in guild
+            if guild:
+                member = guild.get_member(user_id)
+                if member:
+                    # Cache for future use
+                    self._user_cache[member.display_name.lower()] = user_id
+                    self._user_cache[member.name.lower()] = user_id
+                    return f"@{member.display_name}"
+
+            # Try user cache (reverse lookup)
+            for name, uid in self._user_cache.items():
+                if uid == user_id:
+                    return f"@{name}"
+
+            # Fallback to short ID format
+            return f"@User({_short_id(user_id)})"
+
+        return DISCORD_MENTION_PATTERN.sub(replace_mention, content)
 
     async def send_message(
         self,
@@ -453,6 +511,14 @@ class DiscordClient(discord.Client):
     def get_bot_user_id(self) -> int | None:
         """Get the bot's user ID."""
         return self.user.id if self.user else None
+
+    def has_pending_messages(self) -> bool:
+        """Check if there are messages waiting in the queue."""
+        return not self._message_queue.empty()
+
+    def pending_message_count(self) -> int:
+        """Get the number of pending messages in queue."""
+        return self._message_queue.qsize()
 
 
 class DiscordInputModule(BaseInputModule):
@@ -557,31 +623,74 @@ class DiscordInputModule(BaseInputModule):
                 pass
 
     async def get_input(self) -> TriggerEvent | None:
-        """Get next Discord message as TriggerEvent."""
+        """Get next Discord message(s) as TriggerEvent.
+
+        If multiple messages are buffered while controller is busy,
+        they are merged into a single event.
+        """
         if not self._running:
+            logger.debug("get_input called but not running")
             return None
 
+        # Log queue state before waiting
+        queue_size = self.client._message_queue.qsize()
+        if queue_size > 0:
+            logger.debug(
+                "get_input called, messages pending",
+                extra={"queue_size": queue_size},
+            )
+
         try:
-            # Wait for message with timeout to allow checking running state
-            msg = await asyncio.wait_for(
+            # Wait for first message with timeout
+            first_msg = await asyncio.wait_for(
                 self.client.get_message(),
                 timeout=1.0,
             )
 
+            # Small delay to allow more messages to accumulate
+            # This helps batch rapid-fire messages together
+            await asyncio.sleep(0.5)
+
+            # Collect all messages - start with first
+            messages: list[DiscordMessage] = [first_msg]
+
+            # Drain any additional buffered messages (non-blocking)
+            while True:
+                try:
+                    extra_msg = self.client._message_queue.get_nowait()
+                    messages.append(extra_msg)
+                except asyncio.QueueEmpty:
+                    break
+
+            # Log consumed messages
+            logger.info(
+                "Messages consumed from queue",
+                extra={
+                    "consumed_count": len(messages),
+                    "remaining_queue": self.client._message_queue.qsize(),
+                    "authors": [m.author_display_name for m in messages],
+                },
+            )
+
+            # Use last message for context (most recent channel/etc)
+            last_msg = messages[-1]
+
             # Set output context (channel only, no auto-reply)
-            self.client.set_output_context(channel_id=msg.channel_id)
+            self.client.set_output_context(channel_id=last_msg.channel_id)
 
             # Check if read-only channel
-            is_readonly = self.client.is_readonly_channel(msg.channel_id)
+            is_readonly = self.client.is_readonly_channel(last_msg.channel_id)
+
+            # Check if ANY message is a mention
+            any_mention = any(m.is_mention for m in messages)
 
             # Fetch history if this is first message in channel
             history_context = ""
-            if msg.channel_id not in self.client._history_fetched:
-                # Get channel object to fetch history
-                channel = self.client.get_channel(msg.channel_id)
+            if last_msg.channel_id not in self.client._history_fetched:
+                channel = self.client.get_channel(last_msg.channel_id)
                 if not channel:
                     try:
-                        channel = await self.client.fetch_channel(msg.channel_id)
+                        channel = await self.client.fetch_channel(last_msg.channel_id)
                     except discord.DiscordException:
                         channel = None
 
@@ -596,42 +705,71 @@ class DiscordInputModule(BaseInputModule):
                             + "\n--- End History ---\n\n"
                         )
 
-            # Build context header
-            # Format: [Bot:name(id)] [Server:name(1234..5678)] [#channel(1234..5678)]
+            # Build context header from last message
             bot_identity = self.client.get_bot_identity()
 
             guild_part = ""
-            if msg.guild_name and msg.guild_id:
-                guild_short = _short_id(msg.guild_id)
-                guild_part = f"[Server:{msg.guild_name}({guild_short})]"
+            if last_msg.guild_name and last_msg.guild_id:
+                guild_short = _short_id(last_msg.guild_id)
+                guild_part = f"[Server:{last_msg.guild_name}({guild_short})]"
 
-            channel_short = _short_id(msg.channel_id)
-            channel_part = f"[#{msg.channel_name}({channel_short})]"
+            channel_short = _short_id(last_msg.channel_id)
+            channel_part = f"[#{last_msg.channel_name}({channel_short})]"
 
-            readonly_marker = "[READONLY] " if is_readonly else ""
-            ping_marker = "[PINGED] " if msg.is_mention else ""
-
-            # Format: [You:BotName(id)] [Server:...] [#channel:...]
-            # [HH:MM] [READONLY]? [PINGED]? [Author(msgid)]: content
             identity_header = f"[You:{bot_identity}]"
             context_header = f"{identity_header} {guild_part} {channel_part}".strip()
-            msg_header = f"[{msg.timestamp}] {readonly_marker}{ping_marker}[{msg.author_display_name}({msg.short_msg_id})]"
 
-            formatted_content = (
-                f"{history_context}{context_header}\n{msg_header}: {msg.content}"
+            # Format each message
+            # Include: display name (nickname), account name, short user ID
+            formatted_lines = []
+            for msg in messages:
+                readonly_marker = "[READONLY] " if is_readonly else ""
+                ping_marker = "[PINGED] " if msg.is_mention else ""
+                # Format: [timestamp] [markers] [DisplayName|AccountName(userId)]: content
+                # This helps agent understand nicknames vs account names
+                if msg.author_display_name != msg.author_name:
+                    author_info = f"{msg.author_display_name}|{msg.author_name}({msg.short_author_id})"
+                else:
+                    author_info = f"{msg.author_name}({msg.short_author_id})"
+                # Add reply indicator if this message is a reply
+                reply_marker = ""
+                if msg.reply_to_author:
+                    reply_marker = f"[→{msg.reply_to_author}] "
+                elif msg.reply_to_id:
+                    # Have ID but no author name
+                    reply_marker = f"[→msg:{_short_id(msg.reply_to_id)}] "
+                msg_header = f"[{msg.timestamp}] {readonly_marker}{ping_marker}{reply_marker}[{author_info}]"
+                formatted_lines.append(f"{msg_header}: {msg.content}")
+
+            formatted_content = f"{history_context}{context_header}\n" + "\n".join(
+                formatted_lines
             )
+
+            # Append instruction reminder at the end
+            instruction_reminder = """
+---
+Now respond following the system prompt. Output ONLY one of:
+1. [SKIP] - if message not for you
+2. Your in-character response - if addressed/pinged
+3. Memory operation then [SKIP] - if you learned something but won't reply
+Do NOT output anything else (no "user", no markdown headers, no system text).
+"""
+            formatted_content += instruction_reminder
 
             return TriggerEvent(
                 type="user_input",
                 content=formatted_content,
                 context={
-                    **msg.to_context(),
+                    **last_msg.to_context(),
                     "is_readonly": is_readonly,
                     "bot_identity": bot_identity,
+                    "is_mention": any_mention,  # Override with merged mention status
+                    "message_count": len(messages),
                 },
                 stackable=True,
             )
         except asyncio.TimeoutError:
+            # No message within timeout - this is normal idle behavior
             return None
 
     def get_client(self) -> DiscordClient:
@@ -663,6 +801,9 @@ class DiscordOutputModule(BaseOutputModule):
         client_name: str = "default",
         filtered_keywords: list[str] | None = None,
         keywords_file: str | None = None,
+        drop_base_chance: float = 0.25,
+        drop_increment: float = 0.15,
+        drop_max_chance: float = 0.7,
     ):
         """
         Initialize Discord output.
@@ -672,11 +813,19 @@ class DiscordOutputModule(BaseOutputModule):
             client_name: Name to look up in shared client registry
             filtered_keywords: List of keywords to filter (replace with [filtered])
             keywords_file: Path to file containing keywords (one per line)
+            drop_base_chance: Base chance to drop response when 1 message pending (0.0-1.0)
+            drop_increment: Additional chance per extra pending message
+            drop_max_chance: Maximum drop chance cap
         """
         super().__init__()
         self.client = client
         self.client_name = client_name
         self._buffer: list[str] = []
+
+        # Drop chance configuration
+        self.drop_base_chance = drop_base_chance
+        self.drop_increment = drop_increment
+        self.drop_max_chance = drop_max_chance
 
         # Load filtered keywords
         self._filtered_keywords: set[str] = set()
@@ -694,7 +843,12 @@ class DiscordOutputModule(BaseOutputModule):
 
         logger.info(
             "Initializing Discord output module",
-            extra={"client_name": client_name},
+            extra={
+                "client_name": client_name,
+                "drop_base": drop_base_chance,
+                "drop_increment": drop_increment,
+                "drop_max": drop_max_chance,
+            },
         )
 
     def _load_keywords_file(self, filepath: str) -> None:
@@ -792,6 +946,35 @@ class DiscordOutputModule(BaseOutputModule):
             logger.warning("Cannot write - no Discord client available")
             return
 
+        # Check if new messages arrived while generating response
+        # Randomly decide whether to drop (gives chance to still send relevant responses)
+        import random
+
+        pending_count = client.pending_message_count()
+        if pending_count > 0:
+            # Calculate drop chance: base + (pending - 1) * increment, capped at max
+            drop_chance = min(
+                self.drop_max_chance,
+                self.drop_base_chance + (pending_count - 1) * self.drop_increment,
+            )
+            if random.random() < drop_chance:
+                logger.info(
+                    "Dropping response - new messages pending",
+                    extra={
+                        "pending_count": pending_count,
+                        "drop_chance": f"{drop_chance:.0%}",
+                    },
+                )
+                return
+            else:
+                logger.debug(
+                    "Sending despite pending messages",
+                    extra={
+                        "pending_count": pending_count,
+                        "drop_chance": f"{drop_chance:.0%}",
+                    },
+                )
+
         # Clean content (remove any formatting artifacts)
         clean_content = content.strip()
         if not clean_content:
@@ -802,6 +985,25 @@ class DiscordOutputModule(BaseOutputModule):
         if "[SKIP]" in clean_content:
             logger.debug("Skipping response (bot chose not to reply)")
             return
+
+        # Filter out system/format garbage (model hallucination)
+        garbage_patterns = [
+            "user",
+            "assistant",
+            "[tool",
+            "## ",
+            "background job",
+            "```",
+            "---",
+        ]
+        lower_content = clean_content.lower()
+        for pattern in garbage_patterns:
+            if lower_content.strip() == pattern or lower_content.startswith(pattern):
+                logger.debug(
+                    "Filtering garbage output (system text)",
+                    extra={"content": clean_content[:50]},
+                )
+                return
 
         # Filter out garbage/repetitive content (model hallucination)
         stripped = clean_content.replace(" ", "").replace("\n", "")

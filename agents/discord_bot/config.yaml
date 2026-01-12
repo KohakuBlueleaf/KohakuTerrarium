@@ -7,10 +7,13 @@ version: "1.0"
 # LLM Configuration - Controller (orchestration)
 controller:
   model: "${OPENROUTER_MODEL:google/gemini-3-flash-preview}"
-  temperature: 0.7
-  max_tokens: 512000
+  temperature: 0.5
+  max_tokens: 1000000
   api_key_env: OPENROUTER_API_KEY
   base_url: https://openrouter.ai/api/v1
+  # Context limits - keep short since we use memory for persistent context
+  max_messages: 100        # Keep only last 20 messages
+  max_context_chars: 1000000  # ~240k tokens
 
 # System prompt (loaded from file)
 system_prompt_file: prompts/system.md
@@ -37,7 +40,8 @@ input:
   # Read-only channels: observe to learn, but cannot respond
   readonly_channel_ids: [680728618770497552, 692243859970850907, 772472578933522442, 934172207758868510]
   # Number of history messages to fetch on first message in channel
-  history_limit: 50
+  # Keep low to avoid agent trying to reply to all historical messages
+  history_limit: 64
 
 # Custom Output - Discord message sending
 output:
@@ -49,23 +53,23 @@ output:
   # Keyword filter - replaces sensitive words with [filtered]
   keywords_file: ./filtered_keywords.txt
   # Or inline: filtered_keywords: [word1, word2, word3]
+  # Drop response chance when new messages pending (to avoid outdated responses)
+  # Formula: min(drop_max_chance, drop_base_chance + (pending-1) * drop_increment)
+  drop_base_chance: 0.25   # 1 pending = 25%
+  drop_increment: 0.15     # +15% per additional pending
+  drop_max_chance: 0.7     # cap at 70%
 
 # Triggers - autonomous events
 triggers:
-  # Ping trigger - fires when bot is mentioned
-  - type: custom
-    module: ./custom/discord_trigger.py
-    class: DiscordPingTrigger
-    prompt: "You were mentioned directly. This user expects a response. Reply to them."
-
   # Idle trigger - fires after chat inactivity
+  # Note: Ping detection is handled by input module ([PINGED] marker)
   - type: custom
     module: ./custom/discord_trigger.py
     class: DiscordIdleTrigger
     prompt: "The chat has been quiet for a while. If you have something interesting to share or a topic to bring up, now might be a good time. But dont force it - only speak if natural."
     # Configuration
-    min_idle_seconds: 180   # 3 minutes minimum
-    max_idle_seconds: 1200   # 20 minutes maximum
+    min_idle_seconds: 1800   # 30 minutes minimum
+    max_idle_seconds: 28800  # 8 hours maximum
     exploration_chance: 0.3  # 30% chance to actually start topic
 
 # Tools for controller (memory sub-agents need tree, read, grep)
