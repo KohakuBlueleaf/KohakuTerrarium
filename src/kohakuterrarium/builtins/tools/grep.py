@@ -6,6 +6,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+import aiofiles
+
 from kohakuterrarium.builtins.tools.registry import register_builtin
 from kohakuterrarium.modules.tool.base import (
     BaseTool,
@@ -76,10 +78,10 @@ class GrepTool(BaseTool):
                 if not file_path.is_file():
                     continue
 
-                # Skip binary files
+                # Skip binary files (quick sync check is fine)
                 try:
-                    with open(file_path, "rb") as f:
-                        chunk = f.read(1024)
+                    async with aiofiles.open(file_path, "rb") as f:
+                        chunk = await f.read(1024)
                         if b"\x00" in chunk:
                             continue
                 except Exception:
@@ -88,8 +90,12 @@ class GrepTool(BaseTool):
                 files_searched += 1
 
                 try:
-                    with open(file_path, encoding="utf-8", errors="replace") as f:
-                        for line_num, line in enumerate(f, 1):
+                    async with aiofiles.open(
+                        file_path, encoding="utf-8", errors="replace"
+                    ) as f:
+                        line_num = 0
+                        async for line in f:
+                            line_num += 1
                             if regex.search(line):
                                 try:
                                     rel_path = file_path.relative_to(base)

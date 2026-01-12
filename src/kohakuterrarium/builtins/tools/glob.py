@@ -2,6 +2,7 @@
 Glob tool - find files matching patterns.
 """
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -53,42 +54,48 @@ class GlobTool(BaseTool):
         limit = int(args.get("limit", 100))
 
         try:
-            # Use glob to find files
-            matches = list(base.glob(pattern))
-
-            # Sort by modification time (newest first)
-            matches.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-
-            # Apply limit
-            total = len(matches)
-            if limit > 0 and len(matches) > limit:
-                matches = matches[:limit]
-
-            # Format output
-            output_lines = []
-            for match in matches:
-                try:
-                    rel_path = match.relative_to(base)
-                except ValueError:
-                    rel_path = match
-                output_lines.append(str(rel_path))
-
-            output = "\n".join(output_lines)
-
-            if total > len(matches):
-                output += f"\n\n... ({total} total, showing {len(matches)})"
-
-            logger.debug(
-                "Glob search",
-                pattern=pattern,
-                matches=len(matches),
-            )
-
-            return ToolResult(output=output or "(no matches)", exit_code=0)
+            # Run blocking glob/stat in thread pool
+            result = await asyncio.to_thread(self._find_files, base, pattern, limit)
+            return result
 
         except Exception as e:
             logger.error("Glob failed", error=str(e))
             return ToolResult(error=str(e))
+
+    def _find_files(self, base: Path, pattern: str, limit: int) -> ToolResult:
+        """Synchronous file finding (runs in thread pool)."""
+        # Use glob to find files
+        matches = list(base.glob(pattern))
+
+        # Sort by modification time (newest first)
+        matches.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+
+        # Apply limit
+        total = len(matches)
+        if limit > 0 and len(matches) > limit:
+            matches = matches[:limit]
+
+        # Format output
+        output_lines = []
+        for match in matches:
+            try:
+                rel_path = match.relative_to(base)
+            except ValueError:
+                rel_path = match
+            output_lines.append(str(rel_path))
+
+        output = "\n".join(output_lines)
+
+        if total > len(matches):
+            output += f"\n\n... ({total} total, showing {len(matches)})"
+
+        logger.debug(
+            "Glob search",
+            pattern=pattern,
+            matches=len(matches),
+        )
+
+        return ToolResult(output=output or "(no matches)", exit_code=0)
 
     def get_full_documentation(self) -> str:
         return """# glob

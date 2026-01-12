@@ -331,6 +331,8 @@ class Agent:
             system_prompt=system_prompt,
             include_job_status=True,
             include_tools_list=False,  # Already in aggregated prompt
+            max_messages=self.config.max_messages,
+            max_context_chars=self.config.max_context_chars,
         )
 
         self.controller = Controller(
@@ -552,8 +554,12 @@ class Agent:
             # Fire startup trigger if configured
             await self._fire_startup_trigger()
 
+            idle_logged = False
             while self._running:
                 # Get input
+                if not idle_logged:
+                    logger.debug("Agent idle, waiting for input...")
+                    idle_logged = True
                 event = await self.input.get_input()
 
                 # Check for exit
@@ -564,10 +570,18 @@ class Agent:
                     ):
                         logger.info("Exit requested")
                         break
+                    # Timeout or no input, continue waiting
                     continue
 
                 # Process input through controller
+                idle_logged = False  # Reset so we log idle again after processing
+                logger.info(
+                    "Input received, processing event",
+                    event_type=event.type,
+                    content_len=len(event.content) if event.content else 0,
+                )
                 await self._process_event(event)
+                logger.debug("Event processing complete, returning to idle")
 
         except KeyboardInterrupt:
             logger.info("Interrupted")
@@ -676,6 +690,12 @@ class Agent:
                 and not pending_background_ids
                 and not pending_subagent_ids
             ):
+                logger.debug(
+                    "No jobs pending, exiting process loop",
+                    jobs_this_round=jobs_started_this_round,
+                    pending_bg=len(pending_background_ids),
+                    pending_sa=len(pending_subagent_ids),
+                )
                 break
 
             # Build feedback for controller
@@ -707,10 +727,20 @@ class Agent:
                     exit_code=0,
                     error=None,
                 )
+                logger.debug(
+                    "Pushing feedback to controller, continuing loop",
+                    pending_bg=len(pending_background_ids),
+                    pending_sa=len(pending_subagent_ids),
+                )
                 await self.controller.push_event(feedback_event)
             else:
                 # No feedback to send but we have pending jobs - just continue
                 # This shouldn't normally happen
+                logger.warning(
+                    "No feedback but had pending jobs, unexpected break",
+                    pending_bg=len(pending_background_ids),
+                    pending_sa=len(pending_subagent_ids),
+                )
                 break
 
     async def _start_tool_async(

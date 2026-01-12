@@ -19,7 +19,7 @@ from kohakuterrarium.commands.read import (
     ReadCommand,
     WaitCommand,
 )
-from kohakuterrarium.core.conversation import Conversation
+from kohakuterrarium.core.conversation import Conversation, ConversationConfig
 from kohakuterrarium.core.events import TriggerEvent
 from kohakuterrarium.core.executor import Executor
 from kohakuterrarium.core.job import JobResult, JobStatus, JobStore
@@ -57,7 +57,8 @@ class ControllerConfig:
     include_job_status: bool = True
     include_tools_list: bool = True
     batch_stackable_events: bool = True
-    max_context_chars: int = 0  # 0 = no limit
+    max_context_chars: int = 100000  # ~25k tokens, reasonable default
+    max_messages: int = 50  # Keep last 50 messages
 
 
 @dataclass
@@ -137,8 +138,13 @@ class Controller:
         self.executor = executor
         self.registry = registry or Registry()
 
-        # Conversation history
-        self.conversation = Conversation()
+        # Conversation history (with limits from config)
+        conv_config = ConversationConfig(
+            max_messages=self.config.max_messages,
+            max_context_chars=self.config.max_context_chars,
+            keep_system=True,
+        )
+        self.conversation = Conversation(conv_config)
 
         # Event queue
         self._event_queue: asyncio.Queue[TriggerEvent] = asyncio.Queue()

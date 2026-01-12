@@ -110,6 +110,10 @@ class AgentConfig:
     # - static: All tool docs included in system prompt (no [/info] needed)
     skill_mode: str = "dynamic"
 
+    # Context management - limits LLM conversation history
+    max_messages: int = 50  # Max messages to keep (0 = unlimited)
+    max_context_chars: int = 100000  # Max chars (~25k tokens, 0 = unlimited)
+
     # Module configs
     input: InputConfig = field(default_factory=InputConfig)
     triggers: list[TriggerConfig] = field(default_factory=list)
@@ -337,6 +341,8 @@ def load_agent_config(agent_path: str | Path) -> AgentConfig:
         skill_mode=controller_data.get(
             "skill_mode", config_data.get("skill_mode", "dynamic")
         ),
+        max_messages=controller_data.get("max_messages", 50),
+        max_context_chars=controller_data.get("max_context_chars", 100000),
         input=_parse_input_config(config_data.get("input")),
         triggers=[_parse_trigger_config(t) for t in config_data.get("triggers", [])],
         tools=[_parse_tool_config(t) for t in config_data.get("tools", [])],

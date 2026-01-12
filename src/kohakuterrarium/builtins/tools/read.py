@@ -5,6 +5,8 @@ Read tool - read file contents.
 from pathlib import Path
 from typing import Any
 
+import aiofiles
+
 from kohakuterrarium.builtins.tools.registry import register_builtin
 from kohakuterrarium.modules.tool.base import (
     BaseTool,
@@ -56,8 +58,11 @@ class ReadTool(BaseTool):
         limit = int(args.get("limit", 0))
 
         try:
-            with open(file_path, encoding="utf-8", errors="replace") as f:
-                lines = f.readlines()
+            async with aiofiles.open(
+                file_path, encoding="utf-8", errors="replace"
+            ) as f:
+                content = await f.read()
+            lines = content.splitlines(keepends=True)
 
             total_lines = len(lines)
 

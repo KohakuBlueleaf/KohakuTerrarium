@@ -8,6 +8,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+import aiofiles
+
 from kohakuterrarium.builtins.tools.registry import register_builtin
 from kohakuterrarium.modules.tool.base import (
     BaseTool,
@@ -68,7 +70,7 @@ def parse_frontmatter(content: str) -> dict[str, Any]:
     return frontmatter
 
 
-def build_tree(
+async def build_tree(
     path: Path,
     prefix: str = "",
     max_depth: int = 3,
@@ -102,21 +104,23 @@ def build_tree(
         if entry.is_dir():
             lines.append(f"{prefix}{connector}{entry.name}/")
             # Recurse into directory
-            lines.extend(
-                build_tree(
-                    entry,
-                    child_prefix,
-                    max_depth,
-                    current_depth + 1,
-                    show_hidden,
-                )
+            child_lines = await build_tree(
+                entry,
+                child_prefix,
+                max_depth,
+                current_depth + 1,
+                show_hidden,
             )
+            lines.extend(child_lines)
         else:
             # For markdown files, try to get frontmatter summary
             summary = ""
             if entry.suffix in (".md", ".markdown"):
                 try:
-                    content = entry.read_text(encoding="utf-8", errors="ignore")
+                    async with aiofiles.open(
+                        entry, encoding="utf-8", errors="ignore"
+                    ) as f:
+                        content = await f.read()
                     fm = parse_frontmatter(content)
                     if fm.get("summary"):
                         summary = f" - {fm['summary']}"
@@ -174,7 +178,8 @@ class TreeTool(BaseTool):
 
         try:
             lines = [f"{path.name}/"]
-            lines.extend(build_tree(path, "", max_depth, 0, show_hidden))
+            tree_lines = await build_tree(path, "", max_depth, 0, show_hidden)
+            lines.extend(tree_lines)
 
             output = "\n".join(lines)
 

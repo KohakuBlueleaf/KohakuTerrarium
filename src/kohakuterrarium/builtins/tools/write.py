@@ -5,6 +5,8 @@ Write tool - write content to files.
 from pathlib import Path
 from typing import Any
 
+import aiofiles
+
 from kohakuterrarium.builtins.tools.registry import register_builtin
 from kohakuterrarium.modules.tool.base import (
     BaseTool,
@@ -55,8 +57,8 @@ class WriteTool(BaseTool):
             exists = file_path.exists()
 
             # Write content
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(content)
+            async with aiofiles.open(file_path, "w", encoding="utf-8") as f:
+                await f.write(content)
 
             action = "Updated" if exists else "Created"
             lines = content.count("\n") + 1 if content else 0

@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import aiofiles
+
 from kohakuterrarium.builtins.tools.registry import register_builtin
 from kohakuterrarium.modules.tool.base import (
     BaseTool,
@@ -228,7 +230,15 @@ class EditTool(BaseTool):
         diff = args.get("diff", "")
 
         if not path:
-            return ToolResult(error="No path provided")
+            return ToolResult(
+                error="No path provided. Use @@path= to specify the file:\n\n"
+                "[/edit]\n"
+                "@@path=path/to/file.py\n"
+                "@@ -10,2 +10,3 @@\n"
+                " context line\n"
+                "+new line\n"
+                "[edit/]"
+            )
         if not diff:
             return ToolResult(error="No diff provided")
 
@@ -243,8 +253,8 @@ class EditTool(BaseTool):
 
         try:
             # Read current content
-            with open(file_path, encoding="utf-8") as f:
-                original = f.read()
+            async with aiofiles.open(file_path, encoding="utf-8") as f:
+                original = await f.read()
 
             # Parse diff
             try:
@@ -252,18 +262,33 @@ class EditTool(BaseTool):
             except DiffParseError as e:
                 return ToolResult(
                     error=f"Invalid diff format: {e}\n\n"
-                    "Expected format:\n"
-                    "@@ -start,count +start,count @@\n"
-                    "-removed line\n"
-                    "+added line\n"
-                    " context line"
+                    "COMPLETE EXAMPLE - copy this format exactly:\n"
+                    "[/edit]\n"
+                    "@@path=src/file.py\n"
+                    "@@ -10,3 +10,4 @@\n"
+                    " context line (starts with space)\n"
+                    "-line to remove (starts with minus)\n"
+                    "+line to add (starts with plus)\n"
+                    "+another new line\n"
+                    "[edit/]\n\n"
+                    "IMPORTANT:\n"
+                    "- @@path= is the tool argument (file path)\n"
+                    "- @@ -10,3 +10,4 @@ is the diff hunk header (line numbers)\n"
+                    "- These are DIFFERENT! Don't confuse them.\n"
+                    "- Lines starting with space = context (unchanged)\n"
+                    "- Lines starting with - = removed\n"
+                    "- Lines starting with + = added"
                 )
 
             # Apply hunks
             try:
                 new_content = apply_hunks(original, hunks)
             except DiffParseError as e:
-                return ToolResult(error=f"Failed to apply diff: {e}")
+                return ToolResult(
+                    error=f"Failed to apply diff: {e}\n\n"
+                    'TIP: Use <read path="file"/> first to see exact line '
+                    "numbers and content, then match them exactly in your diff."
+                )
 
             # Check if anything changed
             if new_content == original:
@@ -273,8 +298,8 @@ class EditTool(BaseTool):
                 )
 
             # Write back
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(new_content)
+            async with aiofiles.open(file_path, "w", encoding="utf-8") as f:
+                await f.write(new_content)
 
             # Calculate stats
             old_lines = original.count("\n")
