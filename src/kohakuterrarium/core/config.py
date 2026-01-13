@@ -132,11 +132,6 @@ class AgentConfig:
         False  # Clear conversation after each interaction (for group chat)
     )
 
-    # Parallel controller settings (only for ephemeral mode)
-    max_parallel_controllers: int = (
-        1  # Max concurrent controller instances (0 = unlimited)
-    )
-
     # Module configs
     input: InputConfig = field(default_factory=InputConfig)
     triggers: list[TriggerConfig] = field(default_factory=list)
@@ -386,7 +381,6 @@ def load_agent_config(agent_path: str | Path) -> AgentConfig:
         max_messages=controller_data.get("max_messages", 50),
         max_context_chars=controller_data.get("max_context_chars", 100000),
         ephemeral=controller_data.get("ephemeral", False),
-        max_parallel_controllers=controller_data.get("max_parallel_controllers", 1),
         input=_parse_input_config(config_data.get("input")),
         triggers=[_parse_trigger_config(t) for t in config_data.get("triggers", [])],
         tools=[_parse_tool_config(t) for t in config_data.get("tools", [])],

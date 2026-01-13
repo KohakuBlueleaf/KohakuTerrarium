@@ -25,25 +25,24 @@ logger = get_logger(__name__)
 
 # Framework hints template - {named_outputs_section} is replaced dynamically
 FRAMEWORK_HINTS_OUTPUT_MODEL = """
-## Output Model
+## Output Format
 
-**Two types of output:**
-1. **Thinking** - Plain text (not in any block) goes to internal log only
-2. **Named output** - Use `[/output_<name>]content[output_<name>/]` to send to specific destination
+Plain text = internal thinking (not sent anywhere)
+To send output externally, you MUST wrap in output block:
 
-Think freely - your reasoning helps you work through problems. Only use output blocks when you need to send content to an external destination.
+[/output_<name>]your content here[output_<name>/]
 {named_outputs_section}
 """
 
 NAMED_OUTPUTS_SECTION_TEMPLATE = """
-**Available outputs:** {outputs_list}
+Available: {outputs_list}
 
-Example:
-```
-[/output_{first_output}]
-Your message here
-[output_{first_output}/]
-```
+---output example---
+[/output_{first_output}]Hello![output_{first_output}/]
+---end example---
+
+If you want to send to {first_output}, wrap your message exactly like above.
+Without the wrapper, nothing gets sent.
 """
 
 # Framework hints for dynamic skill mode (use [/info] to read docs)

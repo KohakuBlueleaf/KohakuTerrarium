@@ -155,12 +155,6 @@ class Agent:
         # Module loader for custom components
         self._loader = ModuleLoader(agent_path=config.agent_path)
 
-        # Parallel controller support (for ephemeral mode)
-        # Semaphore limits concurrent event processing
-        max_parallel = config.max_parallel_controllers if config.ephemeral else 1
-        self._controller_semaphore = asyncio.Semaphore(max_parallel)
-        self._active_tasks: set[asyncio.Task] = set()
-
         # Initialize components
         # Order matters: output before controller (need known_outputs for parser)
         self._init_llm()
@@ -180,7 +174,6 @@ class Agent:
             tools=len(self.registry.list_tools()),
             triggers=len(self._triggers),
             ephemeral=config.ephemeral,
-            max_parallel=max_parallel,
         )
 
     def _init_llm(self) -> None:
@@ -590,11 +583,6 @@ class Agent:
         - Running controller
         - Processing tool calls
         - Routing output
-
-        In ephemeral mode with max_parallel_controllers > 1:
-        - Events are processed concurrently up to the limit
-        - Each event gets its own controller instance
-        - Input loop doesn't block waiting for processing to complete
         """
         await self.start()
 
@@ -604,8 +592,6 @@ class Agent:
 
             idle_logged = False
             while self._running:
-                # Clean up completed tasks
-                self._cleanup_completed_tasks()
 
                 # Get input
                 if not idle_logged:
@@ -631,19 +617,8 @@ class Agent:
                     content_len=len(event.content) if event.content else 0,
                 )
 
-                # In ephemeral parallel mode, spawn task and continue
-                if self.config.ephemeral and self.config.max_parallel_controllers > 1:
-                    task = asyncio.create_task(self._process_event_parallel(event))
-                    self._active_tasks.add(task)
-                    task.add_done_callback(self._active_tasks.discard)
-                    logger.debug(
-                        "Spawned parallel event task",
-                        active_tasks=len(self._active_tasks),
-                    )
-                else:
-                    # Sequential mode - wait for completion
-                    await self._process_event(event)
-                    logger.debug("Event processing complete, returning to idle")
+                await self._process_event(event)
+                logger.debug("Event processing complete, returning to idle")
 
         except KeyboardInterrupt:
             logger.info("Interrupted")
@@ -651,45 +626,7 @@ class Agent:
             logger.error("Agent error", error=str(e))
             raise
         finally:
-            # Wait for active tasks to complete
-            if self._active_tasks:
-                logger.info(
-                    "Waiting for active tasks to complete",
-                    count=len(self._active_tasks),
-                )
-                await asyncio.gather(*self._active_tasks, return_exceptions=True)
             await self.stop()
-
-    def _cleanup_completed_tasks(self) -> None:
-        """Remove completed tasks from active set."""
-        completed = {t for t in self._active_tasks if t.done()}
-        for task in completed:
-            self._active_tasks.discard(task)
-            # Log any exceptions
-            if task.exception():
-                logger.error(
-                    "Parallel task failed",
-                    error=str(task.exception()),
-                )
-
-    async def _process_event_parallel(self, event: TriggerEvent) -> None:
-        """
-        Process event in parallel mode with semaphore.
-
-        Acquires semaphore, creates a new controller, processes event, then releases.
-        """
-        async with self._controller_semaphore:
-            # Create a new controller for this event (ephemeral, independent)
-            controller = self._create_controller()
-            logger.debug(
-                "Processing event with new controller",
-                active_tasks=len(self._active_tasks),
-            )
-            try:
-                await self._process_event_with_controller(event, controller)
-            except Exception as e:
-                logger.error("Parallel event processing failed", error=str(e))
-                raise
 
     async def _fire_startup_trigger(self) -> None:
         """Fire startup trigger if configured."""
