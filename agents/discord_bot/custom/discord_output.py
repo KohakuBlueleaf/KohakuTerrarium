@@ -13,7 +13,7 @@ import discord
 from kohakuterrarium.modules.output import BaseOutputModule
 from kohakuterrarium.utils.logging import get_logger
 
-from .discord_client import DiscordClient, get_client
+from discord_client import DiscordClient, get_client
 
 logger = get_logger("kohakuterrarium.custom.discord_output")
 
@@ -334,7 +334,7 @@ def create_discord_io(
     keywords_file: str | None = None,
 ):
     """Create paired Discord input and output modules."""
-    from .discord_input import DiscordInputModule
+    from discord_input import DiscordInputModule
 
     input_module = DiscordInputModule(
         token=token,

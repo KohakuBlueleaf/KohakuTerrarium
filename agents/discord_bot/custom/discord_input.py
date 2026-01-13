@@ -12,7 +12,7 @@ from kohakuterrarium.core.events import TriggerEvent
 from kohakuterrarium.modules.input import BaseInputModule
 from kohakuterrarium.utils.logging import get_logger
 
-from .discord_client import (
+from discord_client import (
     DiscordClient,
     DiscordMessage,
     register_client,

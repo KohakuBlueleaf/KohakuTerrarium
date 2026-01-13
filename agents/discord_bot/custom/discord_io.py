@@ -8,7 +8,7 @@ from the split modules:
 - discord_output.py - Output module
 """
 
-from .discord_client import (
+from discord_client import (
     DiscordClient,
     DiscordMessage,
     RecentMessage,
@@ -16,8 +16,8 @@ from .discord_client import (
     register_client,
     short_id,
 )
-from .discord_input import DiscordInputModule
-from .discord_output import DiscordOutputModule, create_discord_io
+from discord_input import DiscordInputModule
+from discord_output import DiscordOutputModule, create_discord_io
 
 __all__ = [
     "DiscordClient",
