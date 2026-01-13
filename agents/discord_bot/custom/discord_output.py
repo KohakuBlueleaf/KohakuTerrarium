@@ -1,0 +1,353 @@
+"""
+Discord Output Module - Sends messages to Discord.
+
+Uses the shared DiscordClient from input module to send messages.
+Supports reply markers, mentions, keyword filtering, and deduplication.
+"""
+
+import re
+from collections import deque
+
+import discord
+
+from kohakuterrarium.modules.output import BaseOutputModule
+from kohakuterrarium.utils.logging import get_logger
+
+from .discord_client import DiscordClient, get_client
+
+logger = get_logger("kohakuterrarium.custom.discord_output")
+
+
+class DiscordOutputModule(BaseOutputModule):
+    """
+    Output module that sends messages to Discord.
+
+    Uses the shared DiscordClient from the input module.
+
+    Supports special markers in output:
+    - [reply:Username] or [reply:#N] - reply to a message
+    - [@Username] - mention a user
+
+    Supports keyword filtering and consecutive message deduplication.
+    """
+
+    REPLY_PATTERN = re.compile(r"\[reply:([^\]]+)\]", re.IGNORECASE)
+    MENTION_PATTERN = re.compile(r"\[@([^\]]+)\]")
+
+    def __init__(
+        self,
+        client: DiscordClient | None = None,
+        client_name: str = "default",
+        filtered_keywords: list[str] | None = None,
+        keywords_file: str | None = None,
+        drop_base_chance: float = 0.25,
+        drop_increment: float = 0.15,
+        drop_max_chance: float = 0.7,
+        dedup_threshold: float = 0.85,
+        dedup_window: int = 5,
+    ):
+        """
+        Initialize Discord output.
+
+        Args:
+            client: Shared Discord client
+            client_name: Name to look up in shared client registry
+            filtered_keywords: Keywords to replace with [filtered]
+            keywords_file: Path to keywords file (one per line)
+            drop_base_chance: Base chance to drop when messages pending
+            drop_increment: Additional chance per extra pending message
+            drop_max_chance: Maximum drop chance cap
+            dedup_threshold: Similarity threshold for deduplication (0.0-1.0)
+            dedup_window: Number of recent messages to check for duplicates
+        """
+        super().__init__()
+        self.client = client
+        self.client_name = client_name
+        self._buffer: list[str] = []
+
+        # Drop chance config
+        self.drop_base_chance = drop_base_chance
+        self.drop_increment = drop_increment
+        self.drop_max_chance = drop_max_chance
+
+        # Deduplication config
+        self.dedup_threshold = dedup_threshold
+        self._recent_outputs: deque[str] = deque(maxlen=dedup_window)
+
+        # Filtered keywords
+        self._filtered_keywords: set[str] = set()
+        if filtered_keywords:
+            self._filtered_keywords.update(kw.lower() for kw in filtered_keywords)
+
+        if keywords_file:
+            self._load_keywords_file(keywords_file)
+
+        if self._filtered_keywords:
+            logger.info(
+                "Keyword filter enabled",
+                extra={"keyword_count": len(self._filtered_keywords)},
+            )
+
+        logger.info(
+            "Initializing Discord output module",
+            extra={
+                "client_name": client_name,
+                "drop_base": drop_base_chance,
+                "dedup_threshold": dedup_threshold,
+            },
+        )
+
+    def _load_keywords_file(self, filepath: str) -> None:
+        """Load keywords from file (one per line, # for comments)."""
+        import os
+
+        if not os.path.exists(filepath):
+            logger.warning("Keywords file not found", extra={"path": filepath})
+            return
+
+        try:
+            with open(filepath, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#"):
+                        self._filtered_keywords.add(line.lower())
+        except OSError as e:
+            logger.warning("Failed to load keywords file", extra={"error": str(e)})
+
+    def _filter_keywords(self, content: str) -> str:
+        """Replace filtered keywords with [filtered]."""
+        if not self._filtered_keywords:
+            return content
+
+        result = content
+        for keyword in self._filtered_keywords:
+            pattern = re.compile(re.escape(keyword), re.IGNORECASE)
+            result = pattern.sub("[filtered]", result)
+
+        return result
+
+    def _similarity(self, a: str, b: str) -> float:
+        """Calculate similarity ratio between two strings."""
+        norm_a = " ".join(a.lower().split())
+        norm_b = " ".join(b.lower().split())
+
+        if norm_a == norm_b:
+            return 1.0
+
+        if not norm_a or not norm_b:
+            return 0.0
+
+        len_a, len_b = len(norm_a), len(norm_b)
+
+        if norm_a in norm_b or norm_b in norm_a:
+            return min(len_a, len_b) / max(len_a, len_b)
+
+        common = 0
+        b_chars = list(norm_b)
+        for c in norm_a:
+            if c in b_chars:
+                common += 1
+                b_chars.remove(c)
+
+        return (2 * common) / (len_a + len_b)
+
+    def _is_duplicate(self, content: str) -> bool:
+        """Check if content is duplicate or near-duplicate of recent output."""
+        if not self._recent_outputs:
+            return False
+
+        for recent in self._recent_outputs:
+            sim = self._similarity(content, recent)
+            if sim >= self.dedup_threshold:
+                logger.debug(
+                    "Duplicate detected",
+                    extra={
+                        "similarity": f"{sim:.2%}",
+                        "threshold": f"{self.dedup_threshold:.2%}",
+                    },
+                )
+                return True
+
+        return False
+
+    def _ensure_client(self) -> DiscordClient | None:
+        """Get client, looking up from registry if needed."""
+        if self.client is None:
+            self.client = get_client(self.client_name)
+            if self.client:
+                logger.debug("Retrieved Discord client from registry")
+            else:
+                logger.warning("Discord client not found in registry")
+        return self.client
+
+    async def on_processing_start(self) -> None:
+        """Start typing indicator when processing begins."""
+        client = self._ensure_client()
+        if not client or not client._current_channel_id:
+            return
+
+        channel_id = client._current_channel_id
+
+        if client.is_readonly_channel(channel_id):
+            return
+
+        channel = client.get_channel(channel_id)
+        if not channel:
+            try:
+                channel = await client.fetch_channel(channel_id)
+            except discord.DiscordException:
+                return
+
+        if isinstance(channel, (discord.TextChannel, discord.Thread)):
+            try:
+                await channel.typing()
+                logger.debug("Started typing indicator")
+            except discord.DiscordException:
+                pass
+
+    def _parse_markers(
+        self, content: str, channel_id: int
+    ) -> tuple[str, int | None, list[int]]:
+        """Parse and remove markers from content."""
+        client = self._ensure_client()
+        if not client:
+            return content, None, []
+
+        reply_to_id = None
+        mention_ids = []
+
+        reply_match = self.REPLY_PATTERN.search(content)
+        if reply_match:
+            ref = reply_match.group(1).strip()
+            reply_to_id = client.find_message_id(ref, channel_id)
+            content = self.REPLY_PATTERN.sub("", content)
+
+        for match in self.MENTION_PATTERN.finditer(content):
+            name = match.group(1).strip()
+            user_id = client.find_user_id(name)
+            if user_id:
+                mention_ids.append(user_id)
+
+        content = self.MENTION_PATTERN.sub("", content)
+
+        return content.strip(), reply_to_id, mention_ids
+
+    async def write(self, content: str) -> None:
+        """Write complete message to Discord."""
+        client = self._ensure_client()
+        if not client:
+            return
+
+        # Check if should drop due to pending messages
+        import random
+
+        pending_count = client.pending_message_count()
+        if pending_count > 0:
+            drop_chance = min(
+                self.drop_max_chance,
+                self.drop_base_chance + (pending_count - 1) * self.drop_increment,
+            )
+            if random.random() < drop_chance:
+                logger.info(
+                    "Dropping response - new messages pending",
+                    extra={"pending_count": pending_count},
+                )
+                return
+
+        clean_content = content.strip()
+        if not clean_content:
+            return
+
+        # Check for duplicate
+        if self._is_duplicate(clean_content):
+            logger.info("Filtering duplicate response")
+            return
+
+        # Filter garbage patterns
+        garbage_patterns = [
+            "user",
+            "assistant",
+            "[tool",
+            "## ",
+            "background job",
+            "```",
+            "---",
+        ]
+        lower_content = clean_content.lower()
+        for pattern in garbage_patterns:
+            if lower_content.strip() == pattern or lower_content.startswith(pattern):
+                logger.debug("Filtering garbage output")
+                return
+
+        # Filter very short non-meaningful content
+        stripped = clean_content.replace(" ", "").replace("\n", "")
+        if len(stripped) <= 3:
+            if not any(c.isalnum() for c in stripped):
+                return
+
+        # Filter repetitive characters
+        unique_chars = set(stripped)
+        if len(unique_chars) <= 2 and len(stripped) > 1:
+            return
+
+        channel_id = client._current_channel_id
+        if not channel_id:
+            return
+
+        final_content, reply_to_id, mention_ids = self._parse_markers(
+            clean_content, channel_id
+        )
+
+        if not final_content:
+            return
+
+        final_content = self._filter_keywords(final_content)
+
+        sent = await client.send_message(
+            final_content,
+            reply_to_id=reply_to_id,
+            mentions=mention_ids,
+        )
+
+        if sent:
+            self._recent_outputs.append(final_content)
+
+    async def write_stream(self, chunk: str) -> None:
+        """Buffer streaming chunks."""
+        self._buffer.append(chunk)
+
+    async def flush(self) -> None:
+        """Send buffered content."""
+        if self._buffer:
+            content = "".join(self._buffer)
+            self._buffer.clear()
+            await self.write(content)
+
+
+def create_discord_io(
+    token: str | None = None,
+    token_env: str = "DISCORD_BOT_TOKEN",
+    channel_ids: list[int] | None = None,
+    readonly_channel_ids: list[int] | None = None,
+    history_limit: int = 20,
+    filtered_keywords: list[str] | None = None,
+    keywords_file: str | None = None,
+):
+    """Create paired Discord input and output modules."""
+    from .discord_input import DiscordInputModule
+
+    input_module = DiscordInputModule(
+        token=token,
+        token_env=token_env,
+        channel_ids=channel_ids,
+        readonly_channel_ids=readonly_channel_ids,
+        history_limit=history_limit,
+    )
+
+    output_module = DiscordOutputModule(
+        client=input_module.get_client(),
+        filtered_keywords=filtered_keywords,
+        keywords_file=keywords_file,
+    )
+
+    return input_module, output_module
