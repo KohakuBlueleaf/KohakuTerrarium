@@ -36,7 +36,8 @@ class DiscordInputModule(BaseInputModule):
         token_env: str = "DISCORD_BOT_TOKEN",
         channel_ids: list[int] | None = None,
         readonly_channel_ids: list[int] | None = None,
-        history_limit: int = 20,
+        history_limit: int = 50,
+        recent_limit: int = 10,
         client_name: str = "default",
         shared_client: DiscordClient | None = None,
         instant_memory_file: str | None = None,
@@ -49,7 +50,8 @@ class DiscordInputModule(BaseInputModule):
             token_env: Environment variable name for token
             channel_ids: Channel IDs to listen and respond to
             readonly_channel_ids: Channel IDs to observe but not respond in
-            history_limit: Number of messages to fetch as history
+            history_limit: Background context messages (older, for reference)
+            recent_limit: Recent messages to show (newer, to respond to)
             client_name: Name for shared client registry
             shared_client: Share client with output module
             instant_memory_file: Path to memory file to auto-inject
@@ -67,6 +69,7 @@ class DiscordInputModule(BaseInputModule):
         self.channel_ids = channel_ids
         self.readonly_channel_ids = readonly_channel_ids
         self.history_limit = history_limit
+        self.recent_limit = recent_limit
         self.client_name = client_name
         self.instant_memory_file = instant_memory_file
 
@@ -76,6 +79,7 @@ class DiscordInputModule(BaseInputModule):
                 "channel_ids": channel_ids,
                 "readonly_channel_ids": readonly_channel_ids,
                 "history_limit": history_limit,
+                "recent_limit": recent_limit,
             },
         )
 
@@ -176,8 +180,7 @@ class DiscordInputModule(BaseInputModule):
             is_readonly = self.client.is_readonly_channel(last_msg.channel_id)
             any_mention = any(m.is_mention for m in messages)
 
-            # Fetch history
-            history_context = ""
+            # Fetch history from Discord
             channel = self.client.get_channel(last_msg.channel_id)
             if not channel:
                 try:
@@ -185,14 +188,39 @@ class DiscordInputModule(BaseInputModule):
                 except discord.DiscordException:
                     channel = None
 
+            # Split into history context (older) and recent (newer)
+            history_context = ""
+            recent_context = ""
             if channel and isinstance(channel, (discord.TextChannel, discord.Thread)):
-                history = await self.client.fetch_channel_history(channel)
-                if history:
-                    history_context = (
-                        "--- Recent History ---\n"
-                        + "\n".join(history)
-                        + "\n--- End History ---\n\n"
-                    )
+                all_history = await self.client.fetch_channel_history(channel)
+                if all_history:
+                    # Split: older messages go to history, newer to recent
+                    # all_history is already in chronological order (oldest first)
+                    total = len(all_history)
+                    if total > self.recent_limit:
+                        history_msgs = all_history[: total - self.recent_limit]
+                        recent_msgs = all_history[total - self.recent_limit :]
+                    else:
+                        history_msgs = []
+                        recent_msgs = all_history
+
+                    if history_msgs:
+                        history_context = (
+                            "--- History Context (older messages for reference) ---\n"
+                            + "\n".join(history_msgs)
+                            + "\n--- End History ---\n\n"
+                        )
+
+                    if recent_msgs:
+                        # Number recent messages, #1 = oldest in recent, last = newest
+                        numbered = []
+                        for i, msg in enumerate(recent_msgs, 1):
+                            numbered.append(f"#{i} {msg}")
+                        recent_context = (
+                            "--- Recent Messages (newest is LAST, respond to these) ---\n"
+                            + "\n".join(numbered)
+                            + "\n--- End Recent ---\n\n"
+                        )
 
             # Build context header
             bot_identity = self.client.get_bot_identity()
@@ -208,9 +236,9 @@ class DiscordInputModule(BaseInputModule):
             identity_header = f"[You:{bot_identity}]"
             context_header = f"{identity_header} {guild_part} {channel_part}".strip()
 
-            # Format messages
+            # Format new messages (the ones that triggered this event)
             formatted_lines = []
-            for msg in messages:
+            for i, msg in enumerate(messages, 1):
                 readonly_marker = "[READONLY] " if is_readonly else ""
                 ping_marker = "[PINGED] " if msg.is_mention else ""
                 bot_marker = "[BOT] " if msg.is_bot else ""
@@ -236,24 +264,25 @@ class DiscordInputModule(BaseInputModule):
                     reply_marker = f"[→msg:{short_id(msg.reply_to_id)}] "
 
                 msg_header = f"[{msg.timestamp}] {readonly_marker}{ping_marker}{bot_marker}{reply_marker}[{author_info}]"
-                formatted_lines.append(f"{msg_header}: {msg.content}")
+                # Mark with NEW# prefix
+                formatted_lines.append(f"NEW#{i} {msg_header}: {msg.content}")
 
             instant_memory = self._read_instant_memory()
 
-            formatted_content = (
-                f"{instant_memory}{history_context}{context_header}\n"
+            # Build final content: instant memory -> history -> recent -> context -> NEW messages
+            new_messages_section = (
+                "--- NEW Messages (just arrived, LAST is newest) ---\n"
                 + "\n".join(formatted_lines)
+                + "\n--- End NEW ---"
             )
 
-            instruction_reminder = """
----
-Process this message following your system prompt. You can:
-- Think through the message (plain text goes to internal log only)
-- Use tools/memory as needed (EVEN in read-only channels!)
-- Use [/output_discord]message[output_discord/] ONLY if you want to respond
-If you don't need to respond, just think or stay silent - no output_discord needed.
-"""
-            formatted_content += instruction_reminder
+            formatted_content = (
+                f"{instant_memory}"
+                f"{history_context}"
+                f"{recent_context}"
+                f"{context_header}\n"
+                f"{new_messages_section}"
+            )
 
             return TriggerEvent(
                 type="user_input",

@@ -18,10 +18,6 @@ controller:
   # This forces the bot to use memory system for older context
   ephemeral: true
 
-  # Parallel controllers - allow handling multiple messages simultaneously
-  # Only works in ephemeral mode (each controller handles one interaction)
-  max_parallel_controllers: 3
-
   # Context limits (mainly for single interaction, less important in ephemeral mode)
   max_messages: 128
   max_context_chars: 1000000
@@ -49,10 +45,11 @@ input:
   # Channels to listen and respond to
   channel_ids: [775002061456408576, 1459909076099137730]
   # Read-only channels: observe to learn, but cannot respond
-  readonly_channel_ids: [680728618770497552, 692243859970850907, 772472578933522442, 934172207758868510]
-  # Number of history messages to fetch on first message in channel
-  # Keep low to avoid agent trying to reply to all historical messages
-  history_limit: 128
+  readonly_channel_ids: []
+  # History: older messages for background context
+  history_limit: 64
+  # Recent: newer messages shown with numbering (respond to these)
+  recent_limit: 16
   # Instant memory - auto-injected into every prompt
   # The model can update this file to maintain working context across interactions
   instant_memory_file: ./memory/context.md
