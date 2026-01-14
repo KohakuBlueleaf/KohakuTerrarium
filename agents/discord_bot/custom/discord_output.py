@@ -5,6 +5,7 @@ Uses the shared DiscordClient from input module to send messages.
 Supports reply markers, mentions, keyword filtering, and deduplication.
 """
 
+import asyncio
 import re
 from collections import deque
 
@@ -87,6 +88,9 @@ class DiscordOutputModule(BaseOutputModule):
                 "Keyword filter enabled",
                 extra={"keyword_count": len(self._filtered_keywords)},
             )
+
+        # Typing indicator task
+        self._typing_task: asyncio.Task | None = None
 
         logger.info(
             "Initializing Discord output module",
@@ -180,8 +184,25 @@ class DiscordOutputModule(BaseOutputModule):
                 logger.warning("Discord client not found in registry")
         return self.client
 
+    async def _typing_loop(self, channel: discord.TextChannel | discord.Thread) -> None:
+        """Continuously send typing indicator until cancelled."""
+        try:
+            while True:
+                await channel.typing()
+                # Discord typing indicator lasts ~10s, refresh every 8s
+                await asyncio.sleep(8)
+        except asyncio.CancelledError:
+            pass
+        except discord.DiscordException:
+            pass
+
     async def on_processing_start(self) -> None:
         """Start typing indicator when processing begins."""
+        # Cancel any existing typing task
+        if self._typing_task and not self._typing_task.done():
+            self._typing_task.cancel()
+            self._typing_task = None
+
         client = self._ensure_client()
         if not client or not client._current_channel_id:
             return
@@ -199,11 +220,19 @@ class DiscordOutputModule(BaseOutputModule):
                 return
 
         if isinstance(channel, (discord.TextChannel, discord.Thread)):
+            self._typing_task = asyncio.create_task(self._typing_loop(channel))
+            logger.debug("Started typing indicator")
+
+    async def on_processing_end(self) -> None:
+        """Stop typing indicator when processing ends."""
+        if self._typing_task and not self._typing_task.done():
+            self._typing_task.cancel()
             try:
-                await channel.typing()
-                logger.debug("Started typing indicator")
-            except discord.DiscordException:
+                await self._typing_task
+            except asyncio.CancelledError:
                 pass
+            self._typing_task = None
+            logger.debug("Stopped typing indicator")
 
     def _parse_markers(
         self, content: str, channel_id: int

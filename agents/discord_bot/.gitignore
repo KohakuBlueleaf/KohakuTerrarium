@@ -1,2 +1,4 @@
+*.md
+debug_context/
 memory/
-memory/*.md
+prompts/

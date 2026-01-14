@@ -3,12 +3,14 @@ Discord Client - Shared Discord client for input/output modules.
 
 This module contains the core Discord client that bridges discord.py
 with the KohakuTerrarium framework.
+
+Supports multimodal content: attachments, stickers, and custom emojis.
 """
 
 import asyncio
 import re
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import discord
@@ -18,8 +20,108 @@ from kohakuterrarium.utils.logging import get_logger
 logger = get_logger("kohakuterrarium.custom.discord_client")
 
 
+# =============================================================================
+# Media Data Classes
+# =============================================================================
+
+
+@dataclass
+class MediaAttachment:
+    """Represents a Discord attachment (image/file)."""
+
+    url: str
+    filename: str
+    content_type: str | None
+    size: int
+    is_image: bool
+    is_animated: bool = False  # For GIFs
+
+    @classmethod
+    def from_discord(cls, attachment: discord.Attachment) -> "MediaAttachment":
+        """Create from discord.py Attachment object."""
+        content_type = attachment.content_type or ""
+        is_image = content_type.startswith("image/")
+        is_animated = content_type == "image/gif"
+        return cls(
+            url=attachment.url,
+            filename=attachment.filename,
+            content_type=content_type,
+            size=attachment.size,
+            is_image=is_image,
+            is_animated=is_animated,
+        )
+
+
+@dataclass
+class MediaSticker:
+    """Represents a Discord sticker."""
+
+    name: str
+    sticker_id: int
+    url: str
+    format_type: str  # "png", "apng", "lottie", "gif"
+    is_animated: bool
+
+    @classmethod
+    def from_discord(cls, sticker: discord.StickerItem) -> "MediaSticker":
+        """Create from discord.py StickerItem object."""
+        # Determine format and animation status
+        format_type = "png"
+        is_animated = False
+        if hasattr(sticker, "format"):
+            fmt = sticker.format
+            if fmt == discord.StickerFormatType.png:
+                format_type = "png"
+            elif fmt == discord.StickerFormatType.apng:
+                format_type = "apng"
+                is_animated = True
+            elif fmt == discord.StickerFormatType.lottie:
+                format_type = "lottie"
+                is_animated = True
+            elif fmt == discord.StickerFormatType.gif:
+                format_type = "gif"
+                is_animated = True
+
+        return cls(
+            name=sticker.name,
+            sticker_id=sticker.id,
+            url=str(sticker.url),
+            format_type=format_type,
+            is_animated=is_animated,
+        )
+
+
+@dataclass
+class CustomEmoji:
+    """Represents a custom Discord emoji found in message content."""
+
+    name: str
+    emoji_id: int
+    animated: bool
+    url: str
+
+    @classmethod
+    def from_match(cls, name: str, emoji_id: int, animated: bool) -> "CustomEmoji":
+        """Create from regex match components."""
+        ext = "gif" if animated else "png"
+        url = f"https://cdn.discordapp.com/emojis/{emoji_id}.{ext}"
+        return cls(
+            name=name,
+            emoji_id=emoji_id,
+            animated=animated,
+            url=url,
+        )
+
+
+# Pattern to match custom emoji: <:name:id> or <a:name:id> (animated)
+CUSTOM_EMOJI_PATTERN = re.compile(r"<(a?):(\w+):(\d+)>")
+
+
 # Module-level registry for sharing Discord client between input/output
 _shared_clients: dict[str, "DiscordClient"] = {}
+
+# Module-level tool history (sliding window)
+_tool_history: deque[str] = deque(maxlen=10)
 
 
 def register_client(name: str, client: "DiscordClient") -> None:
@@ -30,6 +132,21 @@ def register_client(name: str, client: "DiscordClient") -> None:
 def get_client(name: str) -> "DiscordClient | None":
     """Get a registered Discord client."""
     return _shared_clients.get(name)
+
+
+def add_tool_history(entry: str) -> None:
+    """Add a tool call entry to history."""
+    _tool_history.append(entry)
+
+
+def get_tool_history() -> list[str]:
+    """Get recent tool history."""
+    return list(_tool_history)
+
+
+def clear_tool_history() -> None:
+    """Clear tool history."""
+    _tool_history.clear()
 
 
 def short_id(full_id: int) -> str:
@@ -44,9 +161,20 @@ def short_id(full_id: int) -> str:
 DISCORD_MENTION_PATTERN = re.compile(r"<@!?(\d+)>")
 
 
+def parse_custom_emojis(content: str) -> list[CustomEmoji]:
+    """Extract custom emojis from message content."""
+    emojis = []
+    for match in CUSTOM_EMOJI_PATTERN.finditer(content):
+        animated = bool(match.group(1))  # "a" or ""
+        name = match.group(2)
+        emoji_id = int(match.group(3))
+        emojis.append(CustomEmoji.from_match(name, emoji_id, animated))
+    return emojis
+
+
 @dataclass
 class DiscordMessage:
-    """Represents a Discord message with metadata."""
+    """Represents a Discord message with metadata and multimodal content."""
 
     content: str
     author_id: int
@@ -68,9 +196,32 @@ class DiscordMessage:
     short_msg_id: str = ""
     short_author_id: str = ""
 
+    # Multimodal content
+    attachments: list[MediaAttachment] = field(default_factory=list)
+    stickers: list[MediaSticker] = field(default_factory=list)
+    custom_emojis: list[CustomEmoji] = field(default_factory=list)
+
     def __post_init__(self):
         self.short_msg_id = short_id(self.message_id)
         self.short_author_id = short_id(self.author_id)
+
+    def has_media(self) -> bool:
+        """Check if message has any media content."""
+        return bool(self.attachments or self.stickers or self.custom_emojis)
+
+    def get_image_attachments(self) -> list[MediaAttachment]:
+        """Get only image attachments."""
+        return [a for a in self.attachments if a.is_image]
+
+    def has_animated_content(self) -> bool:
+        """Check if message has animated content (GIFs, animated stickers/emojis)."""
+        if any(a.is_animated for a in self.attachments):
+            return True
+        if any(s.is_animated for s in self.stickers):
+            return True
+        if any(e.animated for e in self.custom_emojis):
+            return True
+        return False
 
     def to_context(self) -> dict[str, Any]:
         """Convert to context dict for TriggerEvent."""
@@ -88,6 +239,9 @@ class DiscordMessage:
             "is_mention": self.is_mention,
             "mentioned_users": self.mentioned_users,
             "reply_to_id": self.reply_to_id,
+            "has_attachments": len(self.attachments) > 0,
+            "has_stickers": len(self.stickers) > 0,
+            "has_custom_emojis": len(self.custom_emojis) > 0,
         }
 
 
@@ -171,15 +325,13 @@ class DiscordClient(discord.Client):
         try:
             messages = []
             async for msg in channel.history(limit=self.history_limit):
-                if msg.author == self.user:
-                    continue
-
                 self._user_cache[msg.author.display_name.lower()] = msg.author.id
                 self._user_cache[msg.author.name.lower()] = msg.author.id
 
                 if channel_id not in self._recent_messages:
                     self._recent_messages[channel_id] = deque(maxlen=self._max_recent)
 
+                is_self = msg.author == self.user
                 self._recent_messages[channel_id].appendleft(
                     RecentMessage(
                         message_id=msg.id,
@@ -193,8 +345,13 @@ class DiscordClient(discord.Client):
 
                 msg_time = msg.created_at.strftime("%Y-%m-%d %H:%M")
                 parsed_content = self.parse_mentions(msg.content, msg.guild)
-                bot_marker = "[BOT] " if msg.author.bot else ""
-                formatted = f"[{msg_time}] {bot_marker}[{msg.author.display_name}({short_id(msg.id)})]: {parsed_content}"
+                # Mark self messages clearly
+                if is_self:
+                    self_marker = "[SELF] "
+                else:
+                    self_marker = ""
+                bot_marker = "[BOT] " if msg.author.bot and not is_self else ""
+                formatted = f"[{msg_time}] {self_marker}{bot_marker}[{msg.author.display_name}]: {parsed_content}"
                 messages.append(formatted)
 
             messages.reverse()
@@ -209,6 +366,88 @@ class DiscordClient(discord.Client):
             logger.warning(
                 "Failed to fetch history",
                 extra={"channel_id": channel_id, "error": str(e)},
+            )
+            return []
+
+    async def fetch_channel_history_with_media(
+        self,
+        channel: discord.TextChannel | discord.Thread,
+        limit: int | None = None,
+    ) -> list[DiscordMessage]:
+        """
+        Fetch recent message history as DiscordMessage objects (with media info).
+
+        Used for including images from recent context.
+
+        Args:
+            channel: Discord channel to fetch from
+            limit: Number of messages to fetch (defaults to history_limit)
+
+        Returns:
+            List of DiscordMessage objects with media info populated
+        """
+        fetch_limit = limit or self.history_limit
+        if fetch_limit <= 0:
+            return []
+
+        try:
+            messages: list[DiscordMessage] = []
+            async for msg in channel.history(limit=fetch_limit):
+                # Skip bot's own messages
+                if msg.author == self.user:
+                    continue
+
+                # Parse attachments
+                attachments = [
+                    MediaAttachment.from_discord(att) for att in msg.attachments
+                ]
+
+                # Parse stickers
+                stickers = [MediaSticker.from_discord(s) for s in msg.stickers]
+
+                # Parse custom emojis from content
+                custom_emojis = parse_custom_emojis(msg.content)
+
+                # Only include if has media
+                if not attachments and not stickers and not custom_emojis:
+                    continue
+
+                is_mention = self.user in msg.mentions if self.user else False
+                parsed_content = self.parse_mentions(msg.content, msg.guild)
+                msg_time = msg.created_at.strftime("%Y-%m-%d %H:%M")
+
+                discord_msg = DiscordMessage(
+                    content=parsed_content,
+                    author_id=msg.author.id,
+                    author_name=msg.author.name,
+                    author_display_name=msg.author.display_name,
+                    channel_id=msg.channel.id,
+                    channel_name=getattr(msg.channel, "name", "DM"),
+                    guild_id=msg.guild.id if msg.guild else None,
+                    guild_name=msg.guild.name if msg.guild else None,
+                    message_id=msg.id,
+                    is_mention=is_mention,
+                    mentioned_users=[u.id for u in msg.mentions],
+                    reply_to_id=msg.reference.message_id if msg.reference else None,
+                    is_bot=msg.author.bot,
+                    timestamp=msg_time,
+                    attachments=attachments,
+                    stickers=stickers,
+                    custom_emojis=custom_emojis,
+                )
+                messages.append(discord_msg)
+
+            messages.reverse()
+            logger.debug(
+                "Fetched history with media",
+                extra={"channel_id": channel.id, "media_messages": len(messages)},
+            )
+            return messages
+
+        except discord.DiscordException as e:
+            logger.warning(
+                "Failed to fetch history with media",
+                extra={"channel_id": channel.id, "error": str(e)},
             )
             return []
 
@@ -281,6 +520,15 @@ class DiscordClient(discord.Client):
         parsed_content = self.parse_mentions(message.content, message.guild)
         msg_time = message.created_at.strftime("%Y-%m-%d %H:%M")
 
+        # Parse attachments
+        attachments = [MediaAttachment.from_discord(att) for att in message.attachments]
+
+        # Parse stickers
+        stickers = [MediaSticker.from_discord(s) for s in message.stickers]
+
+        # Parse custom emojis from content
+        custom_emojis = parse_custom_emojis(message.content)
+
         discord_msg = DiscordMessage(
             content=parsed_content,
             author_id=message.author.id,
@@ -299,6 +547,9 @@ class DiscordClient(discord.Client):
             reply_to_is_bot=reply_to_is_bot,
             is_bot=message.author.bot,
             timestamp=msg_time,
+            attachments=attachments,
+            stickers=stickers,
+            custom_emojis=custom_emojis,
         )
 
         await self._message_queue.put(discord_msg)
@@ -309,6 +560,9 @@ class DiscordClient(discord.Client):
                 "channel": getattr(message.channel, "name", "DM"),
                 "queue_size": self._message_queue.qsize(),
                 "is_mention": is_mention,
+                "attachments": len(attachments),
+                "stickers": len(stickers),
+                "custom_emojis": len(custom_emojis),
             },
         )
 

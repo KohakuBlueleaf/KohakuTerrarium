@@ -13,27 +13,21 @@ controller:
   base_url: https://openrouter.ai/api/v1
 
   # Ephemeral mode - clear conversation after each interaction
-  # The bot receives: system prompt + user message (discord history + memory context)
-  # After responding (including tool calls), conversation is flushed
-  # This forces the bot to use memory system for older context
   ephemeral: true
 
-  # Context limits (mainly for single interaction, less important in ephemeral mode)
-  max_messages: 128
+  # Context limits
+  max_messages: 64
   max_context_chars: 1000000
 
-# System prompt (loaded from file)
+  # Keep tool list and framework hints in system prompt
+  # Context_format.md adds character/rules/instructions closer to generation
+  include_tools_in_prompt: true
+  include_hints_in_prompt: true
+
+# System prompt (loaded from file) - only basic identity
 system_prompt_file: prompts/system.md
 
-# Inject files directly into system prompt as template variables
-# These are rendered with Jinja2: {{ character }}, {{ rules }}
-prompt_context_files:
-  character: memory/character.md
-  rules: memory/rules.md
-
-# Startup trigger - remind agent to check group style
-startup_trigger:
-  prompt: "Agent starting. Your character is already loaded. Use memory_read to check group_style.md for any learned communication patterns, then wait for messages."
+# Note: No startup_trigger in ephemeral mode - conversation is cleared after each interaction
 
 # Custom Input - Discord messages
 input:
@@ -47,12 +41,23 @@ input:
   # Read-only channels: observe to learn, but cannot respond
   readonly_channel_ids: []
   # History: older messages for background context
-  history_limit: 64
+  history_limit: 256
   # Recent: newer messages shown with numbering (respond to these)
-  recent_limit: 16
+  recent_limit: 32
   # Instant memory - auto-injected into every prompt
-  # The model can update this file to maintain working context across interactions
   instant_memory_file: ./memory/context.md
+  # Context format template (str.format) - controls message structure
+  context_format_file: ./prompts/context_format.md
+  # Context files injected into template (placed AFTER messages for recency)
+  # These override system prompt injection to place character/rules closer to generation
+  context_files:
+    character: ./memory/character.md
+    rules: ./memory/rules.md
+  # Enable multimodal
+  include_images: true
+  image_detail: auto
+  max_total_images: 10
+  gif_sample_frames: ["first", "middle", "last"]
 
 # Output Configuration
 # - Default output (stdout): for model "thinking" / internal reasoning
