@@ -1,85 +1,56 @@
 ---
 name: memory_read
-description: Retrieve information from memory system
+description: Search and retrieve information from memory
 category: subagent
 tags: [memory, retrieval, context]
 ---
 
 # memory_read
 
-Sub-agent for searching and retrieving information from the memory folder.
+Sub-agent for searching the memory folder using natural language queries.
 
-## WHEN TO USE
-
-- Need to recall stored information (facts, preferences, context)
-- Looking up character/agent definition
-- Retrieving past conversation context
-- Finding specific stored data
-
-## WHEN NOT TO USE
-
-- Reading arbitrary files outside memory
-- Storing new information (use memory_write)
-- Simple file read when you know exact path
-
-## HOW TO USE
+## Syntax
 
 ```
 [/memory_read]
-what to find
+natural language query
 [memory_read/]
 ```
 
-## Arguments
+## What It Does
 
-| Arg | Type | Description |
-|-----|------|-------------|
-| body | content | What information to retrieve |
+- Searches memory files for relevant information
+- Uses tree, read, grep to find matching content
+- Returns found information
 
-## Examples
+## When It Helps
+
+- If you want more context about a user or topic
+- If you're unsure whether you've encountered something before
+- If you need to recall stored preferences or facts
+
+## Query Examples
 
 ```
 [/memory_read]
-Get my character definition
+what do I know about User1
 [memory_read/]
 ```
 
 ```
 [/memory_read]
-What are the user's preferences?
+user preferences
 [memory_read/]
 ```
 
 ```
 [/memory_read]
-What do I know about the project structure?
+recent conversation topics
 [memory_read/]
 ```
 
-```
-[/memory_read]
-Recent conversation topics
-[memory_read/]
-```
+## Notes
 
-## CAPABILITIES
-
-The memory_read sub-agent has access to:
-- `tree` - List files in memory folder
-- `read` - Read file contents
-- `grep` - Search within files
-
-It will:
-1. List available memory files
-2. Search for relevant content
-3. Return found information
-
-## OUTPUT
-
-Returns the relevant information found in memory, formatted for use.
-
-## LIMITATIONS
-
+- Query is natural language, NOT a file path
 - Read-only (cannot modify memory)
 - Only searches configured memory path
-- May not find information if not stored

@@ -102,3 +102,7 @@ class BaseOutputModule(ABC):
     async def on_processing_start(self) -> None:
         """Called when agent starts processing. Default is no-op."""
         pass
+
+    async def on_processing_end(self) -> None:
+        """Called when agent finishes processing. Default is no-op."""
+        pass

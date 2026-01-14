@@ -125,6 +125,13 @@ class AgentConfig:
     # - static: All tool docs included in system prompt (no [/info] needed)
     skill_mode: str = "dynamic"
 
+    # Prompt aggregation controls
+    # Set to False if you handle tool/output instructions in your own prompt/context
+    include_tools_in_prompt: bool = True  # Add tool list to system prompt
+    include_hints_in_prompt: bool = (
+        True  # Add framework hints (output format, function calling)
+    )
+
     # Context management - limits LLM conversation history
     max_messages: int = 50  # Max messages to keep (0 = unlimited)
     max_context_chars: int = 100000  # Max chars (~25k tokens, 0 = unlimited)
@@ -377,6 +384,12 @@ def load_agent_config(agent_path: str | Path) -> AgentConfig:
         prompt_context_files=config_data.get("prompt_context_files", {}),
         skill_mode=controller_data.get(
             "skill_mode", config_data.get("skill_mode", "dynamic")
+        ),
+        include_tools_in_prompt=controller_data.get(
+            "include_tools_in_prompt", config_data.get("include_tools_in_prompt", True)
+        ),
+        include_hints_in_prompt=controller_data.get(
+            "include_hints_in_prompt", config_data.get("include_hints_in_prompt", True)
         ),
         max_messages=controller_data.get("max_messages", 50),
         max_context_chars=controller_data.get("max_context_chars", 100000),

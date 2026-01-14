@@ -6,11 +6,16 @@ The controller orchestrates agent operation:
 - Maintains conversation context
 - Runs LLM and parses output
 - Dispatches tool calls and sub-agents
+
+Supports multimodal content (text + images).
 """
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator
+
+if TYPE_CHECKING:
+    from kohakuterrarium.llm.message import ContentPart
 
 from kohakuterrarium.commands.base import Command, CommandResult
 from kohakuterrarium.commands.read import (
@@ -258,23 +263,62 @@ class Controller:
 
         return events
 
-    def _format_events_for_context(self, events: list[TriggerEvent]) -> str:
-        """Format events as user message content."""
-        parts = []
+    def _format_events_for_context(
+        self, events: list[TriggerEvent]
+    ) -> "str | list[ContentPart]":
+        """
+        Format events as user message content.
+
+        Returns multimodal content if any event has images.
+        """
+        from kohakuterrarium.llm.message import ContentPart, ImagePart, TextPart
+
+        text_parts: list[str] = []
+        image_parts: list[ImagePart] = []
+        has_multimodal = False
 
         for event in events:
             if event.type == "user_input":
-                parts.append(event.content)
+                if event.is_multimodal():
+                    has_multimodal = True
+                    # Extract text and images from multimodal content
+                    for part in event.content:  # type: ignore
+                        if isinstance(part, TextPart):
+                            text_parts.append(part.text)
+                        elif isinstance(part, ImagePart):
+                            image_parts.append(part)
+                else:
+                    text_parts.append(event.content)  # type: ignore
             elif event.type == "tool_complete":
-                parts.append(f"[Tool {event.job_id} completed]\n{event.content[:500]}")
+                content_text = (
+                    event.get_text_content() if event.is_multimodal() else event.content
+                )
+                text_parts.append(
+                    f"[Tool {event.job_id} completed]\n{content_text[:500]}"  # type: ignore
+                )
             elif event.type == "subagent_output":
-                parts.append(
-                    f"[Sub-agent {event.job_id} output]\n{event.content[:500]}"
+                content_text = (
+                    event.get_text_content() if event.is_multimodal() else event.content
+                )
+                text_parts.append(
+                    f"[Sub-agent {event.job_id} output]\n{content_text[:500]}"  # type: ignore
                 )
             else:
-                parts.append(f"[{event.type}] {event.content}")
+                content_text = (
+                    event.get_text_content() if event.is_multimodal() else event.content
+                )
+                text_parts.append(f"[{event.type}] {content_text}")
 
-        return "\n\n".join(parts)
+        # Combine text
+        combined_text = "\n\n".join(text_parts)
+
+        # Return multimodal if we have images
+        if has_multimodal and image_parts:
+            result: list[ContentPart] = [TextPart(text=combined_text)]
+            result.extend(image_parts)
+            return result
+
+        return combined_text
 
     async def run_once(self) -> AsyncIterator[ParseEvent]:
         """
@@ -293,19 +337,39 @@ class Controller:
         logger.debug("Processing events", count=len(events))
 
         # Build context with job status
-        context_parts = []
+        from kohakuterrarium.llm.message import ContentPart, ImagePart, TextPart
+
+        text_context_parts: list[str] = []
+        image_context_parts: list[ImagePart] = []
 
         if self.config.include_job_status:
             job_context = self.job_store.format_context()
             if job_context:
-                context_parts.append(job_context)
+                text_context_parts.append(job_context)
 
-        # Add event content
+        # Add event content (may be multimodal)
         event_content = self._format_events_for_context(events)
-        context_parts.append(event_content)
 
-        # Add as user message
-        user_content = "\n\n".join(context_parts)
+        if isinstance(event_content, str):
+            text_context_parts.append(event_content)
+        else:
+            # Multimodal content - extract text and images
+            for part in event_content:
+                if isinstance(part, TextPart):
+                    text_context_parts.append(part.text)
+                elif isinstance(part, ImagePart):
+                    image_context_parts.append(part)
+
+        # Build final user content
+        combined_text = "\n\n".join(text_context_parts)
+
+        if image_context_parts:
+            # Multimodal: text + images
+            user_content: str | list[ContentPart] = [TextPart(text=combined_text)]
+            user_content.extend(image_context_parts)
+        else:
+            user_content = combined_text
+
         self.conversation.append("user", user_content)
 
         # Run LLM

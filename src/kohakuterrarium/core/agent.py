@@ -317,18 +317,19 @@ class Agent:
         # system.md should only contain agent personality/guidelines
         base_prompt = self.config.system_prompt
 
-        # Add sub-agents section if any registered
-        subagents_prompt = self.subagent_manager.get_subagents_prompt()
-        if subagents_prompt:
-            base_prompt = base_prompt + "\n\n" + subagents_prompt
+        # Add sub-agents section if any registered (respects include_tools_in_prompt)
+        if self.config.include_tools_in_prompt:
+            subagents_prompt = self.subagent_manager.get_subagents_prompt()
+            if subagents_prompt:
+                base_prompt = base_prompt + "\n\n" + subagents_prompt
 
         known_outputs = getattr(self, "_known_outputs", set())
         logger.debug("Building system prompt", known_outputs=known_outputs)
         system_prompt = aggregate_system_prompt(
             base_prompt,
             self.registry,
-            include_tools=True,
-            include_hints=True,
+            include_tools=self.config.include_tools_in_prompt,
+            include_hints=self.config.include_hints_in_prompt,
             known_outputs=known_outputs,
         )
 
@@ -611,10 +612,17 @@ class Agent:
                     continue
 
                 idle_logged = False  # Reset so we log idle again after processing
+                # Log content length (handle multimodal)
+                if event.is_multimodal():
+                    content_len = len(event.get_text_content())
+                    content_info = f"{content_len} chars + {len(event.content)} parts"
+                else:
+                    content_len = len(event.content) if event.content else 0
+                    content_info = f"{content_len} chars"
                 logger.info(
                     "Input received, processing event",
                     event_type=event.type,
-                    content_len=len(event.content) if event.content else 0,
+                    content=content_info,
                 )
 
                 await self._process_event(event)
@@ -788,6 +796,9 @@ class Agent:
                     pending_sa=len(pending_subagent_ids),
                 )
                 break
+
+        # Notify output modules that processing has ended
+        await self.output_router.on_processing_end()
 
         # In ephemeral mode, flush conversation after each interaction
         if controller.is_ephemeral:

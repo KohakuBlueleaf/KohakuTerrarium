@@ -2,12 +2,16 @@
 Tool protocol and base classes.
 
 Tools are executable functions that can be called by the controller.
+Supports multimodal tool results (text + images).
 """
 
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from kohakuterrarium.llm.message import ContentPart, ImagePart, TextPart
 
 
 class ExecutionMode(Enum):
@@ -43,14 +47,16 @@ class ToolResult:
     """
     Result from tool execution.
 
+    Supports both text-only and multimodal output (text + images).
+
     Attributes:
-        output: Output content
+        output: Output content - str or list of ContentPart for multimodal
         exit_code: Exit code (None if not applicable)
         error: Error message if failed
         metadata: Additional result metadata
     """
 
-    output: str = ""
+    output: "str | list[ContentPart]" = ""
     exit_code: int | None = None
     error: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -59,6 +65,32 @@ class ToolResult:
     def success(self) -> bool:
         """Check if execution was successful."""
         return self.error is None and (self.exit_code is None or self.exit_code == 0)
+
+    def get_text_output(self) -> str:
+        """
+        Extract text output from result.
+
+        For multimodal results, concatenates all text parts.
+        """
+        from kohakuterrarium.llm.message import TextPart
+
+        if isinstance(self.output, str):
+            return self.output
+        return "\n".join(
+            part.text for part in self.output if isinstance(part, TextPart)
+        )
+
+    def has_images(self) -> bool:
+        """Check if result contains images."""
+        from kohakuterrarium.llm.message import ImagePart
+
+        if isinstance(self.output, str):
+            return False
+        return any(isinstance(part, ImagePart) for part in self.output)
+
+    def is_multimodal(self) -> bool:
+        """Check if result uses multimodal format."""
+        return isinstance(self.output, list)
 
 
 @runtime_checkable

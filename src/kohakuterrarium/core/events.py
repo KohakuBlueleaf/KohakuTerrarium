@@ -8,11 +8,18 @@ TriggerEvent is the universal event type that flows through the entire system:
 - Sub-agent output -> TriggerEvent
 
 Stackable events can be batched when occurring simultaneously.
+Supports multimodal content (text + images).
 """
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from kohakuterrarium.llm.message import ContentPart, TextPart
+
+# Type alias for event content (text or multimodal)
+EventContent = "str | list[ContentPart]"
 
 
 @dataclass
@@ -34,6 +41,7 @@ class TriggerEvent:
             - "error": Error occurred
 
         content: Main content/message of the event
+            Can be str for text-only, or list[ContentPart] for multimodal
 
         context: Additional context data (flexible dict for type-specific info)
             For tool_complete: may include exit_code, error, etc.
@@ -51,7 +59,7 @@ class TriggerEvent:
     """
 
     type: str
-    content: str = ""
+    content: EventContent = ""
     context: dict[str, Any] = field(default_factory=dict)
     timestamp: datetime = field(default_factory=datetime.now)
     job_id: str | None = None
@@ -62,6 +70,24 @@ class TriggerEvent:
         """Validate event after initialization."""
         if not self.type:
             raise ValueError("TriggerEvent type cannot be empty")
+
+    def get_text_content(self) -> str:
+        """
+        Extract text content from event.
+
+        For multimodal events, concatenates all text parts.
+        """
+        if isinstance(self.content, str):
+            return self.content
+        from kohakuterrarium.llm.message import TextPart
+
+        return "\n".join(
+            part.text for part in self.content if isinstance(part, TextPart)
+        )
+
+    def is_multimodal(self) -> bool:
+        """Check if event has multimodal content."""
+        return isinstance(self.content, list)
 
     def with_context(self, **kwargs: Any) -> "TriggerEvent":
         """
@@ -83,10 +109,15 @@ class TriggerEvent:
     def __repr__(self) -> str:
         parts = [f"TriggerEvent(type={self.type!r}"]
         if self.content:
-            content_preview = (
-                self.content[:50] + "..." if len(self.content) > 50 else self.content
-            )
-            parts.append(f"content={content_preview!r}")
+            if isinstance(self.content, str):
+                content_preview = (
+                    self.content[:50] + "..."
+                    if len(self.content) > 50
+                    else self.content
+                )
+                parts.append(f"content={content_preview!r}")
+            else:
+                parts.append(f"content=[{len(self.content)} parts]")
         if self.job_id:
             parts.append(f"job_id={self.job_id!r}")
         if self.context:

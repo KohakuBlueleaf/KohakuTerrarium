@@ -127,7 +127,7 @@ class SubAgentManager:
 
         lines.append("")
         lines.append(
-            "Use: `/name\\task description\\name/` (e.g., `/explore\\find auth code\\explore/`)"
+            "Use: `[/name]task description[name/]` (e.g., `[/explore]find auth code[explore/]`)"
         )
 
         return "\n".join(lines)

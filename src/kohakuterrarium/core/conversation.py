@@ -2,6 +2,7 @@
 Conversation management for KohakuTerrarium.
 
 Handles message history, context length tracking, and serialization.
+Supports multimodal messages (text + images).
 """
 
 import json
@@ -10,15 +11,26 @@ from datetime import datetime
 from typing import Any
 
 from kohakuterrarium.llm.message import (
+    ContentPart,
+    ImagePart,
     Message,
+    MessageContent,
     MessageList,
     Role,
+    TextPart,
     create_message,
     messages_to_dicts,
 )
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _get_content_text_length(content: MessageContent) -> int:
+    """Get text length of message content (text or multimodal)."""
+    if isinstance(content, str):
+        return len(content)
+    return sum(len(part.text) for part in content if isinstance(part, TextPart))
 
 
 @dataclass
@@ -84,7 +96,7 @@ class Conversation:
     def append(
         self,
         role: Role | str,
-        content: str,
+        content: MessageContent,
         **kwargs: Any,
     ) -> Message:
         """
@@ -92,7 +104,7 @@ class Conversation:
 
         Args:
             role: Message role (system, user, assistant, tool)
-            content: Message content
+            content: Message content (str or list[ContentPart] for multimodal)
             **kwargs: Additional message parameters (name, tool_call_id, etc.)
 
         Returns:
@@ -102,15 +114,24 @@ class Conversation:
         self._messages.append(msg)
 
         # Update metadata
+        content_length = _get_content_text_length(content)
         self._metadata.message_count += 1
-        self._metadata.total_chars += len(content)
+        self._metadata.total_chars += content_length
         self._metadata.updated_at = datetime.now()
+
+        # Check for multimodal content
+        is_multimodal = isinstance(content, list)
+        image_count = 0
+        if is_multimodal:
+            image_count = sum(1 for p in content if isinstance(p, ImagePart))
 
         logger.debug(
             "Message appended",
             role=role,
-            content_length=len(content),
+            content_length=content_length,
             total_messages=len(self._messages),
+            multimodal=is_multimodal,
+            images=image_count if image_count else None,
         )
 
         # Check if truncation needed
@@ -122,7 +143,7 @@ class Conversation:
         """Append an existing Message object."""
         self._messages.append(message)
         self._metadata.message_count += 1
-        self._metadata.total_chars += len(message.content)
+        self._metadata.total_chars += _get_content_text_length(message.content)
         self._metadata.updated_at = datetime.now()
         self._maybe_truncate()
 
@@ -153,10 +174,10 @@ class Conversation:
 
         # Truncate by context chars
         if self.config.max_context_chars > 0:
-            total = sum(len(m.content) for m in system_messages)
+            total = sum(_get_content_text_length(m.content) for m in system_messages)
             kept = []
             for msg in reversed(other_messages):
-                msg_len = len(msg.content)
+                msg_len = _get_content_text_length(msg.content)
                 if total + msg_len <= self.config.max_context_chars:
                     kept.insert(0, msg)
                     total += msg_len
@@ -172,7 +193,9 @@ class Conversation:
 
         # Rebuild messages list
         self._messages = system_messages + other_messages
-        self._metadata.total_chars = sum(len(m.content) for m in self._messages)
+        self._metadata.total_chars = sum(
+            _get_content_text_length(m.content) for m in self._messages
+        )
 
     def to_messages(self) -> list[dict[str, Any]]:
         """
@@ -191,10 +214,19 @@ class Conversation:
         """
         Get current context length in characters.
 
-        Note: This is characters, not tokens. For token estimation,
-        divide by ~4 for English text.
+        Note: This is text characters only (excludes image data).
+        For token estimation, divide by ~4 for English text.
+        Images consume additional tokens (~85 for low detail, ~765+ for high).
         """
-        return sum(len(msg.content) for msg in self._messages)
+        return sum(_get_content_text_length(msg.content) for msg in self._messages)
+
+    def get_image_count(self) -> int:
+        """Get total number of images in conversation."""
+        count = 0
+        for msg in self._messages:
+            if isinstance(msg.content, list):
+                count += sum(1 for p in msg.content if isinstance(p, ImagePart))
+        return count
 
     def get_last_message(self) -> Message | None:
         """Get the last message in the conversation."""
@@ -220,7 +252,9 @@ class Conversation:
             self._messages = []
 
         self._metadata.message_count = len(self._messages)
-        self._metadata.total_chars = sum(len(m.content) for m in self._messages)
+        self._metadata.total_chars = sum(
+            _get_content_text_length(m.content) for m in self._messages
+        )
         logger.debug("Conversation cleared", kept_messages=len(self._messages))
 
     def __len__(self) -> int:
@@ -233,13 +267,56 @@ class Conversation:
 
     # Serialization
 
+    def _serialize_content(self, content: MessageContent) -> Any:
+        """Serialize message content (text or multimodal) to JSON-compatible format."""
+        if isinstance(content, str):
+            return content
+
+        # Multimodal content - serialize each part
+        parts = []
+        for part in content:
+            if isinstance(part, TextPart):
+                parts.append({"type": "text", "text": part.text})
+            elif isinstance(part, ImagePart):
+                parts.append(
+                    {
+                        "type": "image_url",
+                        "url": part.url,
+                        "detail": part.detail,
+                        "source_type": part.source_type,
+                        "source_name": part.source_name,
+                    }
+                )
+        return parts
+
+    def _deserialize_content(self, content: Any) -> MessageContent:
+        """Deserialize message content from JSON format."""
+        if isinstance(content, str):
+            return content
+
+        # Multimodal content - deserialize each part
+        parts: list[ContentPart] = []
+        for item in content:
+            if item.get("type") == "text":
+                parts.append(TextPart(text=item.get("text", "")))
+            elif item.get("type") == "image_url":
+                parts.append(
+                    ImagePart(
+                        url=item.get("url", ""),
+                        detail=item.get("detail", "low"),
+                        source_type=item.get("source_type"),
+                        source_name=item.get("source_name"),
+                    )
+                )
+        return parts
+
     def to_json(self) -> str:
         """Serialize conversation to JSON string."""
         data = {
             "messages": [
                 {
                     "role": msg.role,
-                    "content": msg.content,
+                    "content": self._serialize_content(msg.content),
                     "name": msg.name,
                     "tool_call_id": msg.tool_call_id,
                     "metadata": msg.metadata,
@@ -262,9 +339,10 @@ class Conversation:
         conv = cls()
 
         for msg_data in data.get("messages", []):
+            content = conv._deserialize_content(msg_data["content"])
             msg = create_message(
                 role=msg_data["role"],
-                content=msg_data["content"],
+                content=content,
                 name=msg_data.get("name"),
                 tool_call_id=msg_data.get("tool_call_id"),
             )

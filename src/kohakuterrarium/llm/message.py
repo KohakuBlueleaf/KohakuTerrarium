@@ -2,6 +2,7 @@
 Message types for LLM conversations.
 
 Provides typed message structures compatible with OpenAI API format.
+Supports both text-only and multimodal (text + images) content.
 """
 
 from dataclasses import dataclass, field
@@ -12,33 +13,110 @@ from typing import Any, Literal
 Role = Literal["system", "user", "assistant", "tool"]
 
 
+# =============================================================================
+# Multimodal Content Parts
+# =============================================================================
+
+
+@dataclass
+class TextPart:
+    """Text content part for multimodal messages."""
+
+    text: str
+    type: Literal["text"] = "text"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to OpenAI API format."""
+        return {"type": "text", "text": self.text}
+
+
+@dataclass
+class ImagePart:
+    """
+    Image content part for multimodal messages.
+
+    Supports both URL and base64 data URLs.
+
+    Attributes:
+        url: Image URL (https://... or data:image/png;base64,...)
+        detail: Image detail level for vision models
+        source_type: Description of image source (attachment, emoji, sticker, etc.)
+        source_name: Name/identifier of the source
+    """
+
+    url: str
+    detail: Literal["auto", "low", "high"] = "low"
+    source_type: str | None = (
+        None  # e.g., "attachment", "emoji", "sticker", "gif_frame"
+    )
+    source_name: str | None = None  # e.g., filename, emoji name
+    type: Literal["image_url"] = "image_url"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to OpenAI API format."""
+        return {
+            "type": "image_url",
+            "image_url": {
+                "url": self.url,
+                "detail": self.detail,
+            },
+        }
+
+    def get_description(self) -> str:
+        """Get human-readable description of the image source."""
+        if self.source_type and self.source_name:
+            return f"[{self.source_type}: {self.source_name}]"
+        elif self.source_type:
+            return f"[{self.source_type}]"
+        return "[image]"
+
+
+# Union type for content parts
+ContentPart = TextPart | ImagePart
+
+
+def content_parts_to_dicts(parts: list[ContentPart]) -> list[dict[str, Any]]:
+    """Convert content parts to OpenAI API format."""
+    return [part.to_dict() for part in parts]
+
+
+# =============================================================================
+# Message Classes
+# =============================================================================
+
+
 @dataclass
 class Message:
     """
     A single message in a conversation.
 
     Compatible with OpenAI API message format.
+    Supports both text-only and multimodal content.
 
     Attributes:
         role: Message role (system, user, assistant, tool)
-        content: Message content text
+        content: Message content - either str or list of ContentPart for multimodal
         name: Optional name for the message sender
         tool_call_id: For tool messages, the ID of the tool call this responds to
         metadata: Optional metadata (not sent to API, for internal use)
     """
 
     role: Role
-    content: str
+    content: str | list[ContentPart]
     name: str | None = None
     tool_call_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to OpenAI API format dict."""
-        result: dict[str, Any] = {
-            "role": self.role,
-            "content": self.content,
-        }
+        result: dict[str, Any] = {"role": self.role}
+
+        # Handle both string and multimodal content
+        if isinstance(self.content, str):
+            result["content"] = self.content
+        else:
+            result["content"] = content_parts_to_dicts(self.content)
+
         if self.name:
             result["name"] = self.name
         if self.tool_call_id:
@@ -48,12 +126,59 @@ class Message:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Message":
         """Create Message from dict (e.g., API response)."""
+        content = data.get("content", "")
+
+        # Handle multimodal content from API
+        if isinstance(content, list):
+            parts: list[ContentPart] = []
+            for item in content:
+                if item.get("type") == "text":
+                    parts.append(TextPart(text=item.get("text", "")))
+                elif item.get("type") == "image_url":
+                    img_data = item.get("image_url", {})
+                    parts.append(
+                        ImagePart(
+                            url=img_data.get("url", ""),
+                            detail=img_data.get("detail", "low"),
+                        )
+                    )
+            content = parts
+
         return cls(
             role=data["role"],
-            content=data.get("content", ""),
+            content=content,
             name=data.get("name"),
             tool_call_id=data.get("tool_call_id"),
         )
+
+    def get_text_content(self) -> str:
+        """
+        Extract text content from message.
+
+        For multimodal messages, concatenates all text parts.
+        Useful for logging, display, and context length calculation.
+        """
+        if isinstance(self.content, str):
+            return self.content
+        return "\n".join(
+            part.text for part in self.content if isinstance(part, TextPart)
+        )
+
+    def has_images(self) -> bool:
+        """Check if message contains image content."""
+        if isinstance(self.content, str):
+            return False
+        return any(isinstance(part, ImagePart) for part in self.content)
+
+    def get_images(self) -> list[ImagePart]:
+        """Get all image parts from the message."""
+        if isinstance(self.content, str):
+            return []
+        return [part for part in self.content if isinstance(part, ImagePart)]
+
+    def is_multimodal(self) -> bool:
+        """Check if message uses multimodal content format."""
+        return isinstance(self.content, list)
 
 
 @dataclass
@@ -68,11 +193,20 @@ class SystemMessage(Message):
 
 @dataclass
 class UserMessage(Message):
-    """User message in the conversation."""
+    """
+    User message in the conversation.
+
+    Supports multimodal content (text + images).
+    """
 
     role: Role = field(default="user", init=False)
 
-    def __init__(self, content: str, name: str | None = None, **kwargs: Any):
+    def __init__(
+        self,
+        content: str | list[ContentPart],
+        name: str | None = None,
+        **kwargs: Any,
+    ):
         super().__init__(role="user", content=content, name=name, **kwargs)
 
 
@@ -88,13 +222,17 @@ class AssistantMessage(Message):
 
 @dataclass
 class ToolMessage(Message):
-    """Tool result message in the conversation."""
+    """
+    Tool result message in the conversation.
+
+    Supports multimodal content for tools that return images.
+    """
 
     role: Role = field(default="tool", init=False)
 
     def __init__(
         self,
-        content: str,
+        content: str | list[ContentPart],
         tool_call_id: str,
         name: str | None = None,
         **kwargs: Any,
@@ -111,6 +249,9 @@ class ToolMessage(Message):
 # Type alias for a list of messages
 MessageList = list[Message]
 
+# Type alias for content (text or multimodal)
+MessageContent = str | list[ContentPart]
+
 
 def messages_to_dicts(messages: MessageList) -> list[dict[str, Any]]:
     """Convert a list of Messages to OpenAI API format."""
@@ -122,14 +263,34 @@ def dicts_to_messages(dicts: list[dict[str, Any]]) -> MessageList:
     return [Message.from_dict(d) for d in dicts]
 
 
-def create_message(role: Role, content: str, **kwargs: Any) -> Message:
-    """Factory function to create the appropriate Message subclass."""
+def create_message(
+    role: Role,
+    content: str | list[ContentPart],
+    **kwargs: Any,
+) -> Message:
+    """
+    Factory function to create the appropriate Message subclass.
+
+    Args:
+        role: Message role (system, user, assistant, tool)
+        content: Text string or list of ContentPart for multimodal
+        **kwargs: Additional message attributes
+
+    Returns:
+        Appropriate Message subclass instance
+    """
     match role:
         case "system":
+            # System messages are always text-only
+            if isinstance(content, list):
+                content = "\n".join(p.text for p in content if isinstance(p, TextPart))
             return SystemMessage(content, **kwargs)
         case "user":
             return UserMessage(content, **kwargs)
         case "assistant":
+            # Assistant messages are typically text-only from LLM
+            if isinstance(content, list):
+                content = "\n".join(p.text for p in content if isinstance(p, TextPart))
             return AssistantMessage(content, **kwargs)
         case "tool":
             if "tool_call_id" not in kwargs:
@@ -137,3 +298,28 @@ def create_message(role: Role, content: str, **kwargs: Any) -> Message:
             return ToolMessage(content, **kwargs)
         case _:
             return Message(role=role, content=content, **kwargs)
+
+
+def make_multimodal_content(
+    text: str,
+    images: list[ImagePart] | None = None,
+    prepend_images: bool = False,
+) -> str | list[ContentPart]:
+    """
+    Create message content, using multimodal format only if images are present.
+
+    Args:
+        text: Text content
+        images: Optional list of ImagePart objects
+        prepend_images: If True, images come before text; otherwise after
+
+    Returns:
+        str if no images, list[ContentPart] if images present
+    """
+    if not images:
+        return text
+
+    text_part = TextPart(text=text)
+    if prepend_images:
+        return [*images, text_part]
+    return [text_part, *images]

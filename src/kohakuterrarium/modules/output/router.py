@@ -237,6 +237,12 @@ class OutputRouter:
             if hasattr(output, "on_processing_start"):
                 await output.on_processing_start()
 
+    async def on_processing_end(self) -> None:
+        """Notify output modules that processing has ended."""
+        for output in self.named_outputs.values():
+            if hasattr(output, "on_processing_end"):
+                await output.on_processing_end()
+
     def reset(self) -> None:
         """Reset router state for new turn."""
         self._state = OutputState.NORMAL
