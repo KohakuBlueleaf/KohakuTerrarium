@@ -62,11 +62,10 @@ Wait up to 2 minutes for a long-running task:
 Request-response pattern (send then wait):
 
 ```
-[/send_channel]
+[/send_message]
 @@channel=worker_queue
-@@sender=controller
 Process this data
-[send_channel/]
+[send_message/]
 
 [/wait_channel]
 @@channel=results_inbox
@@ -93,7 +92,7 @@ Metadata line only appears when the message includes metadata.
 
 ## TIPS
 
-- Pair with `send_channel` for request-response patterns
+- Pair with `send_message` for request-response patterns
 - Use descriptive channel names to avoid collisions (e.g., `agent_x_replies`)
 - Set timeout based on expected response time; the default 30s is good for quick tasks
 - For long-running sub-agents, increase timeout to avoid premature timeouts

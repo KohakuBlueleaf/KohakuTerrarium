@@ -44,9 +44,14 @@ Steps:
 [think/]
 ```
 
-## Output
+## Output Format
 
 Returns "Noted." (fixed response).
+
+## LIMITATIONS
+
+- No side effects (the tool does nothing except preserve the thought in context)
+- Subject to context compaction like all other messages (but prioritized for retention)
 
 ## TIPS
 

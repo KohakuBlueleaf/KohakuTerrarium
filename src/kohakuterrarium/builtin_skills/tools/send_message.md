@@ -77,6 +77,12 @@ Memory usage exceeded 80% threshold.
 Message sent to channel 'channel_name'
 ```
 
+## LIMITATIONS
+
+- Fire-and-forget: no delivery confirmation beyond "message sent"
+- No message persistence across restarts (in-memory queues)
+- Metadata must be valid JSON if provided
+
 ## TIPS
 
 - Channel names are arbitrary strings; both sender and receiver must agree on the name

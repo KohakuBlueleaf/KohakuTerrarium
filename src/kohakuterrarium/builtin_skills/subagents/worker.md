@@ -92,3 +92,10 @@ Returns a structured summary including:
 - Limited to 15 turns and 300s timeout
 - Returns text summary (not structured data)
 - Cannot handle interactive or multi-session workflows
+
+## TIPS
+
+- Give clear, specific task descriptions with file paths when known
+- Mention any constraints (e.g., "don't change the public API")
+- For multi-file changes, describe the desired end state, not just individual edits
+- Use critic after worker to verify the changes

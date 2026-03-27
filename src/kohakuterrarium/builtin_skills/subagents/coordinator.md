@@ -87,3 +87,9 @@ Returns a structured summary including:
 - Channels must already be configured and available
 - Subject to timeout (600s default) across all subtask round-trips
 - Maximum 20 turns for dispatching and collecting results
+
+## TIPS
+
+- List available channels explicitly in the task description
+- Describe dependencies between subtasks so the coordinator sequences them correctly
+- For simple two-agent workflows, consider using send_message + wait_channel directly

@@ -92,6 +92,12 @@ Clear all data:
 - **list**: Returns a bullet list of all keys, or "(empty)"
 - **clear**: Returns "Scratchpad cleared"
 
+## LIMITATIONS
+
+- Session-scoped only (data is lost on restart)
+- Keys are flat strings (no nested namespaces)
+- Values are stored as plain text (no binary data)
+
 ## TIPS
 
 - Use descriptive key names: `plan`, `progress`, `findings`, `constraints`

@@ -92,3 +92,9 @@ Returns a structured research report including:
 - Limited turns (may not exhaust all sources)
 - Cannot execute code or run tests
 - Returns text summary (not structured data)
+
+## TIPS
+
+- Be specific in your research question to get focused results
+- Mention whether you need local codebase info, external sources, or both
+- For pure codebase questions, prefer explore (it has glob access; research does not)

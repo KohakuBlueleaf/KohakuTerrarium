@@ -87,3 +87,9 @@ Returns a structured summary including:
 - Limited turns (max 3) - best for straightforward summarization
 - Cannot search the codebase (use explore for that, then summarize results)
 - May lose nuance when condensing highly technical content
+
+## TIPS
+
+- Include the content directly in the body when possible (avoids extra file reads)
+- Specify what aspects matter most (e.g., "focus on error messages" or "highlight API changes")
+- Chain with explore: use explore to gather information, then summarize the results

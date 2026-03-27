@@ -103,3 +103,9 @@ Returns a structured review containing:
 - Limited turns (max 5) for focused review
 - Returns text feedback (controller must act on suggestions)
 - Cannot run tests or execute code to verify behavior
+
+## TIPS
+
+- Provide clear context about what the code should do (requirements, constraints)
+- Specify focus areas when you want targeted review (e.g., "focus on error handling")
+- Use the verdict (PASS/FAIL) to decide whether to proceed or iterate
