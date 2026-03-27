@@ -4,7 +4,6 @@
 
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-green)
-![asyncio](https://img.shields.io/badge/runtime-asyncio-purple)
 
 ---
 
