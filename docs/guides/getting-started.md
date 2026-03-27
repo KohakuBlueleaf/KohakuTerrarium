@@ -37,8 +37,11 @@ export OPENAI_API_KEY="sk-..."
 The fastest way to get started is running one of the included example agents:
 
 ```bash
-# Run the SWE agent (coding assistant)
+# Run the SWE agent (coding assistant, CLI input)
 python -m kohakuterrarium.run agents/swe_agent
+
+# Or with TUI input/output for a richer terminal experience
+python -m kohakuterrarium.run agents/swe_agent_tui
 ```
 
 You'll see output like:
@@ -83,12 +86,12 @@ controller:
 # System prompt file
 system_prompt_file: prompts/system.md
 
-# Input - CLI prompts
+# Input - CLI prompts (options: cli, tui, whisper, none, custom)
 input:
   type: cli
   prompt: "> "
 
-# Output - stdout
+# Output - stdout (options: stdout, tui, tts, custom)
 output:
   type: stdout
 
@@ -241,6 +244,22 @@ triggers:
     min_idle_seconds: 300     # 5 minutes
     prompt: "Check if there's anything to follow up on."
 ```
+
+## Trigger-Only Agents (No User Input)
+
+For agents driven entirely by triggers (timers, channel events), use `none` input:
+
+```yaml
+input:
+  type: none    # NoneInput -- blocks forever, never produces input events
+
+triggers:
+  - type: timer
+    interval: 60
+    prompt: "Run health check."
+```
+
+See [monitor_agent](../../agents/monitor_agent/) for a complete example.
 
 ## Named Outputs
 

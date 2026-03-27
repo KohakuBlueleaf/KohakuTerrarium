@@ -13,7 +13,7 @@ Defines the tool protocol that all tools implement.
 | Class | Purpose |
 |-------|---------|
 | `BaseTool` | Abstract base class with `execute()`, `tool_name`, `description` |
-| `ToolContext` | Injected context (channels, scratchpad, working dir, memory path) |
+| `ToolContext` | Injected context (session with channels/scratchpad, working dir, memory path) |
 | `ToolResult` | Return type with output, exit_code, error, metadata |
 | `ToolConfig` | Per-tool config (timeout, max_output, working_dir, env) |
 | `ToolInfo` | Name + one-line description pair for prompt aggregation |

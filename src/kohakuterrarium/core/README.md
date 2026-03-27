@@ -42,6 +42,16 @@ Named async pub/sub channels for cross-component communication. Components send
 and receive `ChannelMessage`s through a `ChannelRegistry` without direct coupling.
 Used by `send_message`/`wait_channel` tools and `ChannelTrigger`.
 
+### Session (`session.py`)
+
+Keyed shared state registry. A `Session` holds all session-scoped objects for one
+agent (or a group of cooperating agents): channels, scratchpad, TUI state, and
+user-provided extras. Functions: `get_session(key)`, `set_session()`, `remove_session()`.
+Agents with the same `session_key` in config share a single Session instance.
+
+The legacy `get_channel_registry()` and `get_scratchpad()` singletons now route
+through the default session for backward compatibility.
+
 ### Scratchpad (`scratchpad.py`)
 
 Session-scoped key-value working memory. Unlike file-based memory (cross-session,

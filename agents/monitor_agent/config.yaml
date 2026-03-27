@@ -14,9 +14,7 @@ controller:
 system_prompt_file: prompts/system.md
 
 # No user input - purely trigger-driven
-# NOTE: "none" input type is not yet implemented as a builtin.
-# Falls back to CLI input; triggers still fire in background.
-# Use Ctrl+C to stop the agent.
+# NoneInput blocks forever, agent runs on triggers only
 input:
   type: none
 

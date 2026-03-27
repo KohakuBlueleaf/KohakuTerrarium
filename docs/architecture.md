@@ -154,6 +154,40 @@ Manages message history with OpenAI-compatible format.
 - JSON serialization/deserialization
 - Metadata tracking (creation time, message count, total chars)
 
+### Session Registry (`core/session.py`)
+
+Keyed shared state for session-scoped objects. A `Session` holds channels, scratchpad,
+TUI state, and user-provided extras for one agent (or a group of cooperating agents).
+
+```python
+@dataclass
+class Session:
+    key: str
+    channels: ChannelRegistry
+    scratchpad: Scratchpad
+    tui: Any | None = None
+    extra: dict[str, Any]
+```
+
+**API:**
+```python
+from kohakuterrarium.core.session import get_session, set_session, remove_session
+
+# Get or create by key (None = default session)
+session = get_session("my_agent")
+
+# Agents with the same session_key share the same Session instance
+session.scratchpad.set("key", "value")
+channel = session.channels.get_or_create("inbox")
+```
+
+**Singleton Redirect:** The legacy `get_channel_registry()` and `get_scratchpad()` functions
+now route through the default session, so existing code continues to work unchanged.
+
+**Agent Integration:** `AgentConfig.session_key` controls which session an agent uses.
+When `None`, the agent name is used as the key. Multiple agents with the same `session_key`
+share channels, scratchpad, and TUI state.
+
 ### Registry (`core/registry.py`)
 
 Central registration for tools, sub-agents, and commands.
@@ -185,7 +219,8 @@ class InputModule(Protocol):
     async def get_input(self) -> TriggerEvent | None
 ```
 
-Examples: CLI input, Discord messages, Whisper ASR
+Built-in types: `cli`, `tui` (shared TUI session), `whisper` (ASR), `none` (trigger-only).
+Custom: Discord messages, etc.
 
 ### Trigger Modules (`modules/trigger/base.py`)
 
@@ -219,6 +254,21 @@ class ExecutionMode(Enum):
     DIRECT = "direct"          # Complete before returning
     BACKGROUND = "background"  # Run in background
     STATEFUL = "stateful"      # Multi-turn interaction
+```
+
+**ToolContext** (injected for tools with `needs_context = True`):
+```python
+@dataclass
+class ToolContext:
+    agent_name: str
+    session: Session           # Session object (channels, scratchpad, extras)
+    working_dir: Path
+    memory_path: Path | None
+
+    @property
+    def channels(self) -> ChannelRegistry    # Backward-compat via session.channels
+    @property
+    def scratchpad(self) -> Scratchpad       # Backward-compat via session.scratchpad
 ```
 
 ### Output Modules (`modules/output/base.py`)
@@ -375,7 +425,7 @@ Phase 6: Push Feedback
 ```
                     ┌─────────────────┐
                     │   Input Module  │
-                    │  (CLI, Discord) │
+                    │(CLI,TUI,Discord)│
                     └────────┬────────┘
                              │ TriggerEvent
                              ▼
@@ -424,6 +474,7 @@ src/kohakuterrarium/
 │   ├── executor.py          # Background tool execution
 │   ├── job.py               # Job status tracking
 │   ├── events.py            # TriggerEvent model
+│   ├── session.py           # Session registry (keyed shared state)
 │   ├── config.py            # Configuration loading
 │   ├── registry.py          # Module registration
 │   └── loader.py            # Dynamic module loading
@@ -448,8 +499,9 @@ src/kohakuterrarium/
 │
 ├── builtins/                # Built-in implementations
 │   ├── tools/               # bash, read, write, etc.
-│   ├── inputs/              # cli, whisper
+│   ├── inputs/              # cli, whisper, none
 │   ├── outputs/             # stdout, tts
+│   ├── tui/                 # TUI session, input, output
 │   └── subagents/           # explore, plan, memory
 │
 ├── llm/                     # LLM integration

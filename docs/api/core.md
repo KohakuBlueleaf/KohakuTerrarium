@@ -479,6 +479,54 @@ async def handle_my_command(...):
 
 ---
 
+## Session Registry (`core/session.py`)
+
+Keyed shared state for session-scoped objects.
+
+### Session
+
+```python
+@dataclass
+class Session:
+    """All session-scoped shared state for one agent."""
+    key: str
+    channels: ChannelRegistry           # Channel registry for cross-component messaging
+    scratchpad: Scratchpad              # Session-scoped key-value working memory
+    tui: Any | None = None             # TUI session state (set when TUI mode active)
+    extra: dict[str, Any]              # User-provided custom state
+```
+
+### Functions
+
+```python
+def get_session(key: str | None = None) -> Session:
+    """Get or create a session by key. None uses default session."""
+
+def set_session(session: Session, key: str | None = None) -> None:
+    """Inject a custom session (testing/programmatic use)."""
+
+def remove_session(key: str | None = None) -> None:
+    """Remove a session (cleanup/testing)."""
+
+def list_sessions() -> list[str]:
+    """List all active session keys."""
+```
+
+### Usage
+
+```python
+from kohakuterrarium.core.session import get_session, set_session
+
+# Get or create by key
+session = get_session("my_agent")
+session.scratchpad.set("key", "value")
+channel = session.channels.get_or_create("inbox")
+
+# Agents with the same session_key in config share the same Session
+```
+
+---
+
 ## Configuration (`core/config.py`)
 
 Configuration loading and parsing.
@@ -491,6 +539,7 @@ class AgentConfig:
     """Complete agent configuration."""
     name: str
     version: str = "1.0"
+    session_key: str | None = None     # Session key for shared state (default: agent name)
     controller: ControllerConfig
     system_prompt_file: str | None = None
     input: dict[str, Any] | None = None

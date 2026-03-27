@@ -80,6 +80,36 @@ Found 15 files importing asyncio:
 
 ---
 
+## SWE Agent TUI (`agents/swe_agent_tui/`)
+
+Same as the SWE Agent but uses TUI input/output for a richer terminal experience.
+
+### Architecture Pattern
+**TUI Input/Output** - Shared TUI session via the session registry for coordinated terminal access.
+
+### Key Configuration
+
+```yaml
+name: swe_agent_tui
+
+input:
+  type: tui
+  prompt: "You: "
+
+output:
+  type: tui
+  controller_direct: true
+```
+
+### Key Features
+
+1. **TUI Input**: Reads user input through the TUI session
+2. **TUI Output**: Writes agent output through the same shared TUI session
+3. **Session Registry**: TUI input and output share a `TUISession` instance via `Session.tui`
+4. **Same Tools/Sub-agents**: Identical capabilities to `swe_agent`
+
+---
+
 ## Discord Bot (`agents/discord_bot/`)
 
 A group chat bot with memory, character, and autonomous triggers.
@@ -356,6 +386,26 @@ output:
   type: tts
 ```
 Best for: Voice assistants, real-time conversation
+
+### Pattern 5: TUI Mode (SWE Agent TUI)
+```yaml
+input:
+  type: tui
+output:
+  type: tui
+  controller_direct: true
+```
+Best for: Interactive terminal agents with richer I/O control
+
+### Pattern 6: Trigger-Only (Monitor Agent)
+```yaml
+input:
+  type: none
+triggers:
+  - type: timer
+    interval: 60
+```
+Best for: Autonomous monitoring, background processing, event-driven agents
 
 ---
 

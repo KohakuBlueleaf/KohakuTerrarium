@@ -14,6 +14,8 @@ KohakuTerrarium is a Python framework for building any kind of agent -- coding a
 - **Any agent type** -- SWE agents, chatbots, autonomous monitors, multi-agent coordinators
 - **Async-first execution** -- tools start during LLM streaming, run in parallel via `asyncio`
 - **Nested sub-agents** -- full agents with their own LLM, tools, and lifecycle
+- **Session registry** -- keyed shared state (`channels`, `scratchpad`, TUI, extras) per agent or shared across agents
+- **TUI input/output** -- built-in terminal UI modules with shared session for richer interactive experience
 - **Channel-based coordination** -- async named message queues for cross-agent communication
 - **YAML-driven config** -- define agents declaratively, minimal code required
 - **16 built-in tools** -- bash, read, write, edit, glob, grep, http, think, scratchpad, and more
@@ -32,8 +34,11 @@ uv pip install -e .
 
 export OPENROUTER_API_KEY=your_key_here
 
-# Run the SWE agent
+# Run the SWE agent (CLI input)
 python -m kohakuterrarium.run agents/swe_agent
+
+# Run the SWE agent (TUI input/output)
+python -m kohakuterrarium.run agents/swe_agent_tui
 
 # Run the planner agent
 python -m kohakuterrarium.run agents/planner_agent
@@ -162,7 +167,7 @@ Trigger ────┘           |            <----> Sub-Agents (nested LLMs)
 
 | System | Role |
 |--------|------|
-| **Input** | User requests, chat messages, ASR streams |
+| **Input** | User requests, chat messages, ASR streams, TUI, or none (trigger-only) |
 | **Trigger** | Timers, channel events -- for autonomous operation |
 | **Controller** | LLM orchestrator -- dispatches tasks, makes decisions |
 | **Tool Calling** | Background parallel execution of tools and sub-agents |
@@ -195,14 +200,15 @@ The controller dispatches, not executes. Long outputs come from sub-agents. This
 
 ## Example Agents
 
-7 example agents included. See [agents/README.md](agents/README.md) for details.
+8 example agents included. See [agents/README.md](agents/README.md) for details.
 
 | Agent | Pattern | Key Feature |
 |-------|---------|-------------|
 | [swe_agent](agents/swe_agent/) | SWE coding assistant | think + scratchpad + worker/critic |
+| [swe_agent_tui](agents/swe_agent_tui/) | SWE assistant (TUI mode) | TUI input/output, shared session |
 | [multi_agent](agents/multi_agent/) | Multi-agent coordination | Parallel sub-agent dispatch |
 | [planner_agent](agents/planner_agent/) | Plan-execute-reflect loop | Scratchpad-driven planning |
-| [monitor_agent](agents/monitor_agent/) | Trigger-driven autonomous | Timer + channel triggers, no input |
+| [monitor_agent](agents/monitor_agent/) | Trigger-driven autonomous | Timer + channel triggers, `input: {type: none}` |
 | [conversational](agents/conversational/) | Streaming ASR/TTS chat | Interactive output sub-agent |
 | [discord_bot](agents/discord_bot/) | Group chat bot | Custom I/O, ephemeral mode |
 | [rp_agent](agents/rp_agent/) | Character roleplay | Memory-first personality |
@@ -219,6 +225,11 @@ controller:
   base_url: https://openrouter.ai/api/v1
 
 system_prompt_file: prompts/system.md
+
+# session_key: shared_state  # Optional: agents with same key share state
+
+input:
+  type: cli       # Options: cli, tui, whisper, none (trigger-only), custom
 
 tools:
   - name: bash
@@ -238,15 +249,15 @@ Full config reference: [docs/guides/configuration.md](docs/guides/configuration.
 
 ```
 src/kohakuterrarium/
-  core/        # Runtime: agent, controller, executor, events, channels
+  core/        # Runtime: agent, controller, executor, events, channels, session
   modules/     # Protocols: input, trigger, tool, output, subagent
-  builtins/    # 16 tools, 10 sub-agents, CLI/Whisper, stdout/TTS
+  builtins/    # 16 tools, 10 sub-agents, CLI/TUI/Whisper/None, stdout/TUI/TTS
   parsing/     # Stream parser for [/tool]...[tool/] detection
   prompt/      # System prompt aggregation + Jinja2 templating
   llm/         # LLM abstraction (OpenAI/OpenRouter)
   utils/       # Structured colored logging
 
-agents/        # 7 example agent configurations
+agents/        # 8 example agent configurations
 docs/          # Architecture, API reference, guides
 ```
 

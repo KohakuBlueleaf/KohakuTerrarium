@@ -313,6 +313,26 @@ class BaseTool:
         """Full docs for [/info] command. Override for detailed docs."""
 ```
 
+### ToolContext
+
+```python
+@dataclass
+class ToolContext:
+    """Context available to tools during execution (opt-in via needs_context)."""
+    agent_name: str
+    session: Session               # Session object - carries channels, scratchpad, extras
+    working_dir: Path
+    memory_path: Path | None = None
+
+    @property
+    def channels(self) -> ChannelRegistry:
+        """Backward-compatible accessor for session.channels."""
+
+    @property
+    def scratchpad(self) -> Scratchpad:
+        """Backward-compatible accessor for session.scratchpad."""
+```
+
 ### ToolConfig
 
 ```python

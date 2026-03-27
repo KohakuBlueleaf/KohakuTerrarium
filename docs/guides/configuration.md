@@ -22,6 +22,7 @@ controller:
 |-------|------|----------|-------------|
 | `name` | string | Yes | Agent identifier |
 | `version` | string | No | Version string |
+| `session_key` | string | No | Session key for shared state (default: agent name). Agents with the same key share channels, scratchpad, and TUI state |
 | `controller` | object | Yes | LLM configuration |
 | `system_prompt_file` | string | No | Path to system prompt markdown |
 | `input` | object | No | Input module configuration |
@@ -88,6 +89,26 @@ input:
   prompt: "> "
 ```
 
+### TUI Input (builtin)
+
+```yaml
+input:
+  type: tui
+  prompt: "You: "               # Optional prompt string
+  session_key: my_agent         # Optional: override session key
+```
+
+TUI input and output share a `TUISession` via the session registry, enabling coordinated terminal access.
+
+### None Input (builtin)
+
+```yaml
+input:
+  type: none
+```
+
+For trigger-only agents that have no user input. `NoneInput` blocks forever and never produces input events. The agent runs purely on timer, channel, or other triggers.
+
 ### Custom Input
 
 ```yaml
@@ -103,10 +124,11 @@ input:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `type` | string | Yes | "cli", "builtin", or "custom" |
+| `type` | string | Yes | "cli", "tui", "none", or "custom" |
 | `module` | string | For custom | Path to module |
 | `class` | string | For custom | Class name |
-| `prompt` | string | For CLI | Input prompt string |
+| `prompt` | string | For CLI/TUI | Input prompt string |
+| `session_key` | string | For TUI | Override session key for TUI session |
 | `*` | any | No | Additional fields passed to constructor |
 
 ---
@@ -120,6 +142,17 @@ output:
   type: stdout
   controller_direct: true    # Controller text goes to stdout
 ```
+
+### TUI Output
+
+```yaml
+output:
+  type: tui
+  controller_direct: true
+  session_key: my_agent         # Optional: override session key
+```
+
+TUI output writes to the shared `TUISession`. Pair with `input: {type: tui}` for a complete TUI experience.
 
 ### With Named Outputs
 
@@ -140,7 +173,7 @@ output:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `type` | string | Yes | "stdout" or "custom" |
+| `type` | string | Yes | "stdout", "tui", or "custom" |
 | `controller_direct` | bool | No | Controller output to default |
 | `named_outputs` | object | No | Named output targets |
 
@@ -362,6 +395,7 @@ startup_trigger:
 ```yaml
 name: complete_agent
 version: "1.0"
+session_key: my_session        # Optional: share state with other agents using same key
 
 controller:
   model: "${OPENROUTER_MODEL:google/gemini-3-flash-preview}"

@@ -383,6 +383,47 @@ input:
 
 ---
 
+### tui
+
+TUI (Terminal UI) input. Reads from a shared `TUISession` via the session registry.
+
+```yaml
+input:
+  type: tui
+  prompt: "You: "
+  session_key: my_agent    # optional
+```
+
+**Configuration:**
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| prompt | string | "> " | Input prompt |
+| session_key | string | None | Override session key for shared TUI state |
+
+**Notes:**
+- Shares a `TUISession` instance with `TUIOutput` via `Session.tui`
+- Supports exit commands: `exit`, `quit`, `/exit`, `/quit`
+- Pair with `output: {type: tui}` for a complete TUI experience
+
+---
+
+### none
+
+No-input module for trigger-only agents.
+
+```yaml
+input:
+  type: none
+```
+
+**Notes:**
+- `NoneInput` blocks forever and never produces input events
+- Agent runs purely on triggers (timers, channel events, etc.)
+- Use for autonomous monitoring, background processing agents
+- See [monitor_agent](../../../agents/monitor_agent/) for example
+
+---
+
 ## Builtin Outputs
 
 ### stdout
@@ -397,6 +438,27 @@ output:
 **Features:**
 - Streaming support
 - Automatic flush on newlines
+
+---
+
+### tui
+
+TUI (Terminal UI) output. Writes to a shared `TUISession` via the session registry.
+
+```yaml
+output:
+  type: tui
+  session_key: my_agent    # optional
+```
+
+**Configuration:**
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| session_key | string | None | Override session key for shared TUI state |
+
+**Notes:**
+- Shares a `TUISession` instance with `TUIInput` via `Session.tui`
+- Supports both `write()` and `write_stream()` for streaming output
 
 ---
 

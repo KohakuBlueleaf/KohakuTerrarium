@@ -41,9 +41,21 @@ Agents reference these by name in their `config.yaml`.
 
 ## Inputs and Outputs
 
-**Inputs:** `cli` (blocking and non-blocking), `whisper` (Silero VAD + Whisper ASR)
+**Inputs:** `cli` (blocking and non-blocking), `tui` (shared TUI session), `whisper` (Silero VAD + Whisper ASR), `none` (trigger-only, no input)
 
-**Outputs:** `stdout` (plain and prefixed), `tts` (console TTS with config)
+**Outputs:** `stdout` (plain and prefixed), `tui` (shared TUI session), `tts` (console TTS with config)
+
+## TUI System (`tui/`)
+
+Shared terminal UI with coordinated input and output via the session registry.
+
+| Module | Purpose |
+|--------|---------|
+| `TUISession` | Shared state (input queue, output buffer, stop signal) stored in `Session.tui` |
+| `TUIInput` | Input module reading from `TUISession` -- config: `input: {type: tui}` |
+| `TUIOutput` | Output module writing to `TUISession` -- config: `output: {type: tui}` |
+
+Both modules attach to the same `TUISession` instance via `get_session()`, enabling coordinated terminal access.
 
 ## Usage
 
@@ -79,6 +91,7 @@ class MyTool(BaseTool):
 builtins/
 ├── tools/       # 16 tool implementations + registry
 ├── subagents/   # 10 sub-agent configs
-├── inputs/      # CLI and Whisper input modules
-└── outputs/     # Stdout and TTS output modules
+├── inputs/      # CLI, Whisper, and None input modules
+├── outputs/     # Stdout and TTS output modules
+└── tui/         # TUI session, input, and output modules
 ```

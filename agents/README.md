@@ -20,6 +20,16 @@ python -m kohakuterrarium agents/<agent_name>
 - **Key features:** `controller_direct: true`, keyword termination (`TASK_COMPLETE`), 100-turn limit
 - **Config:** [config.yaml](swe_agent/config.yaml)
 
+## swe_agent_tui
+
+**Software engineering assistant with TUI input/output.**
+
+- **Pattern:** Same as swe_agent but uses TUI modules for richer terminal experience
+- **Tools:** bash, python, read, write, edit, glob, grep, think, scratchpad, ask_user
+- **Sub-agents:** explore, plan, worker, critic, summarize
+- **Key features:** `input: {type: tui}`, `output: {type: tui}`, shared TUI session via session registry
+- **Config:** [config.yaml](swe_agent_tui/config.yaml)
+
 ## multi_agent
 
 **Multi-agent coordination** with parallel sub-agent dispatch.
@@ -48,7 +58,7 @@ python -m kohakuterrarium agents/<agent_name>
 - **Tools:** bash, http, read, scratchpad, send_message, think
 - **Sub-agents:** explore, summarize
 - **Triggers:** 60s timer (immediate first fire), `monitor_alerts` channel trigger
-- **Key features:** `input: none`, custom alert output module, 24h max_duration
+- **Key features:** `input: {type: none}` (NoneInput -- blocks forever, trigger-only), custom alert output module, 24h max_duration
 - **Config:** [config.yaml](monitor_agent/config.yaml)
 
 ## conversational
@@ -89,10 +99,12 @@ python -m kohakuterrarium agents/<agent_name>
 | Pattern | Example Agent | Key Config |
 |---------|---------------|------------|
 | Direct output | swe_agent | `controller_direct: true` |
+| TUI input/output | swe_agent_tui | `input: {type: tui}`, `output: {type: tui}` |
 | Output sub-agent | rp_agent, conversational | `output_to: external`, `interactive: true` |
 | Ephemeral mode | discord_bot | `ephemeral: true` |
-| Trigger-driven | monitor_agent | `triggers:` with no user input |
+| Trigger-only (no input) | monitor_agent | `input: {type: none}`, `triggers:` |
 | Channel messaging | multi_agent | `send_message` + `wait_channel` tools |
 | Startup trigger | rp_agent | `startup_trigger: { prompt: "..." }` |
 | Named outputs | discord_bot | `named_outputs: { discord: ... }` |
+| Shared session | (any pair) | `session_key: shared_key` on multiple agents |
 | Custom I/O | discord_bot | `type: custom`, `module:`, `class:` |
