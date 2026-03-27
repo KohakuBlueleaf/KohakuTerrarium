@@ -1,0 +1,60 @@
+# Monitor Agent Configuration
+# Trigger-driven autonomous monitoring agent (no user input)
+
+name: monitor_agent
+version: "1.0"
+
+controller:
+  model: "${OPENROUTER_MODEL:google/gemini-3-flash-preview}"
+  temperature: 0.3
+  max_tokens: 512000
+  api_key_env: OPENROUTER_API_KEY
+  base_url: https://openrouter.ai/api/v1
+
+system_prompt_file: prompts/system.md
+
+# No user input - purely trigger-driven
+input:
+  type: none
+
+triggers:
+  - type: timer
+    prompt: "Run health check on the monitored service."
+    interval: 60
+    immediate: true
+  - type: channel
+    channel: monitor_alerts
+    prompt: "Investigate this alert: {content}"
+
+tools:
+  - name: bash
+    type: builtin
+  - name: http
+    type: builtin
+  - name: read
+    type: builtin
+  - name: scratchpad
+    type: builtin
+  - name: send_message
+    type: builtin
+  - name: think
+    type: builtin
+
+subagents:
+  - name: explore
+    type: builtin
+    extra_prompt: "Focus on log files and configuration."
+  - name: summarize
+    type: builtin
+
+termination:
+  max_duration: 86400
+
+output:
+  type: stdout
+  controller_direct: true
+  named_outputs:
+    alert:
+      type: custom
+      module: ./custom/alert_output.py
+      class: WebhookAlertOutput
