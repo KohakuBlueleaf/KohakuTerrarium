@@ -52,12 +52,19 @@ class ToolContext:
     """
 
     agent_name: str
-    channels: (
-        Any  # ChannelRegistry - use Any to avoid circular import with core/channel.py
-    )
-    scratchpad: Any  # Scratchpad - use Any to avoid circular import
+    session: Any  # Session object - carries channels, scratchpad, extras
     working_dir: Path
     memory_path: Path | None = None
+
+    @property
+    def channels(self) -> Any:
+        """Backward-compatible accessor for session.channels."""
+        return self.session.channels if self.session else None
+
+    @property
+    def scratchpad(self) -> Any:
+        """Backward-compatible accessor for session.scratchpad."""
+        return self.session.scratchpad if self.session else None
 
 
 @dataclass
