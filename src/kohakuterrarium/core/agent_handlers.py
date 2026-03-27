@@ -9,12 +9,18 @@ the main Agent class to keep file sizes manageable.
 import asyncio
 from typing import Any
 
+from kohakuterrarium.core.constants import (
+    STATUS_PREVIEW_MAX_CHARS,
+    TOOL_RESULT_MAX_CHARS,
+)
 from kohakuterrarium.core.controller import Controller
 from kohakuterrarium.core.events import (
     EventType,
     TriggerEvent,
     create_tool_complete_event,
 )
+from kohakuterrarium.core.job import JobResult
+from kohakuterrarium.modules.tool.base import BaseTool, ExecutionMode
 from kohakuterrarium.parsing import (
     SubAgentCallEvent,
     ToolCallEvent,
@@ -92,7 +98,7 @@ class AgentHandlersMixin:
         # Notify triggers of context update (for idle timer reset, etc.)
         for trigger in self._triggers:
             try:
-                trigger._on_context_update(event.context)
+                trigger.set_context(event.context)
             except Exception as e:
                 logger.warning(
                     "Trigger context update failed",
@@ -101,7 +107,7 @@ class AgentHandlersMixin:
                 )
 
         # Record activity for termination checker
-        if hasattr(self, "_termination_checker") and self._termination_checker:
+        if self._termination_checker:
             self._termination_checker.record_activity()
 
         await controller.push_event(event)
@@ -161,12 +167,12 @@ class AgentHandlersMixin:
             # ===================================================================
             # Termination check (between PHASE 2 and PHASE 3)
             # ===================================================================
-            if hasattr(self, "_termination_checker") and self._termination_checker:
+            if self._termination_checker:
                 self._termination_checker.record_turn()
                 # Collect last output text for keyword check
-                last_output = ""
-                if hasattr(self.output_router, "get_last_output"):
-                    last_output = self.output_router.get_last_output()
+                last_output = getattr(
+                    self.output_router, "get_last_output", lambda: ""
+                )()
                 if self._termination_checker.should_terminate(last_output=last_output):
                     logger.info(
                         "Agent terminated",
@@ -290,34 +296,37 @@ class AgentHandlersMixin:
         Returns:
             (job_id, task, is_direct) tuple - is_direct indicates if we should wait
         """
-        logger.info("Running tool: %s", tool_call.name)
+        try:
+            logger.info("Running tool: %s", tool_call.name)
 
-        # Check if tool is direct (blocking) or background
-        tool = self.executor.get_tool(tool_call.name)
-        is_direct = True  # Default to direct
-        # Tool base class defines execution_mode as a required property,
-        # so all properly implemented tools have it. The hasattr check is
-        # kept as a safety net for tools that may not inherit from the base class.
-        # TODO: Remove hasattr guard once all tool implementations are verified
-        # to inherit from Tool base class (requires audit outside core/).
-        if tool and hasattr(tool, "execution_mode"):
-            from kohakuterrarium.modules.tool.base import ExecutionMode
+            # Check if tool is direct (blocking) or background
+            tool = self.executor.get_tool(tool_call.name)
+            is_direct = True  # Default to direct
+            if tool and isinstance(tool, BaseTool):
+                is_direct = tool.execution_mode == ExecutionMode.DIRECT
 
-            is_direct = tool.execution_mode == ExecutionMode.DIRECT
+            # Submit to executor - this creates the task internally
+            job_id = await self.executor.submit_from_event(tool_call)
 
-        # Submit to executor - this creates the task internally
-        job_id = await self.executor.submit_from_event(tool_call)
+            # Get the task handle from executor using public API
+            task = self.executor.get_task(job_id)
+            if task is None:
+                # Fallback: create a dummy completed task if already done
+                async def _get_result():
+                    return self.executor.get_result(job_id)
 
-        # Get the task handle from executor using public API
-        task = self.executor.get_task(job_id)
-        if task is None:
-            # Fallback: create a dummy completed task if already done
-            async def _get_result():
-                return self.executor.get_result(job_id)
+                task = asyncio.create_task(_get_result())
 
-            task = asyncio.create_task(_get_result())
+            return job_id, task, is_direct
+        except Exception as e:
+            logger.error("Failed to start tool", tool_name=tool_call.name, error=str(e))
 
-        return job_id, task, is_direct
+            # Create a dummy completed task that returns error
+            async def _error_result():
+                return JobResult(job_id=f"error_{tool_call.name}", error=str(e))
+
+            task = asyncio.create_task(_error_result())
+            return f"error_{tool_call.name}", task, True  # Direct so it gets reported
 
     async def _collect_tool_results(
         self,
@@ -354,7 +363,7 @@ class AgentHandlersMixin:
                 result_strs.append(f"## {job_id} - FAILED\n{str(result)}")
                 logger.info("Tool %s: failed", tool_name)
             elif result is not None:
-                output = result.output[:2000] if result.output else ""
+                output = result.output[:TOOL_RESULT_MAX_CHARS] if result.output else ""
                 if result.error:
                     result_strs.append(f"## {job_id} - ERROR\n{result.error}\n{output}")
                     logger.info("Tool %s: error", tool_name)
@@ -419,7 +428,11 @@ class AgentHandlersMixin:
                     if result and result.error:
                         status_lines.append(f"- `{job_id}`: ERROR - {result.error}")
                     else:
-                        output = result.output[:500] if result and result.output else ""
+                        output = (
+                            result.output[:STATUS_PREVIEW_MAX_CHARS]
+                            if result and result.output
+                            else ""
+                        )
                         status_lines.append(f"- `{job_id}`: DONE\n{output}")
                 else:
                     # Still running - report status and keep tracking
@@ -437,7 +450,7 @@ class AgentHandlersMixin:
             if result:
                 # Completed - include result and DON'T add to remaining
                 if result.success:
-                    output = result.truncated(max_chars=500)
+                    output = result.truncated(max_chars=STATUS_PREVIEW_MAX_CHARS)
                     status_lines.append(
                         f"- `{job_id}`: DONE (turns={result.turns})\n{output}"
                     )

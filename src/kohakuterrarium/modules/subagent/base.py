@@ -10,6 +10,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from kohakuterrarium.core.constants import (
+    SUBAGENT_TOOL_OUTPUT_MAX_CHARS,
+    TOOL_OUTPUT_PREVIEW_CHARS,
+)
 from kohakuterrarium.core.conversation import Conversation
 from kohakuterrarium.core.events import TriggerEvent
 from kohakuterrarium.core.executor import Executor
@@ -385,7 +389,11 @@ class SubAgent:
             try:
                 result = await tool.execute(tool_call.args)
                 if result.success:
-                    output = result.output[:1500] if result.output else "(no output)"
+                    output = (
+                        result.output[:SUBAGENT_TOOL_OUTPUT_MAX_CHARS]
+                        if result.output
+                        else "(no output)"
+                    )
                     results.append(f"[{tool_call.name}]\n{output}")
                     # Log success with output preview
                     output_preview = (result.output or "")[:100].replace("\n", " ")
@@ -451,10 +459,13 @@ class SubAgentJob:
 
     def to_job_status(self) -> JobStatus:
         """Create job status for this sub-agent run."""
-        state = JobState.RUNNING if self.subagent.is_running else JobState.DONE
-
+        # Check error first, then running, then done
         if self._result and not self._result.success:
             state = JobState.ERROR
+        elif self.subagent.is_running:
+            state = JobState.RUNNING
+        else:
+            state = JobState.DONE
 
         return JobStatus(
             job_id=self.job_id,
@@ -463,7 +474,9 @@ class SubAgentJob:
             state=state,
             output_lines=self._result.output.count("\n") + 1 if self._result else 0,
             output_bytes=len(self._result.output) if self._result else 0,
-            preview=self._result.output[:200] if self._result else "",
+            preview=(
+                self._result.output[:TOOL_OUTPUT_PREVIEW_CHARS] if self._result else ""
+            ),
             error=self._result.error if self._result else None,
         )
 

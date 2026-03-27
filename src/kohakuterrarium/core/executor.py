@@ -8,6 +8,10 @@ import asyncio
 from pathlib import Path
 from typing import Any, Callable
 
+from kohakuterrarium.core.constants import (
+    COMPLETION_EVENT_MAX_CHARS,
+    TOOL_OUTPUT_PREVIEW_CHARS,
+)
 from kohakuterrarium.core.events import TriggerEvent, create_tool_complete_event
 from kohakuterrarium.core.job import (
     JobResult,
@@ -17,7 +21,7 @@ from kohakuterrarium.core.job import (
     JobType,
     generate_job_id,
 )
-from kohakuterrarium.modules.tool.base import Tool, ToolContext, ToolResult
+from kohakuterrarium.modules.tool.base import BaseTool, Tool, ToolContext, ToolResult
 from kohakuterrarium.parsing.events import ToolCallEvent
 from kohakuterrarium.utils.logging import get_logger
 
@@ -70,6 +74,7 @@ class Executor:
         # Context for tools (set by agent during init)
         self._agent_name: str = ""
         self._channels: Any = None  # ChannelRegistry, set later
+        self._scratchpad: Any = None  # Scratchpad, set later
         self._working_dir: Path = Path.cwd()
         self._memory_path: Path | None = None
 
@@ -153,7 +158,7 @@ class Executor:
         try:
             # Build ToolContext for tools that need it
             context = None
-            if hasattr(tool, "needs_context") and tool.needs_context:
+            if isinstance(tool, BaseTool) and tool.needs_context:
                 context = self._build_tool_context()
 
             # Execute tool
@@ -174,7 +179,9 @@ class Executor:
                 state=JobState.DONE if result.success else JobState.ERROR,
                 output_lines=result.output.count("\n") + 1 if result.output else 0,
                 output_bytes=len(result.output.encode("utf-8")),
-                preview=result.output[:200] if result.output else "",
+                preview=(
+                    result.output[:TOOL_OUTPUT_PREVIEW_CHARS] if result.output else ""
+                ),
                 error=result.error,
             )
             self.job_store.store_result(job_result)
@@ -187,7 +194,9 @@ class Executor:
             # Create completion event
             event = create_tool_complete_event(
                 job_id=job_id,
-                content=result.output[:1000] if result.output else "",
+                content=(
+                    result.output[:COMPLETION_EVENT_MAX_CHARS] if result.output else ""
+                ),
                 exit_code=result.exit_code,
                 error=result.error,
             )
@@ -229,6 +238,7 @@ class Executor:
         return ToolContext(
             agent_name=self._agent_name,
             channels=self._channels,
+            scratchpad=self._scratchpad,
             working_dir=self._working_dir,
             memory_path=self._memory_path,
         )
