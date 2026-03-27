@@ -59,6 +59,8 @@ class SubAgentManager:
         llm: LLMProvider,
         job_store: JobStore | None = None,
         agent_path: Path | None = None,
+        current_depth: int = 0,
+        max_depth: int = 3,
     ):
         """
         Initialize sub-agent manager.
@@ -68,11 +70,15 @@ class SubAgentManager:
             llm: LLM provider for sub-agents
             job_store: Store for job status tracking
             agent_path: Path to agent folder for prompt loading
+            current_depth: Current nesting depth of this agent
+            max_depth: Maximum allowed sub-agent depth (0 = unlimited)
         """
         self.parent_registry = parent_registry
         self.llm = llm
         self.job_store = job_store or JobStore()
         self.agent_path = agent_path
+        self._current_depth: int = current_depth
+        self._max_depth: int = max_depth
 
         # Registered sub-agent configs
         self._configs: dict[str, SubAgentConfig] = {}
@@ -155,6 +161,36 @@ class SubAgentManager:
         config = self._configs.get(name)
         if config is None:
             raise ValueError(f"Sub-agent not registered: {name}")
+
+        # Check depth limit before spawning
+        if self._max_depth > 0 and self._current_depth >= self._max_depth:
+            error_msg = (
+                f"Sub-agent depth limit reached ({self._current_depth}/{self._max_depth}). "
+                f"Cannot spawn '{name}'. Simplify your approach or use tools directly."
+            )
+            logger.warning(
+                "Sub-agent depth limit reached",
+                subagent_name=name,
+                current_depth=self._current_depth,
+                max_depth=self._max_depth,
+            )
+            # Generate job ID and store error result
+            if job_id is None:
+                job_id = generate_job_id(f"agent_{name}")
+
+            error_result = SubAgentResult(success=False, error=error_msg)
+            self._results[job_id] = error_result
+
+            status = JobStatus(
+                job_id=job_id,
+                job_type=JobType.SUBAGENT,
+                type_name=name,
+                state=JobState.ERROR,
+                error=error_msg,
+            )
+            self.job_store.register(status)
+
+            return job_id
 
         # Generate job ID
         if job_id is None:

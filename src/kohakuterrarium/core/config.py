@@ -152,6 +152,9 @@ class AgentConfig:
     # Termination conditions
     termination: dict[str, Any] | None = None  # Raw termination config dict
 
+    # Sub-agent depth limit (0 = unlimited)
+    max_subagent_depth: int = 3
+
     # Path to agent folder
     agent_path: Path | None = None
 
@@ -404,6 +407,7 @@ def load_agent_config(agent_path: str | Path) -> AgentConfig:
         output=_parse_output_config(config_data.get("output")),
         startup_trigger=config_data.get("startup_trigger"),
         termination=config_data.get("termination"),
+        max_subagent_depth=config_data.get("max_subagent_depth", 3),
         agent_path=agent_path,
     )
 
