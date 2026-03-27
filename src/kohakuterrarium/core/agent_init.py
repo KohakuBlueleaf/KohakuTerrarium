@@ -415,6 +415,7 @@ class AgentInitMixin:
                     channel_name=trigger_config.options.get("channel", ""),
                     prompt=trigger_config.prompt,
                     filter_sender=trigger_config.options.get("filter_sender"),
+                    session=getattr(self, "session", None),
                 )
 
             case "custom" | "package":

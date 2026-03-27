@@ -30,6 +30,7 @@ class ChannelTrigger(BaseTrigger):
         prompt: str | None = None,
         filter_sender: str | None = None,
         registry: ChannelRegistry | None = None,
+        session: Any | None = None,
         **options: Any,
     ):
         """
@@ -40,17 +41,22 @@ class ChannelTrigger(BaseTrigger):
             prompt: Prompt template to include in event (supports {content} substitution)
             filter_sender: Only fire for messages from this sender
             registry: Optional channel registry (defaults to global singleton)
+            session: Optional session whose channel registry to use
             **options: Additional options
         """
         super().__init__(prompt=prompt, **options)
         self.channel_name = channel_name
         self.filter_sender = filter_sender
         self._registry = registry
+        self._session = session
 
     async def _on_start(self) -> None:
         """Resolve registry on start."""
         if self._registry is None:
-            self._registry = get_channel_registry()
+            if self._session is not None:
+                self._registry = self._session.channels
+            else:
+                self._registry = get_channel_registry()
         logger.debug("Channel trigger started", channel=self.channel_name)
 
     async def _on_stop(self) -> None:
