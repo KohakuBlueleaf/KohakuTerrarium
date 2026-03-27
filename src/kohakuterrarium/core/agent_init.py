@@ -127,6 +127,7 @@ class AgentInitMixin:
         # Set executor context for ToolContext building
         self.executor._agent_name = self.config.name
         self.executor._channels = self.channel_registry
+        self.executor._scratchpad = self.scratchpad
         if self.config.agent_path:
             self.executor._working_dir = self.config.agent_path
         if hasattr(self.config, "agent_path") and self.config.agent_path:
@@ -147,6 +148,7 @@ class AgentInitMixin:
             llm=self.llm,
             agent_path=self.config.agent_path,
             job_store=self.executor.job_store,  # Share job store so wait command works
+            max_depth=self.config.max_subagent_depth,
         )
 
         # Register sub-agents from config

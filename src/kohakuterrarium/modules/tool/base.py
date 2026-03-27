@@ -55,6 +55,7 @@ class ToolContext:
     channels: (
         Any  # ChannelRegistry - use Any to avoid circular import with core/channel.py
     )
+    scratchpad: Any  # Scratchpad - use Any to avoid circular import
     working_dir: Path
     memory_path: Path | None = None
 

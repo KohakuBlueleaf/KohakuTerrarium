@@ -4,12 +4,19 @@ from typing import Any
 
 from kohakuterrarium.builtins.tools.registry import register_builtin
 from kohakuterrarium.core.scratchpad import get_scratchpad
-from kohakuterrarium.modules.tool.base import BaseTool, ExecutionMode, ToolResult
+from kohakuterrarium.modules.tool.base import (
+    BaseTool,
+    ExecutionMode,
+    ToolContext,
+    ToolResult,
+)
 
 
 @register_builtin("scratchpad")
 class ScratchpadTool(BaseTool):
     """Read/write session-scoped key-value working memory."""
+
+    needs_context = True
 
     @property
     def tool_name(self) -> str:
@@ -23,13 +30,17 @@ class ScratchpadTool(BaseTool):
     def execution_mode(self) -> ExecutionMode:
         return ExecutionMode.DIRECT
 
-    async def _execute(self, args: dict[str, Any]) -> ToolResult:
+    async def _execute(
+        self, args: dict[str, Any], context: ToolContext | None = None
+    ) -> ToolResult:
         """Execute scratchpad action."""
         action = args.get("action", "get")
         key = args.get("key", "")
         value = args.get("value", "")
 
-        scratchpad = get_scratchpad()
+        scratchpad = (
+            context.scratchpad if context and context.scratchpad else get_scratchpad()
+        )
 
         match action:
             case "set":
