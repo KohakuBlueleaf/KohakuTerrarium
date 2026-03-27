@@ -263,14 +263,24 @@ class AgentHandlersMixin:
                 )
                 await controller.push_event(feedback_event)
             else:
-                # No feedback but have pending jobs - shouldn't happen with
-                # RUNNING status reporting, but handle gracefully
-                logger.warning(
-                    "No feedback but had pending jobs, unexpected state",
+                # No feedback but have pending jobs - push a status message
+                # so the model knows jobs are still running and can use wait
+                pending_count = len(pending_background_ids) + len(pending_subagent_ids)
+                status_msg = (
+                    f"{pending_count} background job(s) still running. "
+                    "Use [/wait]job_id[wait/] to get results, or continue with other work."
+                )
+                logger.debug(
+                    "No feedback but pending jobs, sending status hint",
                     pending_bg=len(pending_background_ids),
                     pending_sa=len(pending_subagent_ids),
                 )
-                break
+                status_event = create_tool_complete_event(
+                    job_id="status",
+                    content=status_msg,
+                    exit_code=0,
+                )
+                await controller.push_event(status_event)
 
         # Notify output modules that processing has ended
         await self.output_router.on_processing_end()
