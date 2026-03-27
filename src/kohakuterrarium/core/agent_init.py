@@ -8,14 +8,6 @@ Separated from the main Agent class to keep file sizes manageable.
 
 from typing import Any
 
-from kohakuterrarium.core.channel import get_channel_registry
-from kohakuterrarium.core.config import AgentConfig
-from kohakuterrarium.core.controller import Controller, ControllerConfig
-from kohakuterrarium.core.executor import Executor
-from kohakuterrarium.core.loader import ModuleLoadError, ModuleLoader
-from kohakuterrarium.core.registry import Registry
-from kohakuterrarium.core.scratchpad import get_scratchpad
-from kohakuterrarium.llm.openai import OpenAIProvider
 from kohakuterrarium.builtins.inputs import (
     CLIInput,
     create_builtin_input,
@@ -27,6 +19,14 @@ from kohakuterrarium.builtins.outputs import (
     is_builtin_output,
 )
 from kohakuterrarium.builtins.tools import get_builtin_tool
+from kohakuterrarium.core.channel import get_channel_registry
+from kohakuterrarium.core.config import AgentConfig
+from kohakuterrarium.core.controller import Controller, ControllerConfig
+from kohakuterrarium.core.executor import Executor
+from kohakuterrarium.core.loader import ModuleLoadError, ModuleLoader
+from kohakuterrarium.core.registry import Registry
+from kohakuterrarium.core.scratchpad import get_scratchpad
+from kohakuterrarium.llm.openai import OpenAIProvider
 from kohakuterrarium.modules.input.base import InputModule
 from kohakuterrarium.modules.output.base import OutputModule
 from kohakuterrarium.modules.output.router import OutputRouter
