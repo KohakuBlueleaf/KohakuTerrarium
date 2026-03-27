@@ -1,0 +1,59 @@
+# Planner Agent Configuration
+# Plan-and-execute pattern with scratchpad and review loop
+
+name: planner_agent
+version: "1.0"
+
+controller:
+  model: "${OPENROUTER_MODEL:google/gemini-3-flash-preview}"
+  temperature: 0.7
+  max_tokens: 512000
+  api_key_env: OPENROUTER_API_KEY
+  base_url: https://openrouter.ai/api/v1
+
+system_prompt_file: prompts/system.md
+
+input:
+  type: cli
+  prompt: "Task: "
+
+tools:
+  - name: read
+    type: builtin
+  - name: write
+    type: builtin
+  - name: edit
+    type: builtin
+  - name: bash
+    type: builtin
+  - name: glob
+    type: builtin
+  - name: grep
+    type: builtin
+  - name: scratchpad
+    type: builtin
+  - name: think
+    type: builtin
+
+subagents:
+  - name: plan
+    type: builtin
+    extra_prompt_file: prompts/plan_extra.md
+  - name: worker
+    type: builtin
+  - name: critic
+    type: builtin
+    extra_prompt: |
+      Review the completed step against the original plan.
+      Check: correctness, completeness, side effects.
+      Output: PASS or FAIL with specific issues.
+  - name: summarize
+    type: builtin
+
+termination:
+  max_turns: 50
+  keywords: ["ALL_STEPS_COMPLETE"]
+
+output:
+  type: stdout
+  controller_direct: true
