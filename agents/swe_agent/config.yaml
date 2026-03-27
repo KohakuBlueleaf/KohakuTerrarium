@@ -5,9 +5,6 @@ name: swe_agent
 version: "1.0"
 
 # LLM Configuration
-# Options: mistralai/mistral-small-3.1-24b-instruct (cheap/fast)
-#          mistralai/devstral-small-2505 (free, agentic coding)
-#          qwen/qwen3-32b (good balance)
 controller:
   model: "${OPENROUTER_MODEL:google/gemini-3-flash-preview}"
   temperature: 0.7
@@ -39,13 +36,32 @@ tools:
     type: builtin
   - name: grep
     type: builtin
+  - name: think
+    type: builtin
+  - name: scratchpad
+    type: builtin
+  - name: ask_user
+    type: builtin
 
-# Available sub-agents (optional - for complex tasks)
+# Available sub-agents
 subagents:
   - name: explore
     type: builtin
+    extra_prompt: "Focus on the project's language and conventions."
   - name: plan
     type: builtin
+    extra_prompt_file: prompts/plan_extra.md
+  - name: worker
+    type: builtin
+  - name: critic
+    type: builtin
+  - name: summarize
+    type: builtin
+
+# Termination conditions
+termination:
+  max_turns: 100
+  keywords: ["TASK_COMPLETE"]
 
 # Output configuration
 output:
