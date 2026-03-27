@@ -51,12 +51,20 @@ class ContextUpdateTrigger(BaseTrigger):
         """
         super().__init__(prompt=prompt, **options)
         self.debounce_ms = debounce_ms
-        self._pending_event = asyncio.Event()
+        self._pending_event: asyncio.Event | None = None
         self._last_context: dict[str, Any] = {}
-        self._stop_event = asyncio.Event()
+        self._stop_event: asyncio.Event | None = None
+
+    def _ensure_events(self) -> None:
+        """Lazily create asyncio primitives if not yet initialized."""
+        if self._pending_event is None:
+            self._pending_event = asyncio.Event()
+        if self._stop_event is None:
+            self._stop_event = asyncio.Event()
 
     async def _on_start(self) -> None:
         """Reset state on start."""
+        self._ensure_events()
         self._pending_event.clear()
         self._stop_event.clear()
         self._last_context = {}
@@ -64,12 +72,14 @@ class ContextUpdateTrigger(BaseTrigger):
 
     async def _on_stop(self) -> None:
         """Signal stop."""
+        self._ensure_events()
         self._stop_event.set()
         self._pending_event.set()  # Wake up any waiting
         logger.debug("Context update trigger stopped")
 
     def _on_context_update(self, context: dict[str, Any]) -> None:
         """Called when context is updated."""
+        self._ensure_events()
         # Check if context actually changed
         if context != self._last_context:
             self._last_context = context.copy()
@@ -81,6 +91,7 @@ class ContextUpdateTrigger(BaseTrigger):
         if not self._running:
             return None
 
+        self._ensure_events()
         # Wait for context update or stop
         await self._pending_event.wait()
 
@@ -109,6 +120,7 @@ class ContextUpdateTrigger(BaseTrigger):
         Args:
             context: Optional context to set before triggering
         """
+        self._ensure_events()
         if context:
             self._context.update(context)
             self._last_context = context.copy()

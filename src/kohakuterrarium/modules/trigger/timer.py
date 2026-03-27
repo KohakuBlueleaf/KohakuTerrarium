@@ -45,16 +45,23 @@ class TimerTrigger(BaseTrigger):
         self.interval = interval
         self.immediate = immediate
         self._first_trigger = True
-        self._stop_event = asyncio.Event()
+        self._stop_event: asyncio.Event | None = None
+
+    def _ensure_events(self) -> None:
+        """Lazily create asyncio primitives if not yet initialized."""
+        if self._stop_event is None:
+            self._stop_event = asyncio.Event()
 
     async def _on_start(self) -> None:
         """Reset state on start."""
         self._first_trigger = True
+        self._ensure_events()
         self._stop_event.clear()
         logger.debug("Timer trigger started", interval=self.interval)
 
     async def _on_stop(self) -> None:
         """Signal stop."""
+        self._ensure_events()
         self._stop_event.set()
         logger.debug("Timer trigger stopped")
 
@@ -75,6 +82,7 @@ class TimerTrigger(BaseTrigger):
         self._first_trigger = False
 
         # Wait for interval or stop
+        self._ensure_events()
         try:
             await asyncio.wait_for(
                 self._stop_event.wait(),

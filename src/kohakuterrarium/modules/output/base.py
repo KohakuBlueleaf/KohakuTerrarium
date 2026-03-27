@@ -51,6 +51,10 @@ class OutputModule(Protocol):
         """Called when agent starts processing (before LLM generates)."""
         ...
 
+    async def on_processing_end(self) -> None:
+        """Called when agent finishes processing (after LLM generates)."""
+        ...
+
 
 class BaseOutputModule(ABC):
     """

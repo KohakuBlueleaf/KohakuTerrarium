@@ -279,34 +279,28 @@ class Controller:
 
         for event in events:
             if event.type == "user_input":
-                if event.is_multimodal():
+                if isinstance(event.content, list):
                     has_multimodal = True
                     # Extract text and images from multimodal content
-                    for part in event.content:  # type: ignore
+                    for part in event.content:
                         if isinstance(part, TextPart):
                             text_parts.append(part.text)
                         elif isinstance(part, ImagePart):
                             image_parts.append(part)
-                else:
-                    text_parts.append(event.content)  # type: ignore
+                elif isinstance(event.content, str):
+                    text_parts.append(event.content)
             elif event.type == "tool_complete":
-                content_text = (
-                    event.get_text_content() if event.is_multimodal() else event.content
-                )
+                content_text = event.get_text_content()
                 text_parts.append(
-                    f"[Tool {event.job_id} completed]\n{content_text[:500]}"  # type: ignore
+                    f"[Tool {event.job_id} completed]\n{content_text[:500]}"
                 )
             elif event.type == "subagent_output":
-                content_text = (
-                    event.get_text_content() if event.is_multimodal() else event.content
-                )
+                content_text = event.get_text_content()
                 text_parts.append(
-                    f"[Sub-agent {event.job_id} output]\n{content_text[:500]}"  # type: ignore
+                    f"[Sub-agent {event.job_id} output]\n{content_text[:500]}"
                 )
             else:
-                content_text = (
-                    event.get_text_content() if event.is_multimodal() else event.content
-                )
+                content_text = event.get_text_content()
                 text_parts.append(f"[{event.type}] {content_text}")
 
         # Combine text
@@ -392,6 +386,9 @@ class Controller:
                     if result.content:
                         # Inject command result as text
                         yield TextEvent(f"\n{result.content}\n")
+                    elif result.error:
+                        # Also surface errors to the model
+                        yield TextEvent(f"\n[Command Error: {result.error}]\n")
                 else:
                     yield event
 
@@ -401,6 +398,8 @@ class Controller:
                 result = await self._handle_command(event)
                 if result.content:
                     yield TextEvent(f"\n{result.content}\n")
+                elif result.error:
+                    yield TextEvent(f"\n[Command Error: {result.error}]\n")
             else:
                 yield event
 

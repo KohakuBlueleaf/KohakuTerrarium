@@ -89,9 +89,12 @@ class InteractiveSubAgent(SubAgent):
         # Interactive state
         self._active = False
         self._current_task: asyncio.Task | None = None
-        self._context_queue: asyncio.Queue[ContextUpdate] = asyncio.Queue()
-        self._stop_event = asyncio.Event()
-        self._generation_lock = asyncio.Lock()
+
+        # Asyncio primitives - initialized lazily in start() to avoid
+        # creating them outside an async context (no running event loop)
+        self._context_queue: asyncio.Queue[ContextUpdate] | None = None
+        self._stop_event: asyncio.Event | None = None
+        self._generation_lock: asyncio.Lock | None = None
 
         # Current context being processed
         self._current_context: dict[str, Any] = {}
@@ -118,12 +121,18 @@ class InteractiveSubAgent(SubAgent):
         Start the interactive sub-agent.
 
         Begins listening for context updates.
+        Creates asyncio primitives here (inside async context).
         """
         if self._active:
             logger.warning(
                 "InteractiveSubAgent already active", agent_name=self.config.name
             )
             return
+
+        # Create asyncio primitives inside async context
+        self._context_queue = asyncio.Queue()
+        self._stop_event = asyncio.Event()
+        self._generation_lock = asyncio.Lock()
 
         self._active = True
         self._stop_event.clear()
@@ -148,7 +157,8 @@ class InteractiveSubAgent(SubAgent):
             return
 
         self._active = False
-        self._stop_event.set()
+        if self._stop_event is not None:
+            self._stop_event.set()
 
         if self._current_task:
             self._current_task.cancel()
@@ -415,9 +425,6 @@ class InteractiveSubAgent(SubAgent):
         Keeps system prompt but removes all user/assistant messages.
         Useful for sliding window context management.
         """
-        if self.conversation._messages:
-            system_msg = self.conversation._messages[0]
-            self.conversation = Conversation()
-            self.conversation._messages.append(system_msg)
+        self.conversation.clear(keep_system=True)
 
         logger.debug("Conversation cleared", agent_name=self.config.name)

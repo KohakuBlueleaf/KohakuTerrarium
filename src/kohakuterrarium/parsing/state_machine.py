@@ -224,7 +224,8 @@ class StreamParser:
             self.state = ParserState.IN_BLOCK
 
             # Emit block start event
-            events.append(BlockStartEvent(self.current_name))
+            if self.config.emit_block_events:
+                events.append(BlockStartEvent(self.current_name))
             logger.debug("Block started", block_name=self.current_name)
         elif char.isalnum() or char == "_":
             # Continue reading name
@@ -356,7 +357,8 @@ class StreamParser:
             events.append(TextEvent(raw))
 
         # Emit block end event
-        events.append(BlockEndEvent(name))
+        if self.config.emit_block_events:
+            events.append(BlockEndEvent(name))
 
         # Reset state
         self.current_name = ""

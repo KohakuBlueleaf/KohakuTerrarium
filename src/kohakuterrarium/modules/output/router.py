@@ -4,6 +4,8 @@ Output router - routes parse events to appropriate output modules.
 Uses a simple state machine to handle different output modes.
 """
 
+from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum, auto
 from typing import Any
 
@@ -23,6 +25,34 @@ from kohakuterrarium.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
+@dataclass
+class CompletedOutput:
+    """Record of a completed output event."""
+
+    target: str
+    content: str
+    timestamp: datetime = field(default_factory=datetime.now)
+    success: bool = True
+    error: str | None = None
+
+    def preview(self, max_len: int = 100) -> str:
+        """Get a preview of the content."""
+        if len(self.content) <= max_len:
+            return self.content
+        return self.content[:max_len] + "..."
+
+    def to_feedback_line(self) -> str:
+        """Format as a single feedback line for controller."""
+        time_str = self.timestamp.strftime("%H:%M:%S")
+        if self.success:
+            preview = self.preview(80)
+            # Escape newlines for single-line display
+            preview = preview.replace("\n", "\\n")
+            return f"- [{self.target}] ({time_str}): \"{preview}\""
+        else:
+            return f"- [{self.target}] ({time_str}): FAILED - {self.error}"
+
+
 class OutputState(Enum):
     """Output routing state."""
 
@@ -40,8 +70,17 @@ class OutputRouter:
     Handles:
     - Text events → default output module (stdout)
     - OutputEvent → named output module (e.g., discord, tts)
-    - Tool/subagent events → suppress text, emit event for handling
-    - Commands → process inline
+    - Tool/subagent events → suppress text, queue for handling
+    - Commands → queue for handling
+
+    Note on current architecture:
+        In the standard Agent flow, ToolCallEvent, SubAgentCallEvent, and
+        CommandEvent are handled BEFORE reaching the router:
+        - ToolCallEvent/SubAgentCallEvent: Agent handles directly from controller output
+        - CommandEvent: Controller handles inline, converts to TextEvent
+
+        The pending_* properties exist for alternative architectures where
+        the router receives all events and the caller processes them afterward.
     """
 
     def __init__(
@@ -71,6 +110,9 @@ class OutputRouter:
         self._pending_subagent_calls: list[SubAgentCallEvent] = []
         self._pending_commands: list[CommandEvent] = []
         self._pending_outputs: list[OutputEvent] = []
+
+        # Track completed outputs for feedback to controller
+        self._completed_outputs: list[CompletedOutput] = []
 
     @property
     def state(self) -> OutputState:
@@ -104,6 +146,31 @@ class OutputRouter:
         outputs = self._pending_outputs
         self._pending_outputs = []
         return outputs
+
+    @property
+    def completed_outputs(self) -> list[CompletedOutput]:
+        """Get completed outputs (does not clear - use get_and_clear_completed_outputs)."""
+        return self._completed_outputs
+
+    def get_and_clear_completed_outputs(self) -> list[CompletedOutput]:
+        """Get and clear completed outputs."""
+        outputs = self._completed_outputs
+        self._completed_outputs = []
+        return outputs
+
+    def get_output_feedback(self) -> str | None:
+        """
+        Get feedback string for completed outputs and clear the list.
+
+        Returns:
+            Formatted feedback string, or None if no outputs.
+        """
+        outputs = self.get_and_clear_completed_outputs()
+        if not outputs:
+            return None
+
+        lines = [out.to_feedback_line() for out in outputs]
+        return "## Outputs Sent\n" + "\n".join(lines)
 
     def get_output_targets(self) -> list[str]:
         """Get list of registered output target names."""
@@ -186,24 +253,44 @@ class OutputRouter:
         Handle explicit output event.
 
         Routes to named output module if registered.
+        Tracks completed outputs for feedback to controller.
         """
         target = event.target
         content = event.content
 
         if target in self.named_outputs:
             output_module = self.named_outputs[target]
-            await output_module.write(content)
-            logger.debug(
-                "Output sent to target", target=target, content_len=len(content)
-            )
+            try:
+                await output_module.write(content)
+                # Track successful output
+                self._completed_outputs.append(
+                    CompletedOutput(target=target, content=content, success=True)
+                )
+                logger.debug(
+                    "Output sent to target", target=target, content_len=len(content)
+                )
+            except Exception as e:
+                # Track failed output
+                self._completed_outputs.append(
+                    CompletedOutput(
+                        target=target, content=content, success=False, error=str(e)
+                    )
+                )
+                logger.error(
+                    "Output failed", target=target, error=str(e)
+                )
         else:
-            # Unknown target - log warning, optionally send to default
+            # Unknown target - log warning, send to default
             logger.warning(
                 "Unknown output target, sending to default",
                 target=target,
                 available=list(self.named_outputs.keys()),
             )
             await self.default_output.write(f"[output_{target}] {content}")
+            # Track as completed (to default)
+            self._completed_outputs.append(
+                CompletedOutput(target=f"{target}(default)", content=content, success=True)
+            )
 
     def _handle_block_start(self, block_type: str) -> None:
         """Handle block start event."""
@@ -234,22 +321,34 @@ class OutputRouter:
         """Notify output modules that processing is starting."""
         # Call on named outputs (they might want to show typing indicators)
         for output in self.named_outputs.values():
-            if hasattr(output, "on_processing_start"):
-                await output.on_processing_start()
+            await output.on_processing_start()
 
     async def on_processing_end(self) -> None:
         """Notify output modules that processing has ended."""
         for output in self.named_outputs.values():
-            if hasattr(output, "on_processing_end"):
-                await output.on_processing_end()
+            await output.on_processing_end()
 
     def reset(self) -> None:
-        """Reset router state for new turn."""
+        """
+        Reset router state for new round (within a turn).
+
+        Note: completed_outputs is NOT cleared here - it accumulates across rounds
+        and is cleared when feedback is consumed via get_output_feedback().
+        """
         self._state = OutputState.NORMAL
         self._pending_tool_calls.clear()
         self._pending_subagent_calls.clear()
         self._pending_commands.clear()
         self._pending_outputs.clear()
+
+    def clear_all(self) -> None:
+        """
+        Clear all state including completed outputs.
+
+        Call this when a turn is completely finished.
+        """
+        self.reset()
+        self._completed_outputs.clear()
 
 
 class MultiOutputRouter(OutputRouter):
