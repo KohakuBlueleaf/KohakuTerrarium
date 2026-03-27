@@ -4,7 +4,7 @@ Tool module - executable tools for the controller.
 Exports:
 - Tool: Protocol for tools
 - BaseTool: Base class for tools
-- ToolConfig, ToolResult, ToolInfo: Tool data classes
+- ToolConfig, ToolContext, ToolResult, ToolInfo: Tool data classes
 - ExecutionMode: Tool execution modes
 
 Note: Built-in tool implementations are in kohakuterrarium.builtins.tools
@@ -16,6 +16,7 @@ from kohakuterrarium.modules.tool.base import (
     ExecutionMode,
     Tool,
     ToolConfig,
+    ToolContext,
     ToolInfo,
     ToolResult,
 )
@@ -25,6 +26,7 @@ __all__ = [
     "Tool",
     "BaseTool",
     "ToolConfig",
+    "ToolContext",
     "ToolResult",
     "ToolInfo",
     "ExecutionMode",
