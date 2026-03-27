@@ -6,7 +6,12 @@ from typing import Any
 
 from kohakuterrarium.builtins.tools.registry import register_builtin
 from kohakuterrarium.core.channel import get_channel_registry
-from kohakuterrarium.modules.tool.base import BaseTool, ExecutionMode, ToolResult
+from kohakuterrarium.modules.tool.base import (
+    BaseTool,
+    ExecutionMode,
+    ToolContext,
+    ToolResult,
+)
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -30,7 +35,9 @@ class WaitChannelTool(BaseTool):
     def execution_mode(self) -> ExecutionMode:
         return ExecutionMode.BACKGROUND
 
-    async def _execute(self, args: dict[str, Any], context=None) -> ToolResult:
+    async def _execute(
+        self, args: dict[str, Any], context: ToolContext | None = None
+    ) -> ToolResult:
         """Wait for channel message."""
         channel_name = args.get("channel", "")
         timeout = float(args.get("timeout", 30))

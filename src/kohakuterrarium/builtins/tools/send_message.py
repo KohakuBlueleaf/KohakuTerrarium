@@ -7,7 +7,12 @@ from typing import Any
 
 from kohakuterrarium.builtins.tools.registry import register_builtin
 from kohakuterrarium.core.channel import ChannelMessage, get_channel_registry
-from kohakuterrarium.modules.tool.base import BaseTool, ExecutionMode, ToolResult
+from kohakuterrarium.modules.tool.base import (
+    BaseTool,
+    ExecutionMode,
+    ToolContext,
+    ToolResult,
+)
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -31,7 +36,9 @@ class SendMessageTool(BaseTool):
     def execution_mode(self) -> ExecutionMode:
         return ExecutionMode.DIRECT
 
-    async def _execute(self, args: dict[str, Any], context=None) -> ToolResult:
+    async def _execute(
+        self, args: dict[str, Any], context: ToolContext | None = None
+    ) -> ToolResult:
         """Send message to channel."""
         channel_name = args.get("channel", "")
         message = args.get("message", "")

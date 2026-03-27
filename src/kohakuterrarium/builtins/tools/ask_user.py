@@ -39,7 +39,7 @@ class AskUserTool(BaseTool):
             sys.stderr.flush()
 
             # Read from stdin in a thread to not block the event loop
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             response = await loop.run_in_executor(None, sys.stdin.readline)
             response = response.strip()
 
