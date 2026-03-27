@@ -228,6 +228,13 @@ class Conversation:
                 count += sum(1 for p in msg.content if isinstance(p, ImagePart))
         return count
 
+    def get_system_message(self) -> Message | None:
+        """Get the first system message in the conversation, if any."""
+        for msg in self._messages:
+            if msg.role == "system":
+                return msg
+        return None
+
     def get_last_message(self) -> Message | None:
         """Get the last message in the conversation."""
         return self._messages[-1] if self._messages else None

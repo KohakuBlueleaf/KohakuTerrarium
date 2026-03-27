@@ -303,6 +303,27 @@ class Executor:
         """Get job result (if completed)."""
         return self._results.get(job_id) or self.job_store.get_result(job_id)
 
+    def get_task(self, job_id: str) -> asyncio.Task | None:
+        """
+        Get the asyncio.Task for a job by ID.
+
+        Args:
+            job_id: Job ID to look up
+
+        Returns:
+            The asyncio.Task if found, None otherwise
+        """
+        return self._tasks.get(job_id)
+
+    def get_pending_count(self) -> int:
+        """
+        Get the number of pending (not yet completed) tasks.
+
+        Returns:
+            Number of tasks still tracked by the executor
+        """
+        return len(self._tasks)
+
     def get_running_jobs(self) -> list[JobStatus]:
         """Get all running jobs."""
         return self.job_store.get_running_jobs()
