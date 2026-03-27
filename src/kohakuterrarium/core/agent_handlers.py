@@ -100,6 +100,10 @@ class AgentHandlersMixin:
                     error=str(e),
                 )
 
+        # Record activity for termination checker
+        if hasattr(self, "_termination_checker") and self._termination_checker:
+            self._termination_checker.record_activity()
+
         await controller.push_event(event)
 
         # Notify output modules that processing is starting (e.g., typing indicator)
@@ -153,6 +157,23 @@ class AgentHandlersMixin:
                     new_subagent_ids.append(job_id)
                 else:
                     await self.output_router.route(parse_event)
+
+            # ===================================================================
+            # Termination check (between PHASE 2 and PHASE 3)
+            # ===================================================================
+            if hasattr(self, "_termination_checker") and self._termination_checker:
+                self._termination_checker.record_turn()
+                # Collect last output text for keyword check
+                last_output = ""
+                if hasattr(self.output_router, "get_last_output"):
+                    last_output = self.output_router.get_last_output()
+                if self._termination_checker.should_terminate(last_output=last_output):
+                    logger.info(
+                        "Agent terminated",
+                        reason=self._termination_checker.reason,
+                        turns=self._termination_checker.turn_count,
+                    )
+                    break
 
             # ===================================================================
             # PHASE 3: Flush output and update job tracking

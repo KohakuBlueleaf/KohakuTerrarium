@@ -37,6 +37,8 @@ class SubAgentConfig:
         tools: List of allowed tool names
         system_prompt: System prompt for the sub-agent
         prompt_file: Path to system prompt file (relative to agent folder)
+        extra_prompt: Extra prompt text appended to base prompt
+        extra_prompt_file: Path to extra prompt file (relative to agent folder)
         can_modify: Whether sub-agent can modify files
         stateless: No persistent state between calls
         interactive: Receives ongoing context updates from parent
@@ -57,6 +59,8 @@ class SubAgentConfig:
     tools: list[str] = field(default_factory=list)
     system_prompt: str = ""
     prompt_file: str | None = None
+    extra_prompt: str = ""
+    extra_prompt_file: str | None = None
     can_modify: bool = False
     stateless: bool = True
     interactive: bool = False
@@ -76,6 +80,11 @@ class SubAgentConfig:
         """
         Load system prompt from file or use inline prompt.
 
+        Resolution order:
+        1. If system_prompt is set -> use it entirely (full override, backward compat)
+        2. If extra_prompt or extra_prompt_file is set -> base prompt + extra
+        3. If neither -> base prompt only
+
         Args:
             agent_path: Base path for resolving prompt_file
 
@@ -92,6 +101,18 @@ class SubAgentConfig:
                 prompt = prompt_path.read_text(encoding="utf-8")
         else:
             prompt = f"You are a {self.name} sub-agent."
+
+        # Append extra prompt if set (only when system_prompt is NOT a full override)
+        # When system_prompt is explicitly set, it's a full override - don't append extra
+        if not self.system_prompt:
+            extra = self.extra_prompt
+            if self.extra_prompt_file and agent_path:
+                extra_path = agent_path / self.extra_prompt_file
+                if extra_path.exists():
+                    extra = extra_path.read_text(encoding="utf-8")
+
+            if extra:
+                prompt = f"{prompt}\n\n## Additional Instructions\n\n{extra}"
 
         # Inject path context if memory_path is set
         if self.memory_path and agent_path:
@@ -121,6 +142,8 @@ class SubAgentConfig:
             "tools",
             "system_prompt",
             "prompt_file",
+            "extra_prompt",
+            "extra_prompt_file",
             "can_modify",
             "stateless",
             "interactive",

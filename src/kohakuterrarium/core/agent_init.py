@@ -8,11 +8,13 @@ Separated from the main Agent class to keep file sizes manageable.
 
 from typing import Any
 
+from kohakuterrarium.core.channel import get_channel_registry
 from kohakuterrarium.core.config import AgentConfig
 from kohakuterrarium.core.controller import Controller, ControllerConfig
 from kohakuterrarium.core.executor import Executor
 from kohakuterrarium.core.loader import ModuleLoadError, ModuleLoader
 from kohakuterrarium.core.registry import Registry
+from kohakuterrarium.core.scratchpad import get_scratchpad
 from kohakuterrarium.llm.openai import OpenAIProvider
 from kohakuterrarium.builtins.inputs import (
     CLIInput,
@@ -28,7 +30,11 @@ from kohakuterrarium.builtins.tools import get_builtin_tool
 from kohakuterrarium.modules.input.base import InputModule
 from kohakuterrarium.modules.output.base import OutputModule
 from kohakuterrarium.modules.output.router import OutputRouter
-from kohakuterrarium.modules.trigger import BaseTrigger
+from kohakuterrarium.modules.trigger import (
+    BaseTrigger,
+    ContextUpdateTrigger,
+    TimerTrigger,
+)
 from kohakuterrarium.prompt.aggregator import aggregate_system_prompt
 from kohakuterrarium.utils.logging import get_logger
 
@@ -113,6 +119,22 @@ class AgentInitMixin:
             if tool:
                 self.executor.register_tool(tool)
 
+        # Wire channel registry and scratchpad for ToolContext
+        self.channel_registry = get_channel_registry()
+        self.scratchpad = get_scratchpad()
+
+        # Set executor context for ToolContext building
+        self.executor._agent_name = self.config.name
+        self.executor._channels = self.channel_registry
+        if self.config.agent_path:
+            self.executor._working_dir = self.config.agent_path
+        if hasattr(self.config, "agent_path") and self.config.agent_path:
+            memory_config = getattr(self.config, "memory", None)
+            if isinstance(memory_config, dict) and memory_config.get("path"):
+                self.executor._memory_path = (
+                    self.config.agent_path / memory_config["path"]
+                )
+
     def _init_subagents(self) -> None:
         """Initialize sub-agent manager and register sub-agents."""
         # Import here to avoid circular imports (subagent -> core/conversation -> core/__init__ -> agent)
@@ -151,6 +173,14 @@ class AgentInitMixin:
                 config = get_builtin(item.name)
                 if config is None:
                     logger.warning("Unknown builtin sub-agent", subagent_name=item.name)
+                    return None
+
+                # Overlay extra_prompt from config options onto builtin config
+                if item.options.get("extra_prompt"):
+                    config.extra_prompt = item.options["extra_prompt"]
+                if item.options.get("extra_prompt_file"):
+                    config.extra_prompt_file = item.options["extra_prompt_file"]
+
                 return config
 
             case "custom" | "package":
@@ -361,26 +391,45 @@ class AgentInitMixin:
 
     def _create_trigger(self, trigger_config: Any) -> BaseTrigger | None:
         """Create a trigger from config."""
-        if trigger_config.type in ("custom", "package"):
-            if not trigger_config.module or not trigger_config.class_name:
-                logger.warning("Custom trigger missing module or class")
+        match trigger_config.type:
+            case "timer":
+                return TimerTrigger(
+                    interval=trigger_config.options.get("interval", 60.0),
+                    prompt=trigger_config.prompt,
+                    immediate=trigger_config.options.get("immediate", False),
+                )
+
+            case "context":
+                return ContextUpdateTrigger(
+                    prompt=trigger_config.prompt,
+                    debounce_ms=trigger_config.options.get("debounce_ms", 100),
+                )
+
+            case "channel":
+                # Placeholder - will be replaced by Phase 4 (ChannelTrigger)
+                logger.warning("Channel trigger not yet implemented")
                 return None
 
-            try:
-                trigger = self._loader.load_instance(
-                    module_path=trigger_config.module,
-                    class_name=trigger_config.class_name,
-                    module_type=trigger_config.type,
-                    options={
-                        "prompt": trigger_config.prompt,
-                        **trigger_config.options,
-                    },
-                )
-                return trigger
-            except ModuleLoadError as e:
-                logger.error("Failed to load custom trigger", error=str(e))
+            case "custom" | "package":
+                if not trigger_config.module or not trigger_config.class_name:
+                    logger.warning("Custom trigger missing module or class")
+                    return None
+
+                try:
+                    trigger = self._loader.load_instance(
+                        module_path=trigger_config.module,
+                        class_name=trigger_config.class_name,
+                        module_type=trigger_config.type,
+                        options={
+                            "prompt": trigger_config.prompt,
+                            **trigger_config.options,
+                        },
+                    )
+                    return trigger
+                except ModuleLoadError as e:
+                    logger.error("Failed to load custom trigger", error=str(e))
+                    return None
+
+            case _:
+                logger.warning("Unknown trigger type", trigger_type=trigger_config.type)
                 return None
-        else:
-            # TODO: Add builtin triggers (timer, idle, etc.)
-            logger.warning("Unknown trigger type", trigger_type=trigger_config.type)
-            return None

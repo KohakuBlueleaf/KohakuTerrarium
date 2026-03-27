@@ -5,6 +5,7 @@ Manages async execution of tools without blocking the controller.
 """
 
 import asyncio
+from pathlib import Path
 from typing import Any, Callable
 
 from kohakuterrarium.core.events import TriggerEvent, create_tool_complete_event
@@ -16,7 +17,7 @@ from kohakuterrarium.core.job import (
     JobType,
     generate_job_id,
 )
-from kohakuterrarium.modules.tool.base import Tool, ToolResult
+from kohakuterrarium.modules.tool.base import Tool, ToolContext, ToolResult
 from kohakuterrarium.parsing.events import ToolCallEvent
 from kohakuterrarium.utils.logging import get_logger
 
@@ -65,6 +66,12 @@ class Executor:
         self._results: dict[str, JobResult] = {}
         self._on_complete = on_complete
         self._event_queue: asyncio.Queue[TriggerEvent] = asyncio.Queue()
+
+        # Context for tools (set by agent during init)
+        self._agent_name: str = ""
+        self._channels: Any = None  # ChannelRegistry, set later
+        self._working_dir: Path = Path.cwd()
+        self._memory_path: Path | None = None
 
     def register_tool(self, tool: Tool) -> None:
         """Register a tool for execution."""
@@ -144,8 +151,13 @@ class Executor:
     ) -> JobResult:
         """Run a tool and update status."""
         try:
+            # Build ToolContext for tools that need it
+            context = None
+            if hasattr(tool, "needs_context") and tool.needs_context:
+                context = self._build_tool_context()
+
             # Execute tool
-            result = await tool.execute(args)
+            result = await tool.execute(args, context=context)
 
             # Create job result
             job_result = JobResult(
@@ -211,6 +223,15 @@ class Executor:
             await self._event_queue.put(event)
 
             return job_result
+
+    def _build_tool_context(self) -> ToolContext:
+        """Build ToolContext for context-aware tools."""
+        return ToolContext(
+            agent_name=self._agent_name,
+            channels=self._channels,
+            working_dir=self._working_dir,
+            memory_path=self._memory_path,
+        )
 
     async def wait_for(
         self,

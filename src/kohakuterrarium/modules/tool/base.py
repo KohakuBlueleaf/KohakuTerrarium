@@ -8,6 +8,7 @@ Supports multimodal tool results (text + images).
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -40,6 +41,22 @@ class ToolConfig:
     working_dir: str | None = None
     env: dict[str, str] = field(default_factory=dict)
     extra: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ToolContext:
+    """
+    Context available to tools during execution.
+
+    Injected by the executor for tools that opt-in via needs_context.
+    """
+
+    agent_name: str
+    channels: (
+        Any  # ChannelRegistry - use Any to avoid circular import with core/channel.py
+    )
+    working_dir: Path
+    memory_path: Path | None = None
 
 
 @dataclass
@@ -120,12 +137,15 @@ class Tool(Protocol):
         """How this tool should be executed."""
         ...
 
-    async def execute(self, args: dict[str, Any]) -> ToolResult:
+    async def execute(
+        self, args: dict[str, Any], context: ToolContext | None = None
+    ) -> ToolResult:
         """
         Execute the tool with given arguments.
 
         Args:
             args: Arguments parsed from tool call
+            context: Optional ToolContext injected by executor
 
         Returns:
             ToolResult with output and status
@@ -142,6 +162,8 @@ class BaseTool:
     - description property
     - _execute method
     """
+
+    needs_context: bool = False  # Set True in subclass to receive ToolContext
 
     def __init__(self, config: ToolConfig | None = None):
         self.config = config or ToolConfig()
@@ -163,19 +185,24 @@ class BaseTool:
         """Default to background execution."""
         return ExecutionMode.BACKGROUND
 
-    async def execute(self, args: dict[str, Any]) -> ToolResult:
+    async def execute(
+        self, args: dict[str, Any], context: ToolContext | None = None
+    ) -> ToolResult:
         """Execute with error handling."""
         try:
+            if self.needs_context:
+                return await self._execute(args, context=context)
             return await self._execute(args)
         except Exception as e:
             return ToolResult(error=str(e))
 
     @abstractmethod
-    async def _execute(self, args: dict[str, Any]) -> ToolResult:
+    async def _execute(self, args: dict[str, Any], **kwargs: Any) -> ToolResult:
         """
         Internal execution method.
 
         Subclasses implement this without worrying about error handling.
+        Tools that set needs_context = True will receive context as a keyword arg.
         """
         raise NotImplementedError
 

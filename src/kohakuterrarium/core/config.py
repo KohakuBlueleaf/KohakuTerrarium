@@ -149,6 +149,9 @@ class AgentConfig:
     # Startup trigger (fires once when agent starts)
     startup_trigger: dict[str, Any] | None = None
 
+    # Termination conditions
+    termination: dict[str, Any] | None = None  # Raw termination config dict
+
     # Path to agent folder
     agent_path: Path | None = None
 
@@ -400,6 +403,7 @@ def load_agent_config(agent_path: str | Path) -> AgentConfig:
         subagents=[_parse_subagent_config(s) for s in config_data.get("subagents", [])],
         output=_parse_output_config(config_data.get("output")),
         startup_trigger=config_data.get("startup_trigger"),
+        termination=config_data.get("termination"),
         agent_path=agent_path,
     )
 

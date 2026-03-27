@@ -16,6 +16,7 @@ from kohakuterrarium.core.agent_init import AgentInitMixin
 from kohakuterrarium.core.config import AgentConfig, load_agent_config
 from kohakuterrarium.core.events import TriggerEvent
 from kohakuterrarium.core.loader import ModuleLoader
+from kohakuterrarium.core.termination import TerminationChecker, TerminationConfig
 from kohakuterrarium.modules.input.base import InputModule
 from kohakuterrarium.modules.output.base import OutputModule
 from kohakuterrarium.utils.logging import get_logger
@@ -100,6 +101,9 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         # Module loader for custom components
         self._loader = ModuleLoader(agent_path=config.agent_path)
 
+        # Initialize termination checker
+        self._termination_checker = self._init_termination()
+
         # Initialize components (methods from AgentInitMixin)
         # Order matters: output before controller (need known_outputs for parser)
         self._init_llm()
@@ -119,6 +123,23 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             triggers=len(self._triggers),
             ephemeral=config.ephemeral,
         )
+
+    def _init_termination(self) -> TerminationChecker | None:
+        """Initialize termination checker from config."""
+        if not self.config.termination:
+            return None
+
+        tc = TerminationConfig(
+            max_turns=self.config.termination.get("max_turns", 0),
+            max_tokens=self.config.termination.get("max_tokens", 0),
+            max_duration=self.config.termination.get("max_duration", 0),
+            idle_timeout=self.config.termination.get("idle_timeout", 0),
+            keywords=self.config.termination.get("keywords", []),
+        )
+        checker = TerminationChecker(tc)
+        if checker.is_active:
+            logger.info("Termination conditions configured", config=str(tc))
+        return checker
 
     # =========================================================================
     # Lifecycle
@@ -142,6 +163,9 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
 
         self._running = True
         self._shutdown_event.clear()
+
+        if self._termination_checker:
+            self._termination_checker.start()
 
     async def stop(self) -> None:
         """Stop all agent modules."""
