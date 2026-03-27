@@ -17,13 +17,14 @@ KohakuTerrarium is a Python framework for building any kind of agent -- coding a
 - **Nested sub-agents** -- full agents with their own LLM, tools, and lifecycle
 - **Channel-based coordination** -- async named message queues for cross-agent communication
 - **YAML-driven config** -- define agents declaratively, minimal code required
-- **Streaming parser** -- real-time `[/tool]...[tool/]` detection via state machine
-- **Folder-based memory** -- persistent read/write files, no external database needed
-- **Session scratchpad** -- structured key-value working memory, auto-injected into context
-- **Trigger system** -- timers, channel events, and composites for autonomous operation
-- **On-demand docs** -- full tool documentation loaded only when the LLM requests it
+- **16 built-in tools** -- bash, read, write, edit, glob, grep, http, think, scratchpad, and more
+- **10 built-in sub-agents** -- explore, plan, worker, critic, summarize, research, coordinator, and more
+- **Trigger system** -- timers, channel events for autonomous operation
+- **On-demand docs** -- tool documentation loaded only when the LLM requests it
 
 ## Quick Start
+
+### CLI
 
 ```bash
 git clone https://github.com/KohakuBlueLeaf/KohakuTerrarium.git
@@ -32,7 +33,120 @@ uv pip install -e .
 
 export OPENROUTER_API_KEY=your_key_here
 
+# Run the SWE agent
 python -m kohakuterrarium.run agents/swe_agent
+
+# Run the planner agent
+python -m kohakuterrarium.run agents/planner_agent
+```
+
+### Programmatic Usage
+
+```python
+import asyncio
+from kohakuterrarium.core.agent import Agent
+
+async def main():
+    agent = Agent.from_path("agents/swe_agent")
+    await agent.run()  # Interactive CLI loop
+
+asyncio.run(main())
+```
+
+### Inject Input Programmatically
+
+```python
+async def main():
+    agent = Agent.from_path("agents/swe_agent")
+    await agent.start()
+
+    # Send input without CLI
+    await agent.inject_input("Create a hello world script")
+
+    # Check state
+    print(agent.tools)       # ['bash', 'read', 'write', ...]
+    print(agent.subagents)   # ['explore', 'plan', 'worker', ...]
+
+    await agent.stop()
+```
+
+### Custom Output Handler
+
+```python
+async def main():
+    agent = Agent.from_path("agents/swe_agent")
+
+    # Capture output with a callback
+    agent.set_output_handler(lambda text: print(f"AI: {text}"))
+
+    await agent.start()
+    await agent.inject_input("What files are in src/?")
+    await agent.stop()
+```
+
+### Wrap with FastAPI
+
+```python
+from fastapi import FastAPI, WebSocket
+from kohakuterrarium.core.agent import Agent
+
+app = FastAPI()
+agents: dict[str, Agent] = {}
+
+@app.post("/agents")
+async def create_agent(config_path: str = "agents/swe_agent"):
+    agent = Agent.from_path(config_path)
+    await agent.start()
+    agents[agent.config.name] = agent
+    return {"name": agent.config.name, "tools": agent.tools}
+
+@app.websocket("/agents/{name}/chat")
+async def chat(websocket: WebSocket, name: str):
+    await websocket.accept()
+    agent = agents[name]
+
+    # Capture streaming output
+    agent.set_output_handler(
+        lambda text: asyncio.ensure_future(websocket.send_text(text))
+    )
+
+    while True:
+        user_input = await websocket.receive_text()
+        await agent.inject_input(user_input)
+
+@app.on_event("shutdown")
+async def shutdown():
+    for agent in agents.values():
+        await agent.stop()
+```
+
+### Build Agent from Dict (No YAML File)
+
+```python
+from kohakuterrarium.core.config import AgentConfig, ToolConfigItem, SubAgentConfigItem
+from kohakuterrarium.core.agent import Agent
+
+config = AgentConfig(
+    name="my_agent",
+    model="google/gemini-3-flash-preview",
+    api_key_env="OPENROUTER_API_KEY",
+    base_url="https://openrouter.ai/api/v1",
+    system_prompt="You are a helpful coding assistant.",
+    tools=[
+        ToolConfigItem(name="bash"),
+        ToolConfigItem(name="read"),
+        ToolConfigItem(name="write"),
+        ToolConfigItem(name="think"),
+    ],
+    subagents=[
+        SubAgentConfigItem(name="explore"),
+        SubAgentConfigItem(name="worker"),
+    ],
+)
+
+async def main():
+    agent = Agent(config)
+    await agent.run()
 ```
 
 ## How It Works
@@ -47,8 +161,6 @@ Trigger ────┘           |            <----> Sub-Agents (nested LLMs)
                Output      Channels ----> Other Agents
 ```
 
-Five systems, one event loop:
-
 | System | Role |
 |--------|------|
 | **Input** | User requests, chat messages, ASR streams |
@@ -57,289 +169,97 @@ Five systems, one event loop:
 | **Tool Calling** | Background parallel execution of tools and sub-agents |
 | **Output** | Streaming to stdout, files, TTS, APIs, webhooks |
 
-The controller's job is to dispatch, not to do heavy work. Long outputs come from specialized sub-agents. This keeps the controller lightweight and context small.
+The controller dispatches, not executes. Long outputs come from sub-agents. This keeps the controller lightweight and context small.
 
-## Built-in Tools
+## Built-in Tools (16)
 
-| Tool | Description |
-|------|-------------|
-| `bash` | Execute shell commands |
-| `python` | Run Python scripts |
-| `read` | Read file contents |
-| `write` | Create or overwrite files |
-| `edit` | Modify files with search-replace |
-| `glob` | Find files by pattern |
-| `grep` | Search file contents with regex |
-| `tree` | Display directory structure |
-| `think` | Extended reasoning (no side effects) |
-| `scratchpad` | Session-scoped key-value working memory |
-| `send_message` | Send message to a named channel |
-| `wait_channel` | Wait for a message on a named channel |
-| `http` | Make HTTP requests |
-| `ask_user` | Prompt the user for clarification |
-| `json_read` | Read and query JSON files |
-| `json_write` | Write structured JSON data |
+| Tool | Description | Tool | Description |
+|------|-------------|------|-------------|
+| `bash` | Execute shell commands | `think` | Extended reasoning step |
+| `python` | Run Python scripts | `scratchpad` | Session key-value memory |
+| `read` | Read file contents | `send_message` | Send to named channel |
+| `write` | Create/overwrite files | `wait_channel` | Wait for channel message |
+| `edit` | Search-replace in files | `http` | Make HTTP requests |
+| `glob` | Find files by pattern | `ask_user` | Prompt user for input |
+| `grep` | Regex search in files | `json_read` | Query JSON files |
+| `tree` | Directory structure | `json_write` | Modify JSON files |
 
-## Built-in Sub-Agents
+## Built-in Sub-Agents (10)
 
-| Sub-Agent | Purpose | Access |
-|-----------|---------|--------|
-| `explore` | Search and explore codebase | read-only |
-| `plan` | Create implementation plans | read-only |
-| `worker` | Implement code changes, fix bugs, refactor | read-write |
-| `critic` | Review and critique code, plans, or outputs | no tools |
-| `summarize` | Condense long content into concise summaries | no tools |
-| `research` | Research topics using files and web access | read-only |
-| `coordinator` | Coordinate multiple agents via channels | channels only |
-| `memory_read` | Search and retrieve from memory | read-only |
-| `memory_write` | Store information to memory | read-write |
-| `response` | Generate user-facing responses | output sub-agent |
+| Sub-Agent | Purpose | Sub-Agent | Purpose |
+|-----------|---------|-----------|---------|
+| `explore` | Search codebase (read-only) | `coordinator` | Multi-agent via channels |
+| `plan` | Create implementation plans | `memory_read` | Retrieve from memory |
+| `worker` | Implement changes (read-write) | `memory_write` | Store to memory |
+| `critic` | Review and critique | `response` | Generate user responses |
+| `summarize` | Condense long content | `research` | Web + file research |
 
 ## Example Agents
 
-### SWE Agent
+7 example agents included. See [agents/README.md](agents/README.md) for details.
 
-A software engineering assistant -- the Claude Code / Codex pattern. Direct controller output with code exploration, planning, and execution sub-agents.
-
-```yaml
-name: swe_agent
-tools: [bash, python, read, write, edit, glob, grep, think, scratchpad, ask_user]
-subagents: [explore, plan, worker, critic, summarize]
-termination:
-  max_turns: 100
-  keywords: ["TASK_COMPLETE"]
-```
-
-### Multi-Agent Coordinator
-
-Dispatches research and worker sub-agents via channels, combining results for complex tasks.
-
-```yaml
-name: multi_agent
-tools: [send_message, wait_channel, scratchpad, think, read, write, edit,
-        bash, glob, grep, http]
-subagents: [explore, research, worker, coordinator, summarize, critic]
-termination:
-  max_turns: 30
-  keywords: ["ALL_TASKS_COMPLETE"]
-```
-
-### Planner Agent
-
-Plan-and-execute with scratchpad-driven planning, worker execution, and critic review loops.
-
-```yaml
-name: planner_agent
-tools: [read, write, edit, bash, glob, grep, scratchpad, think]
-subagents: [plan, worker, critic, summarize]
-termination:
-  max_turns: 50
-  keywords: ["ALL_STEPS_COMPLETE"]
-```
-
-### Monitor Agent
-
-Trigger-driven autonomous agent with no user input. Runs health checks on timers and responds to channel alerts.
-
-```yaml
-name: monitor_agent
-input: { type: none }
-triggers:
-  - type: timer
-    interval: 60
-    prompt: "Run health check"
-  - type: channel
-    channel: monitor_alerts
-    prompt: "Investigate this alert: {content}"
-tools: [bash, http, read, scratchpad, send_message, think]
-subagents: [explore, summarize]
-```
-
-### Conversational Agent
-
-Streaming conversational AI with Whisper ASR input, interactive output sub-agent, and TTS output.
-
-```yaml
-name: conversational
-input: { type: whisper, model: small, device: cuda }
-tools: [read, write, think, scratchpad]
-subagents: [memory_read, memory_write, research, critic, output]
-output: { type: custom, controller_direct: false }
-```
-
-### Discord Bot
-
-Group chat bot with ephemeral context, named outputs, and custom tools.
-
-```yaml
-name: discord_bot
-input: { type: custom, module: ./custom/discord_io.py }
-output:
-  named_outputs:
-    discord: { type: custom, module: ./custom/discord_io.py }
-tools: [tree, read, write, edit, glob, grep]
-subagents: [memory_read, memory_write]
-```
-
-### RP Agent
-
-Roleplay chatbot with persistent character memory and output sub-agent pattern.
-
-```yaml
-name: rp_agent
-tools: [tree, read, write, edit, grep, glob]
-subagents: [memory_read, memory_write, output]
-memory:
-  init_files: [character.md, rules.md]
-  writable_files: [context.md, facts.md, preferences.md]
-```
-
-## Multi-Agent Patterns
-
-### Parallel Dispatch
-
-The controller dispatches multiple sub-agents simultaneously, then waits for their results through channels:
-
-```
-[/research]Investigate auth patterns[research/]
-[/worker]Scaffold the module[worker/]
-[/wait_channel]@@channel=results[wait_channel/]
-```
-
-### Plan-Execute-Review
-
-Scratchpad-driven loop: plan steps, execute each with a worker, validate with a critic, iterate:
-
-```
-[/plan]Design migration strategy[plan/]
-[/worker]Execute step 1[worker/]
-[/critic]Review step 1 against the plan[critic/]
-```
-
-### Trigger-Driven Autonomous
-
-No user input. Timers and channel triggers drive the agent entirely:
-
-```yaml
-input: { type: none }
-triggers:
-  - type: timer
-    interval: 60
-    prompt: "Run health check"
-  - type: channel
-    channel: monitor_alerts
-    prompt: "Investigate this alert: {content}"
-```
+| Agent | Pattern | Key Feature |
+|-------|---------|-------------|
+| [swe_agent](agents/swe_agent/) | SWE coding assistant | think + scratchpad + worker/critic |
+| [multi_agent](agents/multi_agent/) | Multi-agent coordination | Parallel sub-agent dispatch |
+| [planner_agent](agents/planner_agent/) | Plan-execute-reflect loop | Scratchpad-driven planning |
+| [monitor_agent](agents/monitor_agent/) | Trigger-driven autonomous | Timer + channel triggers, no input |
+| [conversational](agents/conversational/) | Streaming ASR/TTS chat | Interactive output sub-agent |
+| [discord_bot](agents/discord_bot/) | Group chat bot | Custom I/O, ephemeral mode |
+| [rp_agent](agents/rp_agent/) | Character roleplay | Memory-first personality |
 
 ## Configuration
 
-A complete agent configuration with all sections:
+Minimal agent config:
 
 ```yaml
 name: my_agent
-version: "1.0"
-
-# LLM -- supports any OpenAI-compatible provider
 controller:
   model: "google/gemini-3-flash-preview"
-  temperature: 0.7
-  max_tokens: 512000
   api_key_env: OPENROUTER_API_KEY
   base_url: https://openrouter.ai/api/v1
 
-# System prompt loaded from Markdown with Jinja2 templating
 system_prompt_file: prompts/system.md
 
-# Input source (cli, whisper, custom, or none for trigger-only)
-input:
-  type: cli
-  prompt: "You: "
-
-# Triggers for autonomous operation (optional)
-triggers:
-  - type: timer
-    interval: 300
-    prompt: "Check for updates"
-
-# Tools -- pick from 16 builtins or add custom
 tools:
   - name: bash
     type: builtin
   - name: read
     type: builtin
-  - name: write
-    type: builtin
 
-# Sub-agents -- pick from 10 builtins or add custom
 subagents:
   - name: explore
     type: builtin
     extra_prompt: "Focus on Python files."
-  - name: worker
-    type: builtin
-
-# When to stop
-termination:
-  max_turns: 50
-  keywords: ["TASK_COMPLETE"]
-
-# Output routing
-output:
-  type: stdout
-  controller_direct: true
 ```
 
-## Tool Call Format
-
-KohakuTerrarium uses a bracket-based format that works with any LLM:
-
-```
-[/bash]ls -la[bash/]
-
-[/read]@@path=src/main.py[read/]
-
-[/write]
-@@path=hello.py
-print("Hello, World!")
-[write/]
-
-[/edit]
-@@path=config.py
-@@old=debug = False
-@@new=debug = True
-[edit/]
-
-[/explore]Find all API endpoints[explore/]
-
-[/info]bash[info/]
-```
+Full config reference: [docs/guides/configuration.md](docs/guides/configuration.md)
 
 ## Project Structure
 
 ```
 src/kohakuterrarium/
-+-- core/            # Runtime: agent, controller, executor, events, channels
-+-- modules/         # Protocols: input, trigger, tool, output, subagent
-+-- builtins/        # 16 tools, 10 sub-agents, CLI/Whisper input, stdout/TTS output
-+-- parsing/         # Stream parser: state machine for [/tool] block detection
-+-- prompt/          # System prompt aggregation + Jinja2 templating
-+-- llm/             # LLM abstraction (OpenAI/OpenRouter)
-+-- utils/           # Structured colored logging
+  core/        # Runtime: agent, controller, executor, events, channels
+  modules/     # Protocols: input, trigger, tool, output, subagent
+  builtins/    # 16 tools, 10 sub-agents, CLI/Whisper, stdout/TTS
+  parsing/     # Stream parser for [/tool]...[tool/] detection
+  prompt/      # System prompt aggregation + Jinja2 templating
+  llm/         # LLM abstraction (OpenAI/OpenRouter)
+  utils/       # Structured colored logging
 
-agents/              # Example agent configurations (7 included)
-docs/                # Architecture docs, API reference, guides
+agents/        # 7 example agent configurations
+docs/          # Architecture, API reference, guides
 ```
 
 ## Documentation
 
 - [Architecture Overview](docs/architecture.md)
+- [Getting Started Guide](docs/guides/getting-started.md)
+- [Configuration Reference](docs/guides/configuration.md)
+- [Example Agents Guide](docs/guides/example-agents.md)
 - [API Reference](docs/api/)
-- [Usage Guides](docs/guides/)
 - [Code Conventions](CLAUDE.md)
-
-## Contributing
-
-Contributions welcome. Read [CLAUDE.md](CLAUDE.md) for code conventions, architecture guidelines, and logging standards.
+- [Contributing](CONTRIBUTING.md)
 
 ## License
 
