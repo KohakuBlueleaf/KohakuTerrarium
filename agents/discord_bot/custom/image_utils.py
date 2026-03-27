@@ -2,7 +2,7 @@
 Image utilities for Discord bot multimodal support.
 
 Handles:
-- Downloading images from URLs
+- Downloading images from URLs (with caching)
 - Extracting frames from animated GIFs
 - Converting images to base64 data URLs
 """
@@ -10,6 +10,7 @@ Handles:
 import asyncio
 import base64
 import io
+import time
 from dataclasses import dataclass
 
 import httpx
@@ -18,6 +19,26 @@ from PIL import Image
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger("kohakuterrarium.custom.image_utils")
+
+# Simple in-memory cache for downloaded images
+# Key: URL, Value: (bytes, timestamp)
+_image_cache: dict[str, tuple[bytes, float]] = {}
+_CACHE_TTL = 300.0  # 5 minutes
+_CACHE_MAX_SIZE = 100  # Max cached images
+
+
+def _clean_cache() -> None:
+    """Remove expired entries from cache."""
+    now = time.time()
+    expired = [url for url, (_, ts) in _image_cache.items() if now - ts > _CACHE_TTL]
+    for url in expired:
+        del _image_cache[url]
+
+    # If still too large, remove oldest entries
+    if len(_image_cache) > _CACHE_MAX_SIZE:
+        sorted_items = sorted(_image_cache.items(), key=lambda x: x[1][1])
+        for url, _ in sorted_items[: len(_image_cache) - _CACHE_MAX_SIZE]:
+            del _image_cache[url]
 
 
 @dataclass
@@ -31,12 +52,26 @@ class ProcessedImage:
 
 
 async def download_image(url: str, timeout: float = 10.0) -> bytes | None:
-    """Download image from URL."""
+    """Download image from URL with caching."""
+    # Check cache first
+    if url in _image_cache:
+        data, ts = _image_cache[url]
+        if time.time() - ts < _CACHE_TTL:
+            logger.debug("Image cache hit", extra={"url": url[:50]})
+            return data
+        else:
+            del _image_cache[url]
+
+    # Download
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(url, timeout=timeout, follow_redirects=True)
             if response.status_code == 200:
-                return response.content
+                data = response.content
+                # Cache the result
+                _clean_cache()
+                _image_cache[url] = (data, time.time())
+                return data
             logger.warning(
                 "Failed to download image",
                 extra={"url": url[:100], "status": response.status_code},

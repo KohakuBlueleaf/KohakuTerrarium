@@ -11,7 +11,9 @@ import asyncio
 import re
 from collections import deque
 from dataclasses import dataclass, field
+from datetime import datetime, timezone as dt_timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import discord
 
@@ -269,8 +271,19 @@ class DiscordClient(discord.Client):
         channel_ids: list[int] | None = None,
         readonly_channel_ids: list[int] | None = None,
         history_limit: int = 20,
+        timezone: str | None = None,
         **kwargs: Any,
     ):
+        """
+        Initialize Discord client.
+
+        Args:
+            channel_ids: List of channel IDs to listen to
+            readonly_channel_ids: List of read-only channel IDs
+            history_limit: Number of messages to fetch for history
+            timezone: Timezone name for timestamp formatting (e.g., "Asia/Tokyo",
+                     "America/New_York", "UTC"). If None, uses system local timezone.
+        """
         intents = discord.Intents.default()
         intents.message_content = True
         intents.guilds = True
@@ -283,6 +296,18 @@ class DiscordClient(discord.Client):
         )
         self.history_limit = history_limit
         self._message_queue: asyncio.Queue[DiscordMessage] = asyncio.Queue()
+
+        # Timezone configuration
+        if timezone:
+            try:
+                self._timezone = ZoneInfo(timezone)
+            except KeyError:
+                logger.warning(
+                    f"Unknown timezone '{timezone}', using system local timezone"
+                )
+                self._timezone = None  # Will use local timezone
+        else:
+            self._timezone = None  # Use local timezone
 
         # Track current channel for output
         self._current_channel_id: int | None = None
@@ -303,6 +328,27 @@ class DiscordClient(discord.Client):
             "Discord client ready",
             extra={"bot_user": str(self.user), "guilds": len(self.guilds)},
         )
+
+    def _format_timestamp(self, dt: datetime) -> str:
+        """
+        Format a datetime to string, converting to configured timezone.
+
+        Discord returns UTC timezone-aware datetimes. This method converts
+        to the configured timezone (or system local if not configured).
+
+        Args:
+            dt: UTC datetime from Discord
+
+        Returns:
+            Formatted timestamp string in "YYYY-MM-DD HH:MM" format
+        """
+        if self._timezone:
+            # Convert to configured timezone
+            local_dt = dt.astimezone(self._timezone)
+        else:
+            # Convert to system local timezone
+            local_dt = dt.astimezone()
+        return local_dt.strftime("%Y-%m-%d %H:%M")
 
     def get_bot_identity(self) -> str:
         """Get bot's identity string for prompts."""
@@ -343,7 +389,7 @@ class DiscordClient(discord.Client):
                     )
                 )
 
-                msg_time = msg.created_at.strftime("%Y-%m-%d %H:%M")
+                msg_time = self._format_timestamp(msg.created_at)
                 parsed_content = self.parse_mentions(msg.content, msg.guild)
                 # Mark self messages clearly
                 if is_self:
@@ -414,7 +460,7 @@ class DiscordClient(discord.Client):
 
                 is_mention = self.user in msg.mentions if self.user else False
                 parsed_content = self.parse_mentions(msg.content, msg.guild)
-                msg_time = msg.created_at.strftime("%Y-%m-%d %H:%M")
+                msg_time = self._format_timestamp(msg.created_at)
 
                 discord_msg = DiscordMessage(
                     content=parsed_content,
@@ -518,7 +564,7 @@ class DiscordClient(discord.Client):
                         pass
 
         parsed_content = self.parse_mentions(message.content, message.guild)
-        msg_time = message.created_at.strftime("%Y-%m-%d %H:%M")
+        msg_time = self._format_timestamp(message.created_at)
 
         # Parse attachments
         attachments = [MediaAttachment.from_discord(att) for att in message.attachments]

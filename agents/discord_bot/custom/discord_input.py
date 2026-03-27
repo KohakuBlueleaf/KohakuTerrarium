@@ -55,6 +55,8 @@ class DiscordInputModule(BaseInputModule):
         instant_memory_file: str | None = None,
         context_format_file: str | None = None,
         context_files: dict[str, str] | None = None,
+        # Timezone option
+        timezone: str | None = None,
         # Multimodal options
         include_images: bool = False,
         include_attachments: bool = True,
@@ -81,6 +83,8 @@ class DiscordInputModule(BaseInputModule):
             context_format_file: Template file for context formatting (uses str.format())
             context_files: Dict mapping template vars to file paths
                            e.g., {"character": "./memory/character.md"}
+            timezone: Timezone for message timestamps (e.g., "Asia/Tokyo", "America/New_York").
+                     If None, uses system local timezone.
 
             Multimodal options:
             include_images: Enable multimodal image input (master switch)
@@ -139,6 +143,7 @@ class DiscordInputModule(BaseInputModule):
                 "recent_limit": recent_limit,
                 "context_format_file": context_format_file,
                 "context_files": list(context_files.keys()) if context_files else [],
+                "timezone": timezone or "local",
                 "multimodal": include_images,
                 "image_detail": image_detail if include_images else None,
             },
@@ -152,6 +157,7 @@ class DiscordInputModule(BaseInputModule):
                 channel_ids=channel_ids,
                 readonly_channel_ids=readonly_channel_ids,
                 history_limit=history_limit,
+                timezone=timezone,
             )
             self._owns_client = True
 
@@ -331,7 +337,7 @@ class DiscordInputModule(BaseInputModule):
         if self._context_template:
             try:
                 result = self._context_template.format(**template_vars)
-                self._save_debug_output(result)
+                # self._save_debug_output(result)
                 return result
             except KeyError as e:
                 logger.error("Template missing variable", extra={"missing": str(e)})
@@ -340,7 +346,7 @@ class DiscordInputModule(BaseInputModule):
 
         # Fallback: simple concatenation if no template
         fallback = self._render_fallback(template_vars)
-        self._save_debug_output(fallback)
+        # self._save_debug_output(fallback)
         return fallback
 
     def _save_debug_output(self, content: str) -> None:

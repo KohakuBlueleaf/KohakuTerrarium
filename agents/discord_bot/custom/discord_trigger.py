@@ -5,32 +5,15 @@ Provides ping detection and idle/exploration triggers.
 """
 
 import asyncio
-import sys
 from typing import Any
 
 from kohakuterrarium.core.events import TriggerEvent
 from kohakuterrarium.modules.trigger import BaseTrigger
 from kohakuterrarium.utils.logging import get_logger
 
+from discord_client import get_client
+
 logger = get_logger("kohakuterrarium.custom.discord_trigger")
-
-
-# Get discord_io module - it should already be loaded by input module
-# We access the shared client registry directly
-def _get_discord_io():
-    """Get the discord_io module from sys.modules."""
-    for name, module in sys.modules.items():
-        if "discord_io" in name and hasattr(module, "_get_client"):
-            return module
-    return None
-
-
-def _get_client(name: str = "default") -> Any:
-    """Get Discord client from shared registry."""
-    io_module = _get_discord_io()
-    if io_module:
-        return io_module._get_client(name)
-    return None
 
 
 class DiscordPingTrigger(BaseTrigger):
@@ -69,7 +52,7 @@ class DiscordPingTrigger(BaseTrigger):
     def _ensure_client(self) -> Any:
         """Get client, looking up from registry if needed."""
         if self.client is None:
-            self.client = _get_client(self.client_name)
+            self.client = get_client(self.client_name)
         return self.client
 
     def _on_context_update(self, context: dict[str, Any]) -> None:
@@ -309,7 +292,7 @@ class DiscordActivityMonitor(BaseTrigger):
     def _ensure_client(self) -> Any:
         """Get client, looking up from registry if needed."""
         if self.client is None:
-            self.client = _get_client(self.client_name)
+            self.client = get_client(self.client_name)
         return self.client
 
     def add_activity_callback(self, callback: callable) -> None:

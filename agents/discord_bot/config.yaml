@@ -6,9 +6,8 @@ version: "1.0"
 
 # LLM Configuration - Controller (orchestration)
 controller:
-  model: "${OPENROUTER_MODEL:google/gemini-3-flash-preview}"
-  temperature: 0.5
-  max_tokens: 1000000
+  model: "${OPENROUTER_MODEL:google/gemini-3.1-pro-preview}"
+  temperature: 1
   api_key_env: OPENROUTER_API_KEY
   base_url: https://openrouter.ai/api/v1
 
@@ -16,8 +15,8 @@ controller:
   ephemeral: true
 
   # Context limits
-  max_messages: 64
-  max_context_chars: 1000000
+  max_messages: 256
+  max_context_chars: 2000000
 
   # Keep tool list and framework hints in system prompt
   # Context_format.md adds character/rules/instructions closer to generation
@@ -37,7 +36,7 @@ input:
   # Configuration passed to constructor
   token_env: DISCORD_BOT_TOKEN
   # Channels to listen and respond to
-  channel_ids: [775002061456408576, 1459909076099137730]
+  channel_ids: [775002061456408576, 1463611251585450118, 1463109951055462527, 1463507270326554747]
   # Read-only channels: observe to learn, but cannot respond
   readonly_channel_ids: []
   # History: older messages for background context
@@ -51,8 +50,8 @@ input:
   # Context files injected into template (placed AFTER messages for recency)
   # These override system prompt injection to place character/rules closer to generation
   context_files:
-    character: ./memory/character.md
-    rules: ./memory/rules.md
+    character: ./prompts/character.md
+    rules: ./prompts/rules.md
   # Enable multimodal
   include_images: true
   image_detail: auto
@@ -82,17 +81,17 @@ output:
       drop_max_chance: 0.7     # cap at 70%
 
 # Triggers - autonomous events
-triggers:
-  # Idle trigger - fires after chat inactivity
-  # Note: Ping detection is handled by input module ([PINGED] marker)
-  - type: custom
-    module: ./custom/discord_trigger.py
-    class: DiscordIdleTrigger
-    prompt: "The chat has been quiet for a while. If you have something interesting to share or a topic to bring up, now might be a good time. But dont force it - only speak if natural."
-    # Configuration
-    min_idle_seconds: 1800   # 30 minutes minimum
-    max_idle_seconds: 28800  # 8 hours maximum
-    exploration_chance: 0.3  # 30% chance to actually start topic
+# triggers:
+#   # Idle trigger - fires after chat inactivity
+#   # Note: Ping detection is handled by input module ([PINGED] marker)
+#   - type: custom
+#     module: ./custom/discord_trigger.py
+#     class: DiscordIdleTrigger
+#     prompt: "The chat has been quiet for a while. If you have something interesting to share or a topic to bring up, now might be a good time. But dont force it - only speak if natural."
+#     # Configuration
+#     min_idle_seconds: 1800   # 30 minutes minimum
+#     max_idle_seconds: 28800  # 8 hours maximum
+#     exploration_chance: 0.3  # 30% chance to actually start topic
 
 # Tools for controller (memory sub-agents need tree, read, grep)
 tools:
@@ -108,6 +107,25 @@ tools:
     type: builtin
   - name: grep
     type: builtin
+
+  # Emoji tools - search guild emojis
+  - name: emoji_search
+    type: custom
+    module: ./custom/emoji_search.py
+    class: EmojiSearchTool
+    # db_path: /Iolite/KohakuTerrarium/agents/discord_bot/memory/emoji_db.json
+
+  - name: emoji_list
+    type: custom
+    module: ./custom/emoji_search.py
+    class: EmojiListTool
+    # db_path: /Iolite/KohakuTerrarium/agents/discord_bot/memory/emoji_db.json
+
+  - name: emoji_get
+    type: custom
+    module: ./custom/emoji_search.py
+    class: EmojiGetTool
+    # db_path: /Iolite/KohakuTerrarium/agents/discord_bot/memory/emoji_db.json
 
 # Sub-agents
 subagents:
