@@ -19,13 +19,12 @@ from kohakuterrarium.builtins.outputs import (
     is_builtin_output,
 )
 from kohakuterrarium.builtins.tools import get_builtin_tool
-from kohakuterrarium.core.channel import get_channel_registry
 from kohakuterrarium.core.config import AgentConfig
 from kohakuterrarium.core.controller import Controller, ControllerConfig
 from kohakuterrarium.core.executor import Executor
 from kohakuterrarium.core.loader import ModuleLoadError, ModuleLoader
 from kohakuterrarium.core.registry import Registry
-from kohakuterrarium.core.scratchpad import get_scratchpad
+from kohakuterrarium.core.session import get_session
 from kohakuterrarium.llm.openai import OpenAIProvider
 from kohakuterrarium.modules.input.base import InputModule
 from kohakuterrarium.modules.output.base import OutputModule
@@ -120,14 +119,17 @@ class AgentInitMixin:
             if tool:
                 self.executor.register_tool(tool)
 
-        # Wire channel registry and scratchpad for ToolContext
-        self.channel_registry = get_channel_registry()
-        self.scratchpad = get_scratchpad()
+        # Wire session for ToolContext building
+        session_key = self.config.session_key or self.config.name
+        self.session = get_session(session_key)
 
-        # Set executor context for ToolContext building
+        # Backward-compatible accessors
+        self.channel_registry = self.session.channels
+        self.scratchpad = self.session.scratchpad
+
+        # Set executor context
         self.executor._agent_name = self.config.name
-        self.executor._channels = self.channel_registry
-        self.executor._scratchpad = self.scratchpad
+        self.executor._session = self.session
         if self.config.agent_path:
             self.executor._working_dir = self.config.agent_path
         if hasattr(self.config, "agent_path") and self.config.agent_path:

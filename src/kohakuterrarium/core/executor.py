@@ -73,8 +73,7 @@ class Executor:
 
         # Context for tools (set by agent during init)
         self._agent_name: str = ""
-        self._channels: Any = None  # ChannelRegistry, set later
-        self._scratchpad: Any = None  # Scratchpad, set later
+        self._session: Any = None  # Session, set by agent during init
         self._working_dir: Path = Path.cwd()
         self._memory_path: Path | None = None
 
@@ -237,8 +236,7 @@ class Executor:
         """Build ToolContext for context-aware tools."""
         return ToolContext(
             agent_name=self._agent_name,
-            channels=self._channels,
-            scratchpad=self._scratchpad,
+            session=self._session,
             working_dir=self._working_dir,
             memory_path=self._memory_path,
         )
