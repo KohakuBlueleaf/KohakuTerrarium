@@ -48,7 +48,7 @@ class CompletedOutput:
             preview = self.preview(80)
             # Escape newlines for single-line display
             preview = preview.replace("\n", "\\n")
-            return f"- [{self.target}] ({time_str}): \"{preview}\""
+            return f'- [{self.target}] ({time_str}): "{preview}"'
         else:
             return f"- [{self.target}] ({time_str}): FAILED - {self.error}"
 
@@ -276,9 +276,7 @@ class OutputRouter:
                         target=target, content=content, success=False, error=str(e)
                     )
                 )
-                logger.error(
-                    "Output failed", target=target, error=str(e)
-                )
+                logger.error("Output failed", target=target, error=str(e))
         else:
             # Unknown target - log warning, send to default
             logger.warning(
@@ -289,7 +287,9 @@ class OutputRouter:
             await self.default_output.write(f"[output_{target}] {content}")
             # Track as completed (to default)
             self._completed_outputs.append(
-                CompletedOutput(target=f"{target}(default)", content=content, success=True)
+                CompletedOutput(
+                    target=f"{target}(default)", content=content, success=True
+                )
             )
 
     def _handle_block_start(self, block_type: str) -> None:

@@ -127,7 +127,7 @@ class AgentHandlersMixin:
             direct_tasks: dict[str, asyncio.Task] = {}  # Direct: we wait for these
             direct_job_ids: list[str] = []
             new_background_ids: list[str] = []  # Background: tracked until done
-            new_subagent_ids: list[str] = []    # Sub-agents: always background
+            new_subagent_ids: list[str] = []  # Sub-agents: always background
 
             # ===================================================================
             # PHASE 2: Run LLM and handle parse events
