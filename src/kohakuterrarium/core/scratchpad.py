@@ -86,12 +86,10 @@ class Scratchpad:
         return f"Scratchpad(keys={list(self._data.keys())})"
 
 
-_default_scratchpad: Scratchpad | None = None
-
-
 def get_scratchpad() -> Scratchpad:
-    """Get or create the default scratchpad singleton."""
-    global _default_scratchpad
-    if _default_scratchpad is None:
-        _default_scratchpad = Scratchpad()
-    return _default_scratchpad
+    """Get scratchpad from the default session. Prefer context.session.scratchpad."""
+    # Import inside function to avoid circular import:
+    # session.py imports Scratchpad from this module
+    from kohakuterrarium.core.session import get_session
+
+    return get_session().scratchpad

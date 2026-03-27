@@ -135,12 +135,10 @@ class ChannelRegistry:
         return False
 
 
-_default_registry: ChannelRegistry | None = None
-
-
 def get_channel_registry() -> ChannelRegistry:
-    """Get or create the default channel registry singleton."""
-    global _default_registry
-    if _default_registry is None:
-        _default_registry = ChannelRegistry()
-    return _default_registry
+    """Get channels from the default session. Prefer context.session.channels."""
+    # Import inside function to avoid circular import:
+    # session.py imports ChannelRegistry from this module
+    from kohakuterrarium.core.session import get_session
+
+    return get_session().channels
