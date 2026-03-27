@@ -329,8 +329,20 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             async def write(self, text: str) -> None:
                 self._callback(text)
 
-            async def write_line(self, text: str) -> None:
-                self._callback(text + "\n")
+            async def write_stream(self, chunk: str) -> None:
+                self._callback(chunk)
+
+            async def flush(self) -> None:
+                pass
+
+            async def on_processing_start(self) -> None:
+                pass
+
+            async def on_processing_end(self) -> None:
+                pass
+
+            def on_activity(self, activity_type: str, detail: str) -> None:
+                pass
 
         callback_output = CallbackOutput(handler)
 

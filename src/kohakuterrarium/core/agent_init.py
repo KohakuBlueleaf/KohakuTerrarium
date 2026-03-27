@@ -26,9 +26,6 @@ from kohakuterrarium.core.loader import ModuleLoadError, ModuleLoader
 from kohakuterrarium.core.registry import Registry
 from kohakuterrarium.core.session import get_session
 from kohakuterrarium.llm.openai import OpenAIProvider
-from kohakuterrarium.modules.input.base import InputModule
-from kohakuterrarium.modules.output.base import OutputModule
-from kohakuterrarium.modules.output.router import OutputRouter
 from kohakuterrarium.modules.trigger import (
     BaseTrigger,
     ChannelTrigger,
@@ -37,6 +34,9 @@ from kohakuterrarium.modules.trigger import (
 )
 from kohakuterrarium.prompt.aggregator import aggregate_system_prompt
 from kohakuterrarium.utils.logging import get_logger
+from kohakuterrarium.modules.input.base import InputModule
+from kohakuterrarium.modules.output.base import OutputModule
+from kohakuterrarium.modules.output.router import OutputRouter
 
 logger = get_logger(__name__)
 
