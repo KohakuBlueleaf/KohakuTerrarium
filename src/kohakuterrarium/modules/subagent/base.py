@@ -157,8 +157,15 @@ class SubAgent:
         )
 
     def _create_limited_registry(self) -> Registry:
-        """Create registry with only allowed tools."""
+        """
+        Create registry with only allowed tools.
+
+        Tools not found in parent registry are tracked in self._missing_tools
+        so the error can be surfaced to the LLM if the sub-agent tries to
+        use them.
+        """
         limited = Registry()
+        self._missing_tools: list[str] = []
 
         for tool_name in self.config.tools:
             tool = self.parent_registry.get_tool(tool_name)
@@ -173,6 +180,7 @@ class SubAgent:
                     continue
                 limited.register_tool(tool)
             else:
+                self._missing_tools.append(tool_name)
                 logger.warning(
                     "Tool not found in parent registry",
                     tool_name=tool_name,
@@ -210,6 +218,16 @@ class SubAgent:
                 desc = info.description if info else "Tool"
                 tool_lines.append(f"- `{name}`: {desc}")
             parts.append("\n".join(tool_lines))
+
+        # Warn about missing tools so the LLM knows its limitations
+        if self._missing_tools:
+            missing_note = (
+                "## Unavailable Tools\n\n"
+                "The following tools were requested but are not available: "
+                + ", ".join(f"`{t}`" for t in self._missing_tools)
+                + "\nDo NOT attempt to call these tools. Work with what is available."
+            )
+            parts.append(missing_note)
 
         # Framework hints
         parts.append(SUBAGENT_FRAMEWORK_HINTS)
@@ -389,14 +407,16 @@ class SubAgent:
             try:
                 result = await tool.execute(tool_call.args)
                 if result.success:
+                    # Use get_text_output() to handle both str and multimodal
+                    text_output = result.get_text_output()
                     output = (
-                        result.output[:SUBAGENT_TOOL_OUTPUT_MAX_CHARS]
-                        if result.output
+                        text_output[:SUBAGENT_TOOL_OUTPUT_MAX_CHARS]
+                        if text_output
                         else "(no output)"
                     )
                     results.append(f"[{tool_call.name}]\n{output}")
                     # Log success with output preview
-                    output_preview = (result.output or "")[:100].replace("\n", " ")
+                    output_preview = (text_output or "")[:100].replace("\n", " ")
                     logger.debug(
                         "Sub-agent tool success",
                         subagent_name=self.config.name,

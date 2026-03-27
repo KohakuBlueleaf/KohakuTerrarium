@@ -96,9 +96,24 @@ class SubAgentManager:
         """
         Register a sub-agent configuration.
 
+        Validates that all tools in the sub-agent config exist in the parent
+        registry. Missing tools are logged as warnings (not errors) because
+        the parent agent may add tools after registration.
+
         Args:
             config: Sub-agent configuration
         """
+        # Validate tool availability - warn early about missing tools
+        missing_tools = [
+            t for t in config.tools if self.parent_registry.get_tool(t) is None
+        ]
+        if missing_tools:
+            logger.warning(
+                "Sub-agent references tools not in parent registry",
+                subagent_name=config.name,
+                missing_tools=missing_tools,
+            )
+
         self._configs[config.name] = config
         logger.debug(
             "Registered sub-agent",
