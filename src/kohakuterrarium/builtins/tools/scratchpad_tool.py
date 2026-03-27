@@ -39,7 +39,9 @@ class ScratchpadTool(BaseTool):
         value = args.get("value", "")
 
         scratchpad = (
-            context.scratchpad if context and context.scratchpad else get_scratchpad()
+            context.session.scratchpad
+            if context and context.session
+            else get_scratchpad()
         )
 
         match action:

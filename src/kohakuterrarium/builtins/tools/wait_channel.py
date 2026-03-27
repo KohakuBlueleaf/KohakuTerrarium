@@ -45,7 +45,11 @@ class WaitChannelTool(BaseTool):
         if not channel_name:
             return ToolResult(error="Channel name is required")
 
-        registry = context.channels if context else get_channel_registry()
+        registry = (
+            context.session.channels
+            if context and context.session
+            else get_channel_registry()
+        )
         channel = registry.get_or_create(channel_name)
 
         try:
