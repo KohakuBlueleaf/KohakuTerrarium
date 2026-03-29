@@ -22,8 +22,6 @@ output:
 tools:
   - name: send_message
     type: builtin
-  - name: wait_channel
-    type: builtin
   - name: think
     type: builtin
   - name: write
@@ -32,6 +30,3 @@ tools:
 termination:
   max_turns: 20
   keywords: ["WRITING_COMPLETE"]
-
-startup_trigger:
-  prompt: "Wait for chapter outlines on the 'outline' channel using wait_channel. Write each chapter as vivid prose and save it to a file. After all chapters are written, compile them into novel.md."

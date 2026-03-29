@@ -49,10 +49,19 @@ All implemented and tested:
 
 The terrarium does **not** replace creature InputModule/OutputModule. Instead:
 
-- **Receiving**: Terrarium appends `ChannelTrigger`(s) to the creature's triggers list. Messages arrive as `TriggerEvent(type=CHANNEL_MESSAGE)` through the standard event system.
+- **Receiving**: Terrarium appends `ChannelTrigger`(s) to the creature's triggers list. Messages arrive as `TriggerEvent(type=CHANNEL_MESSAGE)` through the standard event system. **No explicit `wait_channel` needed.**
 - **Sending**: Creature explicitly calls `send_message` tool. The LLM decides what to share.
 
 **Rationale**: Preserves creature opacity. The creature's internal reasoning stays private. Communication is intentional, not automatic. No new adapter modules needed.
+
+### Trigger-Based Receiving (No Polling) — Decided
+
+Creatures do NOT use `wait_channel` to receive messages. Instead:
+- The terrarium injects `ChannelTrigger`(s) → messages arrive automatically as events
+- Creatures without startup triggers simply idle until a channel message arrives
+- Background tool/sub-agent results arrive via the feedback loop (no `[/wait]` needed)
+
+This eliminates the "poll and wait" anti-pattern. The agent model is **reactive**: do work when triggered, idle otherwise. The `wait_channel` tool and `[/wait]` command still exist in the framework for edge cases but are not promoted in terrarium-managed creatures.
 
 ### System Prompt Injection — Implemented
 

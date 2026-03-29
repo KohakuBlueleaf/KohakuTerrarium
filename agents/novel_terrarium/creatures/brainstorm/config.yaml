@@ -22,8 +22,6 @@ output:
 tools:
   - name: send_message
     type: builtin
-  - name: wait_channel
-    type: builtin
   - name: think
     type: builtin
 

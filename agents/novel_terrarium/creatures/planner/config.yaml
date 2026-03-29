@@ -22,14 +22,9 @@ output:
 tools:
   - name: send_message
     type: builtin
-  - name: wait_channel
-    type: builtin
   - name: think
     type: builtin
 
 termination:
   max_turns: 15
   keywords: ["PLANNING_COMPLETE"]
-
-startup_trigger:
-  prompt: "Wait for a story concept on the 'ideas' channel using wait_channel. Once received, create a detailed chapter-by-chapter outline and send each chapter outline to the 'outline' channel."
