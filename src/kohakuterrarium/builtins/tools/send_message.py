@@ -41,7 +41,7 @@ class SendMessageTool(BaseTool):
     ) -> ToolResult:
         """Send message to channel."""
         channel_name = args.get("channel", "")
-        message = args.get("message", "")
+        message = args.get("message", "") or args.get("content", "")
         channel_type = args.get("channel_type", "queue")
         reply_to = args.get("reply_to", None) or None
 
