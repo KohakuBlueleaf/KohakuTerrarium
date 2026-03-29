@@ -1,39 +1,47 @@
-"I saw a house in Oak Park," Elias murmured, his voice softening into a dreamy cadence. The crackle of the raging fire behind him was growing louder, accompanied now by the faint, frantic wail of distant sirens. "Little place with a wrap-around porch. You always wanted a porch, Clara. I’ve got enough in my coat pocket to put down a deposit tomorrow. We’re going to be alright. No more basement exchanges for you."
+# 第三章：心跳同步的頻率
 
-"A porch sounds beautiful," Clara whispered. A hot tear slipped down her cheek, cutting a clean track through the grime of the shift. "We can plant hydrangeas. The blue ones."
+「嘖，同步率又掉下來了。」
 
-"Blue," Elias agreed, though his voice sounded weaker, thinner, like paper wearing through. "Yes. Whatever you want, my love."
+雷恩抹去額頭上的汗水，右手握持的魔裝槍械——『琥珀之翼』此時正發出不安的低鳴。槍身表面的銅色齒輪旋轉得斷斷續續，原本流暢的魔力光輝變得黯淡，像是隨時會熄滅的殘燭。
 
-"What on earth do you think you are doing?" 
+在他的身側，克蘿伊臉色蒼白，急促地喘息著。作為「無限武裝庫」的她，正將靈魂與雷恩的意識連結，但那種連結此刻卻像是一條佈滿雜訊的電路，充滿了刺耳的干擾音。
 
-The sharp, furious voice of Supervisor Higgins shattered the bubble of Clara’s tragic intimacy. She jerked her head around. Higgins was standing two feet away, his face flushed an angry crimson. His eyes were locked on the glowing amber lamp of the dead board. 
+「對不起……雷恩。我的魔力迴路……沒辦法跟上你的節奏。」克蘿伊咬著下唇，金色的雙眸中透著一絲不甘。
 
-"Who are you talking to?" Higgins demanded, stepping forward and invading her space, reeking of bay rum and stale tobacco. "That board has been decommissioned for ten years! Pull that jack, Operator. You are wasting company resources."
+這裡是聖阿爾比恩學院的地下訓練場。四周充斥著濃郁的機油味與冷卻液的蒸汽。剛才的模擬戰鬥中，他們甚至沒能擊穿第三層防禦壁。
 
-"No," Clara said, her voice shaking but resolute. She leaned forward, shielding the brass plug with her body. "It’s an emergency."
+「不是妳的問題。」雷恩收起槍，感受著手掌傳來的餘溫，「是我太急躁了。我只是想著要發揮這把槍的威力，卻忘了去感受妳的呼吸。」
 
-"I am the supervisor of this exchange, and I determine what constitutes an emergency!" Higgins barked. He reached past her shoulder, his pale, manicured hand diving toward the switchboard. 
+兩人坐在訓練場邊緣的長椅上，頭頂的煤氣燈發出嘶嘶聲，投下搖曳的影子。
 
-Panic exploded in Clara’s chest. If Higgins pulled the plug, Elias would be ripped away into the void. She slapped Higgins’s hand away with a resounding smack that echoed over the hum of the machinery.
+「雷恩為什麼……要這麼拚命呢？」克蘿伊輕聲問道，雙手不安地絞在一起，「明明以你的技術，就算不跟我搭檔，也能成為優秀的魔裝兵吧？」
 
-Higgins recoiled, his eyes wide with shock. In the austere, rigidly disciplined world of the Bell Company, physical insubordination was unthinkable. It meant immediate termination. It meant blacklisting. It meant jail time, if the company chose to press charges.
+雷恩沉默了一會，看著天花板上錯綜複雜的蒸汽管線。
 
-"Have you lost your mind?" Higgins hissed, stepping back to assess her as if she were a rabid dog. "You are fired. Get up from that stool immediately."
+「因為我見過那種黑暗。」他的聲音變得低沉，「在邊境，當魔獸潮湧入村莊時，普通的槍械根本毫無作用。那時候我就發誓，我要掌握最強的力量，守護我所能觸及的一切。而妳，克蘿伊……妳不是工具，妳是我選擇的夥伴。如果不能跟妳同步，那最強的力量也沒有意義。」
 
-"Clara?" Elias’s voice drifted through the static, completely oblivious to the confrontation. "Is someone there? It sounds like you're upset."
+克蘿伊愣住了，她抬起頭，看著雷恩堅定的側臉。一直以來，她都害怕自己只是被當作武器的載體，但雷恩的話卻像是一股暖流，沖散了她心中的迷霧。
 
-"No, darling, no," Clara said quickly into the mouthpiece, keeping her eyes fixed on Higgins like a cornered animal. "Just a... a disagreement with a colleague. Everything is fine. Tell me more about the house."
+「……如果是雷恩的話，我也許可以。」她伸出手，輕輕覆在雷恩的手背上，「請再試一次。這一次，不要看槍，看著我。」
 
-"Operator 42, I will not ask you again," Higgins warned, his face darkening from red to a dangerous plum. He lunged forward again, this time trying to grab the black wire itself.
+再次站上訓練場中央。
 
-Clara threw her weight against him. She shoved him back with her left arm, her right hand clamped desperately over the brass jack, locking it into the socket. Her headset slipped, dangling precariously from one ear, but she kept the mouthpiece close to her lips. 
+雷恩閉上眼睛，放下了所有的雜念。他不再試圖去操控魔力，而是去聆聽克蘿伊的心跳。
 
-"Don't you dare touch it!" Clara screamed at Higgins, her voice tearing through the quiet hum of the basement exchange with raw, unhinged ferocity. Dozens of operators stopped their work, turning to stare in stunned, terrified silence. 
+*咚、咚、咚。*
 
-"He's crazy, Clara," Elias chuckled weakly, coughing again. The wet rattle was worse now, bubbling up from his ruined lungs. "You always said your boss was a tyrant. Tell him to shove it. I’m taking you away from that miserable place."
+那是齒輪嚙合的律動，是靈魂共鳴的節奏。
 
-"I know, Elias. I know," Clara sobbed, her fierce defiance melting back into agonizing grief the moment she spoke to him. She glared at Higgins, her eyes blazing with a wild, feral intensity. She had nothing left to lose. The debts, the terrible job, the threat of ruin—none of it mattered. The only thing that mattered was the man trapped in the twisted copper wires.
+當他再次睜開眼時，『琥珀之翼』爆發出了前所未有的耀眼金光。槍身劇烈擴張，無數細小的零件在空中重組，化為一柄巨大的魔導狙擊砲。
 
-Higgins slowly straightened his suit jacket, his chest heaving. He looked at the wild, weeping woman guarding a dead switchboard, and took a step back, deeply unsettled by the sheer, terrifying force of her grief. 
+「同步率……百分之九十五！」場邊的觀測儀發出尖銳的鳴叫。
 
-Clara turned her back on him. She pulled the headset tight against her ear, gripping the brass jack so hard her knuckles turned white. She clung to the wire, an anchor in the storm, fiercely protecting the ghost of her husband from the encroaching dark.
+「開火！」
+
+一道純淨的魔力光束貫穿了整個訓練場，將厚重的防禦壁瞬間蒸發。空氣中瀰漫著高熱的粒子，久久不散。
+
+雷恩與克蘿伊對視一眼，彼此的眼中都多了一份前所未有的默契。
+
+然而，在訓練場高處的陰影中，一雙冰冷的眼睛正注視著這一切。
+
+「『萬能載體』與『無限武裝庫』嗎……」神祕人合上手中的報告書，嘴角勾起一抹危險的弧度，「看來，實驗可以進入下一個階段了。」

@@ -66,11 +66,6 @@ class AgentHandlersMixin:
         triggers fire simultaneously (e.g. broadcast), events are
         serialized so only one LLM call runs at a time.
         """
-        if not hasattr(self, "_processing_lock"):
-            import asyncio
-
-            self._processing_lock = asyncio.Lock()
-
         async with self._processing_lock:
             if not self._running:
                 logger.debug("Dropping event, agent stopped", event_type=event.type)

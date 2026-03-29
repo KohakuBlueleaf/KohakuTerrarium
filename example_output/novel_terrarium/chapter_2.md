@@ -1,43 +1,61 @@
-The static on the line hissed like a nest of agitated vipers, a chaotic crackle that made Clara's ears ring. Yet, Elias’s voice cut through it, impossibly clear and painfully familiar. 
+# 第二章：同步率 0.01% 的開端
 
-"Clara? Can you hear me, my love?" 
+「哈……哈……剛才那到底是什麼？」
 
-Clara pressed the headset so hard against her ear that the rigid plastic dug into her skin, leaving a crescent moon indentation. "Elias? How... how are you calling this board? The line is decommissioned. Where are you?"
+雷恩扶著醫務室的牆壁，大口喘著氣。他的大腦像是被塞進了一台高速運轉的蒸汽壓縮機，耳鳴聲揮之不去。空氣中殘留著魔力燃燒後的焦味，以及淡淡的、屬於少女的紫羅蘭香氣。
 
-"I’m at the station, sweetheart," he said, his tone infuriatingly light and apologetic, exactly as it always was when he had messed up. "I know I’m late. I’m so sorry about our anniversary. The train from Chicago got delayed. Something about the tracks ahead. It’s a mess here, but I’ve got a pocket full of cash, Clara. My luck finally turned. I’m going to make everything right."
+在他面前，愛莉亞正優雅地整理著略顯凌亂的制服裙襬。如果忽視她背後那對若隱若現、由無數齒輪構成的虛幻羽翼，她看起來就像個平凡的貴族大小姐。
 
-Tears pricked the corners of Clara’s eyes, hot and sudden. He remembered. He was coming home. The crushing weight of the past month lifted, replaced by a dizzying rush of relief. "Elias, that’s wonderful. Just come home safe. I don’t care about the money."
+「那是『連結』，平民。」愛莉亞轉過頭，冰藍色的雙眸毫無溫度地看著雷恩，「雖然你勉強啟動了我，但別太得意。剛才的同步率只有 0.01%。」
 
-"I will, I will. Just waiting for the conductor to give the all-clear," Elias said cheerfully. 
+「0.01%？」雷恩苦笑一聲，「這聽起來連啟動一台老舊的蒸汽幫浦都不夠吧？」
 
-Then, the background noise swelled, flooding the earpiece. 
+「沒錯，簡直是奇蹟般的低。」愛莉亞走到檢測儀器前，看著螢幕上跳動的數據，語氣中帶著一絲不甘，「正常情況下，適格者與『魔裝遺產』的初始同步率至少要有 10%。你這數據簡直是在侮辱我的性能。」
 
-Clara frowned, her relief chilling into unease. Behind Elias’s voice, the 'station' didn't sound right. There was no echoing chatter of commuters, no shrill blast of a train whistle, no clatter of luggage carts. Instead, she heard a horrifying, rhythmic groan—thick steel twisting and tearing under immense, unimaginable pressure. A violent crackle, like a massive bonfire roaring out of control, hissed through the connection. 
+這裡是「艾瑟爾魔裝學院」，一座懸浮在蒸汽雲海之上的學術重鎮。在這裡，齒輪的咬合聲就是心跳，魔力的流動則是血液。雷恩原本只是個維修科的工讀生，卻在昨晚的意外中，與沉睡百年的「無限武裝庫」——愛莉亞締結了契約。
 
-"Elias? What is that noise?" Clara asked, her voice trembling. "Is there a fire?"
+「聽好了，雷恩。」愛莉亞突然走近，纖細的手指揪住雷恩的衣領，強迫他低頭對視，「既然契約已經成立，你的命就是我的。在同步率達到 100% 之前，我不准你隨便死掉。」
 
-"Fire? No, darling. Just the engine venting steam," Elias replied. His voice hitched. A sudden, wet cough violently interrupted him. It was a terrible, rattling sound, thick with fluid and agony. "Excuse me. Dust in the air. Thick as fog."
+「這要求還真是沉重啊……」雷恩感受著近在咫尺的溫度，心跳不由自主地加快。
 
-A cold dread plummeted into Clara’s stomach, freezing the blood in her veins. The air in the basement exchange seemed to drop ten degrees. 
+然而，現實並未給他們太多溫存的時間。
 
-*No dead-end connections.* 
+下午的實戰演習課上，巨大的蒸汽競技場內坐滿了學生。雷恩與愛莉亞的組合理所當然地成了眾人嘲笑的對象。
 
-The older girls in the breakroom used to whisper about the midnight lines. They called it the Ethereal Frequency. Sometimes, they said, the copper wires buried in the damp earth crossed boundaries they weren't meant to cross. They intercepted the raw, lingering energy of souls violently torn from their bodies. Old Operator Margaret swore she had spent ten minutes talking to her drowned son on a dead line before he faded away. 
+「喂喂，快看！那就是傳說中同步率只有 0.01% 的『廢物組合』嗎？」
+「聽說他連魔裝槍的後座力都扛不住，真可憐。」
 
-The legend carried one absolute, terrifying rule: the connection was fragile. The dead could only speak if they remained tethered to their last moments of life, oblivious to their demise. The moment they realized they were gone, the thread would snap. They would pass on into the dark, lost forever.
+站在競技場中央，雷恩握著愛莉亞幻化而成的「重型魔導步槍」。槍身沉重得驚人，冰冷的金屬質感透過掌心傳來。
 
-Another horrific shriek of metal echoed through the headset. Someone in the background—far away, yet intimately close—was screaming in sheer agony. 
+對面，是學院的高材生凱恩，他身後的魔裝武裝散發著耀眼的紅光。
 
-*He’s on the train,* Clara realized, her heart hammering against her ribs like a trapped bird. *There was an accident. He’s in the wreckage.*
+「結束了，平民！」凱恩大喝一聲，赤紅的魔彈如流星般襲來。
 
-"Clara? Are you still there?" Elias asked, his voice suddenly sounding small, like a frightened child. "It’s getting awfully dark in here. And cold. I don't think the train is going to move for a while."
+雷恩咬緊牙關，試圖感受愛莉亞的存在。
+（拜託了，愛莉亞！再借給我一次力量！）
 
-He was dying. Or he was already dead. The truth of it slammed into her, suffocating and absolute. Her husband was a ghost, trapped in the twisted steel of a derailed train, reaching out to her across the impossible void.
+那一瞬間，雷恩感覺到自己的意識沉入了一片深邃的齒輪海洋。在無數冰冷的零件中，他捕捉到了一絲溫暖的律動。
 
-If she told him the truth, if she screamed or panicked, he would realize what had happened. He would be gone. Instantly. 
+*——笨蛋，瞄準左邊三公分。*
 
-A sob tore at her throat, sharp as glass. She clamped her free hand over her mouth, biting down hard on her own knuckles until she tasted the metallic tang of blood. She couldn't lose him. Not yet. She needed to hear his voice for as long as the copper wire would allow.
+愛莉亞的聲音直接在腦海中響起。
 
-Clara took a jagged breath, shoved her devastating grief into a small, dark box inside her chest, and forced the practiced, cheerful lilt of the telephone operator back into her voice.
+雷恩下意識地扣動扳機。
 
-"I'm here, Elias," she said, stretching her lips into a terrified, agonizing smile. "I'm right here. It's just a delay. Tell me about Chicago, darling. Tell me everything."
+「砰——！」
+
+不是沉悶的槍響，而是如同管風琴齊鳴般的轟鳴。一道極細的蒼藍射線穿透了紅光，擦過凱恩的耳邊，直接將後方的鋼鐵靶心熔成了一灘鐵水。
+
+全場鴉雀無聲。
+
+凱恩臉色慘白地跪倒在地，而雷恩手中的步槍則因過熱冒出了白煙。
+
+「剛才那是……」雷恩看著自己的手，驚訝不已。
+
+「只是偶然的同步罷了。」愛莉亞的身影在雷恩身邊浮現，雖然語氣依舊傲嬌，但嘴角卻微微上揚，「不過，勉強算你及格吧。」
+
+在競技場高處的陰影中，一雙金色的眼睛正默默注視著這一切。
+
+「無限武裝庫終於覺醒了嗎？」神祕人低聲呢喃，手中的懷錶發出清脆的滴答聲，「看來，劇本要開始加速了。」
+
+齒輪，再度開始轉動。

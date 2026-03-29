@@ -234,6 +234,53 @@ The `ChannelRegistry` manages all channels within a session. In a terrarium, all
 | `get_channel_info()` | Get name/type/description for all channels (used for prompt injection) |
 | `remove(name)` | Remove a channel |
 
+## Channel Topologies
+
+Channels support flexible wiring. Multiple senders can write to the same channel, and a single sender can write to multiple channels.
+
+**Many-to-one:** Multiple creatures send to a single queue channel. Messages are interleaved FIFO. Only one consumer receives each message.
+
+```
+creature_a --+
+creature_b --+--> [results queue] --> aggregator
+creature_c --+
+```
+
+**One-to-many:** A single creature sends to multiple channels, dispatching different content to different destinations.
+
+```
+                +--> [tasks queue] --> worker
+coordinator --> +--> [status broadcast] --> all
+                +--> [logs queue] --> monitor
+```
+
+**Many-to-many (broadcast):** All senders and receivers share a broadcast channel. Every subscriber receives every message (except their own).
+
+```
+creature_a <--+
+creature_b <--+--> [team_chat broadcast]
+creature_c <--+
+```
+
+These patterns compose freely. A creature can listen on some channels and send on others, enabling pipelines, fan-out, fan-in, and mesh topologies.
+
+## Broadcast Channel Best Practices
+
+Broadcast channels deliver messages to all subscribers except the sender.
+When creatures listen on broadcast channels, be aware of these patterns:
+
+**The cascade pattern**: If creature A sends to a broadcast channel, creatures B and C receive it. If B then sends to the same channel, A and C receive that. This can create rapid message exchanges. Mitigation:
+- Use broadcast for one-way announcements, not conversations
+- Prompt creatures to send to broadcast exactly once per task, not on every LLM turn
+- Consider making broadcast channels send-only (in `can_send` but not `listen`) if creatures don't need to react to announcements
+
+**The feedback loop**: Each message a creature sends generates tool feedback ("Delivered to..."), which triggers another LLM turn. If the model keeps sending broadcast messages, it creates an internal loop. The `send_message` feedback includes "no further action needed" to signal completion.
+
+**Recommended patterns**:
+- Queue channels for task dispatch and results (point-to-point, reliable)
+- Broadcast for shared context (e.g., style decisions, language preferences)
+- Broadcast listeners should absorb information without necessarily responding
+
 ## Error Handling
 
 ### Non-existent broadcast channel
