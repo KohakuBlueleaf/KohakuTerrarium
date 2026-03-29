@@ -155,6 +155,9 @@ class AgentConfig:
     # Sub-agent depth limit (0 = unlimited)
     max_subagent_depth: int = 3
 
+    # Tool call format: "bracket", "xml", "native", or custom dict
+    tool_format: str | dict = "bracket"
+
     # Path to agent folder
     agent_path: Path | None = None
 
@@ -403,6 +406,7 @@ def load_agent_config(agent_path: str | Path) -> AgentConfig:
         max_messages=controller_data.get("max_messages", 50),
         max_context_chars=controller_data.get("max_context_chars", 100000),
         ephemeral=controller_data.get("ephemeral", False),
+        tool_format=controller_data.get("tool_format", "bracket"),
         input=_parse_input_config(config_data.get("input")),
         triggers=[_parse_trigger_config(t) for t in config_data.get("triggers", [])],
         tools=[_parse_tool_config(t) for t in config_data.get("tools", [])],

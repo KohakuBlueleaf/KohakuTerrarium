@@ -216,6 +216,38 @@ class AgentInitMixin:
                 logger.warning("Unknown sub-agent type", subagent_type=item.type)
                 return None
 
+    def _resolve_tool_format(self) -> "ToolCallFormat | None":
+        """
+        Resolve tool_format config to a ToolCallFormat instance.
+
+        Returns:
+            ToolCallFormat for bracket/xml/custom, or None for native mode
+            (native mode bypasses the stream parser entirely).
+        """
+        from kohakuterrarium.parsing.format import (
+            BRACKET_FORMAT,
+            XML_FORMAT,
+            ToolCallFormat,
+        )
+
+        fmt = self.config.tool_format
+        if isinstance(fmt, str):
+            match fmt:
+                case "bracket":
+                    return BRACKET_FORMAT
+                case "xml":
+                    return XML_FORMAT
+                case "native":
+                    return None  # Native mode bypasses parser
+                case _:
+                    logger.warning(
+                        "Unknown tool_format, using bracket", tool_format=fmt
+                    )
+                    return BRACKET_FORMAT
+        elif isinstance(fmt, dict):
+            return ToolCallFormat(**fmt)
+        return BRACKET_FORMAT
+
     def _init_controller(self) -> None:
         """Initialize controller."""
         # Build system prompt
@@ -238,6 +270,9 @@ class AgentInitMixin:
             include_hints=self.config.include_hints_in_prompt,
             known_outputs=known_outputs,
         )
+
+        # Resolve tool format from config
+        self._tool_format = self._resolve_tool_format()
 
         # Store controller config for creating controllers on-demand (parallel mode)
         self._controller_config = ControllerConfig(
