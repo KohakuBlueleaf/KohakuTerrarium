@@ -25,7 +25,7 @@ OPENROUTER_API_KEY=sk-or-v1-your-key-here
 OPENROUTER_MODEL=google/gemini-3-flash-preview
 ```
 
-The `OPENROUTER_MODEL` variable is optional -- creature configs specify defaults via the `${VAR:default}` syntax.
+The `OPENROUTER_MODEL` variable is optional - creature configs specify defaults via the `${VAR:default}` syntax.
 
 ## Creating Your First Terrarium
 
@@ -52,7 +52,7 @@ agents/my_terrarium/
 
 ### Step 2: Create Creature Configs
 
-Each creature is a standalone agent with its own `config.yaml` and system prompt. Creatures work independently -- the terrarium adds channel wiring on top.
+Each creature is a standalone agent with its own `config.yaml` and system prompt. Creatures work independently - the terrarium adds channel wiring on top.
 
 **Researcher creature** (`creatures/researcher/config.yaml`):
 

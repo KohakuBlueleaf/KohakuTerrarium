@@ -20,7 +20,7 @@ The boundary is clean: **a creature does not know it is in a terrarium.**
 | Agent Concept | Software Analogy | Role |
 |---------------|-----------------|------|
 | Creature | Microservice | Self-contained, private internals, well-defined external interface |
-| Terrarium | Service mesh | Routing, lifecycle, observability -- no business logic |
+| Terrarium | Service mesh | Routing, lifecycle, observability - no business logic |
 | Sub-agents | Internal components | Private to the creature, invisible from outside |
 | Channels | Message queues | Explicit, typed communication between creatures |
 
@@ -78,15 +78,15 @@ class ChannelConfig:
 
 The runtime orchestrator. It performs the following on `start()`:
 
-1. **Create shared session** -- All creatures share one `Session` with a single `ChannelRegistry`, so channels are visible across creatures.
-2. **Pre-create declared channels** -- Each channel from the config is created in the shared registry with the correct type and description.
-3. **Build creatures** -- For each creature:
+1. **Create shared session** - All creatures share one `Session` with a single `ChannelRegistry`, so channels are visible across creatures.
+2. **Pre-create declared channels** - Each channel from the config is created in the shared registry with the correct type and description.
+3. **Build creatures** - For each creature:
    - Load the standalone agent config via `load_agent_config()`
    - Point the agent at the shared session key
    - Override input to `NoneInput` (creatures receive work via channel triggers, not stdin)
    - Inject `ChannelTrigger` instances for each listen channel
    - Inject channel topology into the system prompt
-4. **Start all creature agents** -- Call `agent.start()` on each creature.
+4. **Start all creature agents** - Call `agent.start()` on each creature.
 
 On `run()`, each creature runs its event loop as a concurrent `asyncio.Task`. The runtime waits for all tasks to finish (or handles cancellation).
 
@@ -111,11 +111,11 @@ class CreatureHandle:
 
 ### Explicit Messaging
 
-Communication between creatures is always **explicit**. The creature's LLM decides what to send via the `send_message` tool. The terrarium never silently pipes creature output into channels. This preserves the opacity principle -- internal reasoning stays private.
+Communication between creatures is always **explicit**. The creature's LLM decides what to send via the `send_message` tool. The terrarium never silently pipes creature output into channels. This preserves the opacity principle - internal reasoning stays private.
 
 ### Receiving Messages
 
-The terrarium appends `ChannelTrigger` instances to each creature's trigger list for its listen channels. When a message arrives on a channel, the trigger creates a `TriggerEvent(type=CHANNEL_MESSAGE)` -- the same event system used for all other triggers (timers, user input, idle detection). The creature processes the event through its normal controller loop.
+The terrarium appends `ChannelTrigger` instances to each creature's trigger list for its listen channels. When a message arrives on a channel, the trigger creates a `TriggerEvent(type=CHANNEL_MESSAGE)` - the same event system used for all other triggers (timers, user input, idle detection). The creature processes the event through its normal controller loop.
 
 ### Sending Messages
 
@@ -155,9 +155,9 @@ Example injected prompt section:
 
 You are part of a multi-agent team. Use channels to communicate with other agents.
 
-- `feedback` [queue] (listen) -- Feedback from writer back to brainstorm
-- `ideas` [queue] (send) -- Raw ideas from brainstorm to planner
-- `team_chat` [broadcast] (send) -- Team-wide status updates
+- `feedback` [queue] (listen) - Feedback from writer back to brainstorm
+- `ideas` [queue] (send) - Raw ideas from brainstorm to planner
+- `team_chat` [broadcast] (send) - Team-wide status updates
 
 Send messages with: `[/send_message]@@channel=<name>\nYour message[send_message/]`
 Messages on your listen channels arrive automatically as events.
