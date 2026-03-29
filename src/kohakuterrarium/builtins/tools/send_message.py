@@ -80,9 +80,9 @@ class SendMessageTool(BaseTool):
         existing = chan_registry.get(channel_name)
         if existing is None and channel_type == "broadcast":
             available = chan_registry.get_channel_info()
-            avail_str = ", ".join(
-                f"`{c['name']}` ({c['type']})" for c in available
-            ) or "none"
+            avail_str = (
+                ", ".join(f"`{c['name']}` ({c['type']})" for c in available) or "none"
+            )
             return ToolResult(
                 error=(
                     f"Broadcast channel '{channel_name}' does not exist. "
@@ -90,9 +90,7 @@ class SendMessageTool(BaseTool):
                 )
             )
 
-        channel = chan_registry.get_or_create(
-            channel_name, channel_type=channel_type
-        )
+        channel = chan_registry.get_or_create(channel_name, channel_type=channel_type)
 
         # Send message
         msg = ChannelMessage(

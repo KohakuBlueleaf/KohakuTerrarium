@@ -54,20 +54,25 @@ The terrarium does **not** replace creature InputModule/OutputModule. Instead:
 
 **Rationale**: Preserves creature opacity. The creature's internal reasoning stays private. Communication is intentional, not automatic. No new adapter modules needed.
 
-### System Prompt Injection
+### System Prompt Injection — Implemented
 
-The terrarium injects a channel topology section into each creature's system prompt via an aggregator plugin:
+The aggregator auto-generates a "Channel Communication" section when `send_message` or `wait_channel` tools are registered. Channel info (name, type, description) is passed via the `channels` parameter to `aggregate_system_prompt()`.
 
-```
-## Communication Channels
-You receive messages on: tasks (queue)
-You can send to: results (queue), escalations (queue)
-Other agents: architect (sends to tasks), reviewer (reads from results)
-```
+**SubAgentChannel vs AgentChannel prompt paths:**
 
-This is added by the terrarium, not written in the creature's `system.md`. The creature's own prompt stays unchanged.
+| Aspect | SubAgentChannel (queue) | AgentChannel (broadcast) |
+|--------|------------------------|-------------------------|
+| Discovery | Pre-defined, static in prompt | Dynamic, can change at runtime |
+| Prompt | Listed with descriptions | Listed with descriptions + seed explanation |
+| Creation | Auto-created on-the-fly by `send_message` | Must already exist (error if not) |
+| Error handling | N/A (auto-creates) | Returns available channel listing |
+| Scope | Sessional, internal to creature | Cross-creature, terrarium-level |
 
-**Implementation needed**: Aggregator plugin for channel topology.
+**Every AgentChannel requires a name and description** — they're shared resources that all creatures need to understand.
+
+When a creature tries to send to a non-existent broadcast channel, `send_message` returns an error listing all available channels. Queue channels auto-create silently.
+
+For dynamic channel changes (channels created/removed at runtime), the terrarium can refresh the system prompt. If a creature tries to access a stale channel, the error message provides the current listing.
 
 ---
 

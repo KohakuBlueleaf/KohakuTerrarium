@@ -55,9 +55,7 @@ class TestChannelDescriptions:
         """Registry returns channel info for prompt injection."""
         reg = ChannelRegistry()
         reg.get_or_create("tasks", description="Task queue")
-        reg.get_or_create(
-            "events", channel_type="broadcast", description="Team events"
-        )
+        reg.get_or_create("events", channel_type="broadcast", description="Team events")
 
         info = reg.get_channel_info()
         assert len(info) == 2
@@ -195,7 +193,8 @@ class TestChannelErrorHints:
         tool = SendMessageTool()
         session = Session(key="test_error")
         session.channels.get_or_create(
-            "tasks", description="Task queue",
+            "tasks",
+            description="Task queue",
         )
         session.channels.get_or_create(
             "events",

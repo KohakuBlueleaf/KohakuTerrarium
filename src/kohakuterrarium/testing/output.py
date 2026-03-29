@@ -56,7 +56,9 @@ class OutputRecorder(BaseOutputModule):
         self.processing_ends += 1
 
     def on_activity(self, activity_type: str, detail: str) -> None:
-        self.activities.append(ActivityRecord(activity_type=activity_type, detail=detail))
+        self.activities.append(
+            ActivityRecord(activity_type=activity_type, detail=detail)
+        )
 
     def reset(self) -> None:
         """Reset all recorded state. Called between turns by OutputRouter."""
@@ -116,6 +118,6 @@ class OutputRecorder(BaseOutputModule):
     def assert_activity_count(self, activity_type: str, expected: int) -> None:
         """Assert specific activity type occurred N times."""
         actual = len(self.activities_of_type(activity_type))
-        assert actual == expected, (
-            f"Expected {expected} '{activity_type}' activities, got {actual}"
-        )
+        assert (
+            actual == expected
+        ), f"Expected {expected} '{activity_type}' activities, got {actual}"

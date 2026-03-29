@@ -324,9 +324,7 @@ def _build_channel_hints(
         lines.append("")
 
     if broadcast_channels:
-        lines.append(
-            "**Broadcast channels** (all subscribers receive every message):"
-        )
+        lines.append("**Broadcast channels** (all subscribers receive every message):")
         for ch in broadcast_channels:
             desc = f" — {ch['description']}" if ch.get("description") else ""
             lines.append(f"- `{ch['name']}`{desc}")
@@ -346,9 +344,7 @@ def _build_channel_hints(
             "- Send: `[/send_message]@@channel=name\\nYour message[send_message/]`"
         )
     if has_wait:
-        lines.append(
-            "- Receive: `[/wait_channel]@@channel=name[wait_channel/]`"
-        )
+        lines.append("- Receive: `[/wait_channel]@@channel=name[wait_channel/]`")
     lines.append(
         "- Queue channels can be created on-the-fly. "
         "Broadcast channels must already exist."

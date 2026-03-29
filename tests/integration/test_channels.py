@@ -71,7 +71,9 @@ class TestSubAgentChannel:
         await ch.send(original)
 
         reply = ChannelMessage(
-            sender="b", content="answer", reply_to=original.message_id,
+            sender="b",
+            content="answer",
+            reply_to=original.message_id,
         )
         await ch.send(reply)
 
@@ -83,7 +85,9 @@ class TestSubAgentChannel:
         """Metadata survives send/receive."""
         ch = SubAgentChannel("meta")
         msg = ChannelMessage(
-            sender="a", content="x", metadata={"priority": "high", "task_id": 42},
+            sender="a",
+            content="x",
+            metadata={"priority": "high", "task_id": 42},
         )
         await ch.send(msg)
         received = await ch.receive(timeout=1.0)

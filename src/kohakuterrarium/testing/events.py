@@ -46,13 +46,15 @@ class EventRecorder:
         **metadata: object,
     ) -> None:
         """Record an event."""
-        self.events.append(RecordedEvent(
-            timestamp=time.monotonic(),
-            event_type=event_type,
-            content=content,
-            source=source,
-            metadata=metadata,
-        ))
+        self.events.append(
+            RecordedEvent(
+                timestamp=time.monotonic(),
+                event_type=event_type,
+                content=content,
+                source=source,
+                metadata=metadata,
+            )
+        )
 
     def clear(self) -> None:
         """Clear all recorded events."""
@@ -105,6 +107,6 @@ class EventRecorder:
         )
         assert first_idx is not None, f"Event '{first}' not found"
         assert second_idx is not None, f"Event '{second}' not found"
-        assert first_idx < second_idx, (
-            f"Expected '{first}' (idx={first_idx}) before '{second}' (idx={second_idx})"
-        )
+        assert (
+            first_idx < second_idx
+        ), f"Expected '{first}' (idx={first_idx}) before '{second}' (idx={second_idx})"

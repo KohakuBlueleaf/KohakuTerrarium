@@ -15,11 +15,7 @@ class TestBasicPipeline:
 
     async def test_simple_text_response(self):
         """LLM text response reaches output."""
-        env = (
-            TestAgentBuilder()
-            .with_llm_script(["Hello! How can I help?"])
-            .build()
-        )
+        env = TestAgentBuilder().with_llm_script(["Hello! How can I help?"]).build()
 
         await env.inject("Hi there")
 
@@ -80,11 +76,7 @@ class TestLLMScriptMatching:
 
     async def test_sequential_responses(self):
         """Entries used in order."""
-        env = (
-            TestAgentBuilder()
-            .with_llm_script(["First", "Second", "Third"])
-            .build()
-        )
+        env = TestAgentBuilder().with_llm_script(["First", "Second", "Third"]).build()
 
         await env.inject("a")
         assert "First" in env.output.all_text
@@ -97,10 +89,14 @@ class TestLLMScriptMatching:
         """Match-based entries respond to specific input."""
         env = (
             TestAgentBuilder()
-            .with_llm(ScriptedLLM([
-                ScriptEntry("I'll search for it.", match="find"),
-                ScriptEntry("I don't understand."),
-            ]))
+            .with_llm(
+                ScriptedLLM(
+                    [
+                        ScriptEntry("I'll search for it.", match="find"),
+                        ScriptEntry("I don't understand."),
+                    ]
+                )
+            )
             .build()
         )
 
@@ -133,9 +129,11 @@ class TestNamedOutputs:
 
         env = (
             TestAgentBuilder()
-            .with_llm_script([
-                "Thinking about it...\n[/output_api]API response here[output_api/]",
-            ])
+            .with_llm_script(
+                [
+                    "Thinking about it...\n[/output_api]API response here[output_api/]",
+                ]
+            )
             .with_named_output("api", api_rec)
             .build()
         )

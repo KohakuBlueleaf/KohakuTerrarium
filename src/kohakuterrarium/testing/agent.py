@@ -49,7 +49,8 @@ class TestAgentBuilder:
         self._ephemeral: bool = False
 
     def with_llm_script(
-        self, script: list[ScriptEntry] | list[str],
+        self,
+        script: list[ScriptEntry] | list[str],
     ) -> "TestAgentBuilder":
         """Set the LLM script."""
         self._llm = ScriptedLLM(script)
@@ -86,7 +87,9 @@ class TestAgentBuilder:
         return self
 
     def with_named_output(
-        self, name: str, output: OutputModule,
+        self,
+        name: str,
+        output: OutputModule,
     ) -> "TestAgentBuilder":
         """Add a named output module."""
         self._named_outputs[name] = output
@@ -204,7 +207,8 @@ class TestAgentEnv:
                 # Start tool via executor
                 job_id = await self.executor.submit_from_event(parse_event)
                 self.output.on_activity(
-                    "tool_start", f"[{parse_event.name}] {job_id}",
+                    "tool_start",
+                    f"[{parse_event.name}] {job_id}",
                 )
             elif isinstance(parse_event, CommandResultEvent):
                 if parse_event.error:
@@ -214,7 +218,8 @@ class TestAgentEnv:
                     )
                 else:
                     self.output.on_activity(
-                        "command_done", f"[{parse_event.command}] OK",
+                        "command_done",
+                        f"[{parse_event.command}] OK",
                     )
             else:
                 await self.router.route(parse_event)

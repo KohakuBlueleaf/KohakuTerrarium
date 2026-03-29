@@ -227,9 +227,7 @@ class AgentChannel(BaseChannel):
             )
         queue: asyncio.Queue[ChannelMessage] = asyncio.Queue()
         self._subscribers[subscriber_id] = queue
-        logger.debug(
-            "Subscriber '%s' joined channel '%s'", subscriber_id, self.name
-        )
+        logger.debug("Subscriber '%s' joined channel '%s'", subscriber_id, self.name)
         return ChannelSubscription(self, subscriber_id, queue)
 
     def unsubscribe(self, subscriber_id: str) -> None:
@@ -239,9 +237,7 @@ class AgentChannel(BaseChannel):
             subscriber_id: The subscriber to remove.
         """
         if self._subscribers.pop(subscriber_id, None) is not None:
-            logger.debug(
-                "Subscriber '%s' left channel '%s'", subscriber_id, self.name
-            )
+            logger.debug("Subscriber '%s' left channel '%s'", subscriber_id, self.name)
 
     @property
     def subscriber_count(self) -> int:
