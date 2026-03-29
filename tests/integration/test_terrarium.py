@@ -179,19 +179,27 @@ class TestChannelTopologyPrompt:
         prompt = _build_channel_topology_prompt(config, creature)
         assert "Pending work items" in prompt
 
-    def test_send_instruction_present(self):
-        """When creature can send, the send syntax instruction is included."""
+    def test_send_channel_listed(self):
+        """When creature can send, the channel is listed with (send) role."""
         channels = [ChannelConfig(name="out", channel_type="queue")]
         config, creature = self._make_config(channels, creature_send=["out"])
         prompt = _build_channel_topology_prompt(config, creature)
-        assert "send_message" in prompt.lower()
+        assert "(send)" in prompt
 
-    def test_listen_instruction_present(self):
-        """When creature listens, the listen instruction is included."""
+    def test_listen_channel_listed(self):
+        """When creature listens, the channel is listed with (listen) role."""
         channels = [ChannelConfig(name="in", channel_type="queue")]
         config, creature = self._make_config(channels, creature_listen=["in"])
         prompt = _build_channel_topology_prompt(config, creature)
-        assert "arrive automatically" in prompt.lower()
+        assert "(listen)" in prompt
+
+    def test_channel_semantics_explained(self):
+        """Prompt explains that messages are information, not requests."""
+        channels = [ChannelConfig(name="ch", channel_type="queue")]
+        config, creature = self._make_config(channels, creature_listen=["ch"])
+        prompt = _build_channel_topology_prompt(config, creature)
+        assert "information" in prompt.lower()
+        assert "not" in prompt.lower() and "reply" in prompt.lower()
 
 
 # ---------------------------------------------------------------------------

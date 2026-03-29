@@ -26,23 +26,21 @@ def _build_channel_topology_prompt(
     creature: CreatureConfig,
 ) -> str:
     """
-    Build a prompt section describing the channel topology visible
-    to a given creature.
+    Build a prompt section describing channel topology and semantics.
 
-    Only channels that the creature listens to or can send on are
-    included, plus any broadcast channels (visible to everyone).
+    Teaches the creature:
+    - How channels work (messages vs requests)
+    - Which channels it listens on and sends to
+    - The difference between queue and broadcast
+    - That receiving a message does NOT require a reply
     """
-    # Index channel configs by name for quick lookup
     ch_by_name: dict[str, Any] = {}
     for ch in config.channels:
         ch_by_name[ch.name] = ch
 
-    # Determine which channels this creature should know about
     relevant_names: set[str] = set()
     relevant_names.update(creature.listen_channels)
     relevant_names.update(creature.send_channels)
-
-    # Also include broadcast channels -- they are visible to everyone
     for ch in config.channels:
         if ch.channel_type == "broadcast":
             relevant_names.add(ch.name)
@@ -50,23 +48,31 @@ def _build_channel_topology_prompt(
     if not relevant_names:
         return ""
 
-    lines: list[str] = [
-        "## Terrarium Channels",
-        "",
-        "You are part of a multi-agent team. "
-        "Use channels to communicate with other agents.",
-        "",
-    ]
-
     listen_set = set(creature.listen_channels)
     send_set = set(creature.send_channels)
+
+    lines: list[str] = [
+        "## Team Communication",
+        "",
+        "You are part of a multi-agent team. You communicate through channels.",
+        "",
+        "IMPORTANT - How channels work:",
+        "- Messages arrive on your channels automatically. A message is INFORMATION, not a request.",
+        "- Receiving a message does NOT mean you must reply or send a message back.",
+        "- Only send a message when YOUR WORKFLOW requires it (e.g. sending your output to the next agent).",
+        "- Queue channels deliver to one recipient. Broadcast channels deliver to all team members.",
+        "- After you complete your task and output your termination keyword, you are DONE. Do not process further messages.",
+        "",
+        "### Your Channels",
+        "",
+    ]
 
     for ch_name in sorted(relevant_names):
         ch_cfg = ch_by_name.get(ch_name)
         if ch_cfg is None:
             continue
 
-        desc = f" -- {ch_cfg.description}" if ch_cfg.description else ""
+        desc = f" - {ch_cfg.description}" if ch_cfg.description else ""
         roles: list[str] = []
         if ch_name in listen_set:
             roles.append("listen")
@@ -74,17 +80,17 @@ def _build_channel_topology_prompt(
             roles.append("send")
         role_str = f" ({', '.join(roles)})" if roles else ""
 
-        lines.append(f"- `{ch_name}` [{ch_cfg.channel_type}]{role_str}{desc}")
+        lines.append(
+            f"- `{ch_name}` [{ch_cfg.channel_type}]{role_str}{desc}"
+        )
 
     lines.append("")
 
-    if send_set:
-        lines.append(
-            "Send messages with: "
-            "`[/send_message]@@channel=<name>\\nYour message[send_message/]`"
-        )
-    if listen_set:
-        lines.append("Messages on your listen channels arrive automatically as events.")
+    # List other creatures for context
+    other_creatures = [c.name for c in config.creatures if c.name != creature.name]
+    if other_creatures:
+        lines.append(f"### Team Members: {', '.join(other_creatures)}")
+        lines.append("")
 
     return "\n".join(lines)
 
