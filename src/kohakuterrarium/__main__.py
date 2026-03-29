@@ -17,6 +17,11 @@ import asyncio
 import sys
 from pathlib import Path
 
+from kohakuterrarium.terrarium.cli import (
+    add_terrarium_subparser,
+    handle_terrarium_command,
+)
+
 
 def main() -> int:
     """Main CLI entry point."""
@@ -54,6 +59,9 @@ def main() -> int:
         help="Path to agent config folder",
     )
 
+    # Terrarium command group
+    add_terrarium_subparser(subparsers)
+
     args = parser.parse_args()
 
     if args.command == "run":
@@ -62,6 +70,8 @@ def main() -> int:
         return list_agents_cli(args.path)
     elif args.command == "info":
         return show_agent_info_cli(args.agent_path)
+    elif args.command == "terrarium":
+        return handle_terrarium_command(args)
     else:
         parser.print_help()
         return 0
