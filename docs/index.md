@@ -55,6 +55,13 @@ await agent.stop()
 ### Architecture
 - [Architecture Overview](architecture.md) - System design and data flow
 
+### Terrarium (Multi-Agent Orchestration)
+- [Terrarium Overview](terrarium/index.md) - What is a terrarium, quick start, key concepts
+- [Terrarium Architecture](terrarium/architecture.md) - Two-level composition, runtime, communication model
+- [Configuration Reference](terrarium/configuration.md) - Full YAML format, all fields, environment variables
+- [Channel System](terrarium/channels.md) - Channel types, tools, triggers, prompt awareness
+- [Setup Guide](terrarium/setup.md) - Creating and running your own terrarium
+
 ### API Reference
 - [Core Module](api/core.md) - Agent, Controller, Executor, Job system
 - [Modules](api/modules.md) - Input, Output, Tool, Trigger, SubAgent
