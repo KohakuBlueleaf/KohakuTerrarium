@@ -10,7 +10,13 @@ from typing import Any, AsyncIterator
 
 import httpx
 
-from kohakuterrarium.llm.base import BaseLLMProvider, ChatResponse, LLMConfig
+from kohakuterrarium.llm.base import (
+    BaseLLMProvider,
+    ChatResponse,
+    LLMConfig,
+    NativeToolCall,
+    ToolSchema,
+)
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -145,6 +151,8 @@ class OpenAIProvider(BaseLLMProvider):
         self,
         messages: list[dict[str, Any]],
         stream: bool,
+        *,
+        tools: list[ToolSchema] | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Build the request body for chat completion."""
@@ -171,18 +179,28 @@ class OpenAIProvider(BaseLLMProvider):
         if "stop" in kwargs:
             body["stop"] = kwargs["stop"]
 
+        # Add native tool schemas if provided
+        if tools:
+            body["tools"] = [t.to_api_format() for t in tools]
+
         return body
 
     async def _stream_chat(
         self,
         messages: list[dict[str, Any]],
+        *,
+        tools: list[ToolSchema] | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         """Stream chat completion with retry for 5xx errors."""
         client = await self._get_client()
         url = f"{self.base_url}/chat/completions"
         headers = self._build_headers()
-        body = self._build_request_body(messages, stream=True, **kwargs)
+        body = self._build_request_body(messages, stream=True, tools=tools, **kwargs)
+
+        # Reset native tool call accumulator
+        self._last_tool_calls = []
+        pending_calls: dict[int, dict[str, str]] = {}
 
         last_error: Exception | None = None
 
@@ -196,6 +214,8 @@ class OpenAIProvider(BaseLLMProvider):
                     delay=delay,
                 )
                 await asyncio.sleep(delay)
+                # Reset accumulators on retry
+                pending_calls = {}
 
             logger.debug(
                 "Starting streaming request", model=body["model"], attempt=attempt
@@ -244,6 +264,8 @@ class OpenAIProvider(BaseLLMProvider):
 
                             if data == "[DONE]":
                                 logger.debug("Stream completed")
+                                # Convert accumulated tool calls
+                                self._finalize_tool_calls(pending_calls)
                                 return  # Success, exit generator
 
                             try:
@@ -251,15 +273,26 @@ class OpenAIProvider(BaseLLMProvider):
                                 choices = chunk.get("choices", [])
                                 if choices:
                                     delta = choices[0].get("delta", {})
+
+                                    # Yield text content as before
                                     content = delta.get("content", "")
                                     if content:
                                         yield content
+
+                                    # Accumulate native tool call deltas
+                                    if "tool_calls" in delta:
+                                        self._accumulate_tool_calls(
+                                            delta["tool_calls"],
+                                            pending_calls,
+                                        )
                             except json.JSONDecodeError as e:
                                 logger.warning(
                                     "Failed to parse SSE chunk", error=str(e)
                                 )
                                 continue
 
+                    # Stream ended without [DONE] - still finalize
+                    self._finalize_tool_calls(pending_calls)
                     return  # Success, exit generator
 
             except httpx.TimeoutException as e:
@@ -284,8 +317,56 @@ class OpenAIProvider(BaseLLMProvider):
                 raise
 
         # If we get here, all retries failed
+        self._finalize_tool_calls(pending_calls)
         if last_error:
             raise last_error
+
+    def _accumulate_tool_calls(
+        self,
+        tool_call_deltas: list[dict[str, Any]],
+        pending: dict[int, dict[str, str]],
+    ) -> None:
+        """Accumulate incremental tool_call deltas from streaming chunks."""
+        for tc_delta in tool_call_deltas:
+            idx = tc_delta.get("index", 0)
+            if idx not in pending:
+                pending[idx] = {
+                    "id": tc_delta.get("id", ""),
+                    "name": "",
+                    "arguments": "",
+                }
+
+            # First chunk for this index may contain the id
+            if tc_delta.get("id"):
+                pending[idx]["id"] = tc_delta["id"]
+
+            if "function" in tc_delta:
+                fn = tc_delta["function"]
+                if "name" in fn and fn["name"]:
+                    pending[idx]["name"] = fn["name"]
+                if "arguments" in fn and fn["arguments"]:
+                    pending[idx]["arguments"] += fn["arguments"]
+
+    def _finalize_tool_calls(self, pending: dict[int, dict[str, str]]) -> None:
+        """Convert accumulated pending tool calls into NativeToolCall list."""
+        if not pending:
+            return
+
+        self._last_tool_calls = [
+            NativeToolCall(
+                id=call["id"],
+                name=call["name"],
+                arguments=call["arguments"],
+            )
+            for _, call in sorted(pending.items())
+        ]
+
+        if self._last_tool_calls:
+            logger.debug(
+                "Native tool calls received",
+                count=len(self._last_tool_calls),
+                tools=[tc.name for tc in self._last_tool_calls],
+            )
 
     async def _complete_chat(
         self,
@@ -297,6 +378,9 @@ class OpenAIProvider(BaseLLMProvider):
         url = f"{self.base_url}/chat/completions"
         headers = self._build_headers()
         body = self._build_request_body(messages, stream=False, **kwargs)
+
+        # Reset native tool call accumulator
+        self._last_tool_calls = []
 
         last_error: Exception | None = None
 
@@ -347,6 +431,23 @@ class OpenAIProvider(BaseLLMProvider):
                 message = choice.get("message", {})
                 usage = data.get("usage", {})
 
+                # Extract native tool calls from non-streaming response
+                api_tool_calls = message.get("tool_calls", [])
+                if api_tool_calls:
+                    self._last_tool_calls = [
+                        NativeToolCall(
+                            id=tc.get("id", ""),
+                            name=tc.get("function", {}).get("name", ""),
+                            arguments=tc.get("function", {}).get("arguments", ""),
+                        )
+                        for tc in api_tool_calls
+                    ]
+                    logger.debug(
+                        "Native tool calls received (non-streaming)",
+                        count=len(self._last_tool_calls),
+                        tools=[tc.name for tc in self._last_tool_calls],
+                    )
+
                 logger.debug(
                     "Request completed",
                     tokens_in=usage.get("prompt_tokens"),
@@ -354,7 +455,7 @@ class OpenAIProvider(BaseLLMProvider):
                 )
 
                 return ChatResponse(
-                    content=message.get("content", ""),
+                    content=message.get("content", "") or "",
                     finish_reason=choice.get("finish_reason", "unknown"),
                     usage=usage,
                     model=data.get("model", self.config.model),

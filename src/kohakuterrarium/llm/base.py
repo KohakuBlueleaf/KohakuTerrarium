@@ -5,10 +5,14 @@ Defines the interface that all LLM providers must implement.
 The interface is OpenAI API-oriented for consistency.
 """
 
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Protocol, runtime_checkable
 
 from kohakuterrarium.llm.message import Message
+from kohakuterrarium.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -67,6 +71,66 @@ class ChatResponse:
     model: str
 
 
+@dataclass
+class ToolSchema:
+    """
+    OpenAI-compatible tool schema for native function calling.
+
+    Attributes:
+        name: Tool function name
+        description: Description of what the tool does
+        parameters: JSON Schema for the function parameters
+    """
+
+    name: str
+    description: str
+    parameters: dict[str, Any] = field(
+        default_factory=lambda: {
+            "type": "object",
+            "properties": {},
+        }
+    )
+
+    def to_api_format(self) -> dict[str, Any]:
+        """Convert to OpenAI API tools format."""
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": self.parameters,
+            },
+        }
+
+
+@dataclass
+class NativeToolCall:
+    """
+    A tool call returned by the API (not parsed from text).
+
+    Attributes:
+        id: Unique tool call ID assigned by the API
+        name: Function name to call
+        arguments: JSON string of arguments
+    """
+
+    id: str
+    name: str
+    arguments: str  # JSON string of arguments
+
+    def parsed_arguments(self) -> dict[str, Any]:
+        """Parse the JSON arguments string."""
+        try:
+            return json.loads(self.arguments)
+        except json.JSONDecodeError:
+            logger.warning(
+                "Failed to parse tool call arguments",
+                tool_call_id=self.id,
+                tool_name=self.name,
+            )
+            return {"_raw": self.arguments}
+
+
 @runtime_checkable
 class LLMProvider(Protocol):
     """
@@ -76,11 +140,21 @@ class LLMProvider(Protocol):
     The interface is OpenAI API-oriented but can wrap other providers.
     """
 
+    @property
+    def last_tool_calls(self) -> list[NativeToolCall]:
+        """
+        Tool calls from the last streaming response (native mode only).
+
+        Only populated after a chat() call with tools provided.
+        """
+        ...
+
     async def chat(
         self,
         messages: list[Message] | list[dict[str, Any]],
         *,
         stream: bool = True,
+        tools: list[ToolSchema] | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         """
@@ -89,6 +163,7 @@ class LLMProvider(Protocol):
         Args:
             messages: List of conversation messages (Message objects or dicts)
             stream: Whether to stream the response
+            tools: Optional list of ToolSchema for native function calling
             **kwargs: Additional parameters (temperature, max_tokens, etc.)
 
         Yields:
@@ -105,6 +180,11 @@ class LLMProvider(Protocol):
             # Non-streaming
             async for response in provider.chat(messages, stream=False):
                 full_text = response
+
+            # With native tool calling
+            async for chunk in provider.chat(messages, tools=schemas):
+                print(chunk, end="")
+            tool_calls = provider.last_tool_calls
         """
         ...
 
@@ -138,6 +218,12 @@ class BaseLLMProvider:
 
     def __init__(self, config: LLMConfig | None = None):
         self.config = config or LLMConfig(model="gpt-4o-mini")
+        self._last_tool_calls: list[NativeToolCall] = []
+
+    @property
+    def last_tool_calls(self) -> list[NativeToolCall]:
+        """Tool calls from the last streaming response (native mode only)."""
+        return self._last_tool_calls
 
     def _normalize_messages(
         self,
@@ -159,13 +245,15 @@ class BaseLLMProvider:
         messages: list[Message] | list[dict[str, Any]],
         *,
         stream: bool = True,
+        tools: list[ToolSchema] | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         """Default chat implementation that delegates to subclass methods."""
+        self._last_tool_calls = []
         normalized = self._normalize_messages(messages)
 
         if stream:
-            async for chunk in self._stream_chat(normalized, **kwargs):
+            async for chunk in self._stream_chat(normalized, tools=tools, **kwargs):
                 yield chunk
         else:
             response = await self._complete_chat(normalized, **kwargs)
@@ -183,6 +271,8 @@ class BaseLLMProvider:
     async def _stream_chat(
         self,
         messages: list[dict[str, Any]],
+        *,
+        tools: list[ToolSchema] | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         """

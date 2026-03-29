@@ -5,6 +5,7 @@ Exports:
 - LLMProvider: Protocol for LLM providers
 - OpenAIProvider: OpenAI/OpenRouter compatible provider
 - Message types: Message, SystemMessage, UserMessage, AssistantMessage
+- Native tool calling: ToolSchema, NativeToolCall, build_tool_schemas
 """
 
 from kohakuterrarium.llm.base import (
@@ -13,6 +14,8 @@ from kohakuterrarium.llm.base import (
     ChatResponse,
     LLMConfig,
     LLMProvider,
+    NativeToolCall,
+    ToolSchema,
 )
 from kohakuterrarium.llm.message import (
     AssistantMessage,
@@ -30,6 +33,7 @@ from kohakuterrarium.llm.openai import (
     OPENROUTER_BASE_URL,
     OpenAIProvider,
 )
+from kohakuterrarium.llm.tools import build_tool_schemas
 
 __all__ = [
     # Provider protocol
@@ -38,6 +42,10 @@ __all__ = [
     "LLMConfig",
     "ChatChunk",
     "ChatResponse",
+    # Native tool calling
+    "ToolSchema",
+    "NativeToolCall",
+    "build_tool_schemas",
     # OpenAI provider
     "OpenAIProvider",
     "OPENAI_BASE_URL",
