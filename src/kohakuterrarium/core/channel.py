@@ -201,13 +201,18 @@ class AgentChannel(BaseChannel):
         return "broadcast"
 
     async def send(self, message: ChannelMessage) -> None:
-        """Broadcast a message to all subscribers."""
+        """Broadcast a message to all subscribers except the sender."""
         message.channel = self.name
-        for queue in self._subscribers.values():
+        delivered = 0
+        for sub_id, queue in self._subscribers.items():
+            if sub_id == message.sender:
+                continue  # Don't echo back to sender
             await queue.put(message)
+            delivered += 1
         logger.debug(
-            "Broadcast on '%s' to %d subscribers from '%s'",
+            "Broadcast on '%s' to %d/%d subscribers from '%s'",
             self.name,
+            delivered,
             len(self._subscribers),
             message.sender,
         )
