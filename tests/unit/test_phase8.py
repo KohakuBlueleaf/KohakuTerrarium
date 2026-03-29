@@ -1122,16 +1122,18 @@ class TestAggregatorSkillMode:
 
     def test_dynamic_mode_hints(self):
         """Test dynamic mode includes info command hint."""
-        from kohakuterrarium.prompt.aggregator import DYNAMIC_FRAMEWORK_HINTS
+        from kohakuterrarium.prompt.aggregator import _build_dynamic_hints
 
-        assert "[/info]" in DYNAMIC_FRAMEWORK_HINTS
-        assert "read docs" in DYNAMIC_FRAMEWORK_HINTS
+        hints = _build_dynamic_hints()
+        assert "[/info]" in hints
+        assert "read docs" in hints
 
     def test_static_mode_hints(self):
         """Test static mode doesn't include info command."""
-        from kohakuterrarium.prompt.aggregator import STATIC_FRAMEWORK_HINTS
+        from kohakuterrarium.prompt.aggregator import _build_static_hints
 
-        assert "[/info]" not in STATIC_FRAMEWORK_HINTS
+        hints = _build_static_hints()
+        assert "[/info]" not in hints
 
     def test_aggregate_with_skill_mode_dynamic(self):
         """Test aggregation with dynamic skill mode."""

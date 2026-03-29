@@ -236,7 +236,7 @@ class TestBuiltinSubAgents:
 
 
 class TestAgentTagParsing:
-    """Tests for parsing <agent> tags."""
+    """Tests for parsing sub-agent calls via [/name]...[name/] syntax."""
 
     def test_is_subagent_tag(self):
         """Test is_subagent_tag function."""
@@ -245,9 +245,12 @@ class TestAgentTagParsing:
         assert not is_subagent_tag("read")
 
     def test_parse_agent_tag(self):
-        """Test parsing agent tag."""
-        text = '<agent type="explore">Find Python files</agent>'
-        events = parse_complete(text)
+        """Test parsing sub-agent call by name."""
+        text = "[/explore]Find Python files[explore/]"
+        config = ParserConfig(known_subagents={"explore"})
+        parser = StreamParser(config)
+        events = parser.feed(text)
+        events.extend(parser.flush())
         subagents = extract_subagent_calls(events)
 
         assert len(subagents) == 1
@@ -255,23 +258,29 @@ class TestAgentTagParsing:
         assert subagents[0].args["task"] == "Find Python files"
 
     def test_parse_agent_tag_default_type(self):
-        """Test parsing agent tag without explicit type."""
-        text = "<agent>Search for something</agent>"
-        events = parse_complete(text)
+        """Test parsing a known sub-agent call."""
+        text = "[/explore]Search for something[explore/]"
+        config = ParserConfig(known_subagents={"explore"})
+        parser = StreamParser(config)
+        events = parser.feed(text)
+        events.extend(parser.flush())
         subagents = extract_subagent_calls(events)
 
         assert len(subagents) == 1
-        # Default type is "explore"
         assert subagents[0].name == "explore"
+        assert subagents[0].args["task"] == "Search for something"
 
     def test_parse_multiple_agent_tags(self):
-        """Test parsing multiple agent tags."""
+        """Test parsing multiple sub-agent calls."""
         text = """
-<agent type="explore">Find auth code</agent>
+[/explore]Find auth code[explore/]
 
-<agent type="plan">Plan auth implementation</agent>
+[/plan]Plan auth implementation[plan/]
 """
-        events = parse_complete(text)
+        config = ParserConfig(known_subagents={"explore", "plan"})
+        parser = StreamParser(config)
+        events = parser.feed(text)
+        events.extend(parser.flush())
         subagents = extract_subagent_calls(events)
 
         assert len(subagents) == 2
@@ -279,9 +288,12 @@ class TestAgentTagParsing:
         assert subagents[1].name == "plan"
 
     def test_parse_agent_with_attributes(self):
-        """Test parsing agent tag with extra attributes."""
-        text = '<agent type="memory_read" path="./memory">User preferences</agent>'
-        events = parse_complete(text)
+        """Test parsing sub-agent call with attributes."""
+        text = "[/memory_read]\n@@path=./memory\nUser preferences\n[memory_read/]"
+        config = ParserConfig(known_subagents={"memory_read"})
+        parser = StreamParser(config)
+        events = parser.feed(text)
+        events.extend(parser.flush())
         subagents = extract_subagent_calls(events)
 
         assert len(subagents) == 1
@@ -289,15 +301,21 @@ class TestAgentTagParsing:
         assert subagents[0].args.get("path") == "./memory"
 
     def test_mixed_tools_and_agents(self):
-        """Test parsing mixed tool and agent calls."""
+        """Test parsing mixed tool and sub-agent calls."""
         text = """
-<glob>*.py</glob>
+[/glob]*.py[glob/]
 
-<agent type="explore">Find main entry point</agent>
+[/explore]Find main entry point[explore/]
 
-<read path="main.py"/>
+[/read]@@path=main.py[read/]
 """
-        events = parse_complete_with_tools(text)
+        config = ParserConfig(
+            known_tools=TEST_KNOWN_TOOLS,
+            known_subagents={"explore"},
+        )
+        parser = StreamParser(config)
+        events = parser.feed(text)
+        events.extend(parser.flush())
         from kohakuterrarium.parsing import extract_tool_calls
 
         tools = extract_tool_calls(events)

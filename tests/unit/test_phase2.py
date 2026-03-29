@@ -196,7 +196,7 @@ class TestStreamParser:
         """Test parsing a single tool call."""
         text = """Some text before.
 
-<bash>ls -la</bash>
+[/bash]ls -la[bash/]
 
 Some text after."""
 
@@ -209,7 +209,7 @@ Some text after."""
 
     def test_tool_with_attributes(self):
         """Test parsing tool call with attributes."""
-        text = '<read path="src/main.py"/>'
+        text = "[/read]@@path=src/main.py[read/]"
 
         events = parse_complete_with_tools(text)
         tools = extract_tool_calls(events)
@@ -220,10 +220,11 @@ Some text after."""
 
     def test_tool_with_attrs_and_content(self):
         """Test parsing tool with both attributes and content."""
-        text = """<write path="test.py">
+        text = """[/write]
+@@path=test.py
 def hello():
     print("Hello")
-</write>"""
+[write/]"""
 
         events = parse_complete_with_tools(text)
         tools = extract_tool_calls(events)
@@ -235,9 +236,9 @@ def hello():
 
     def test_multiple_tool_calls(self):
         """Test parsing multiple tool calls."""
-        text = """<bash>ls</bash>
+        text = """[/bash]ls[bash/]
 
-<bash>pwd</bash>"""
+[/bash]pwd[bash/]"""
 
         events = parse_complete_with_tools(text)
         tools = extract_tool_calls(events)
@@ -248,7 +249,7 @@ def hello():
 
     def test_command(self):
         """Test parsing framework command."""
-        text = "Check this: <info>bash</info>"
+        text = "Check this: [/info]bash[info/]"
 
         events = parse_complete_with_tools(text)
         commands = [e for e in events if isinstance(e, CommandEvent)]
@@ -262,7 +263,7 @@ def hello():
         parser = get_test_parser()
 
         # Feed in small chunks
-        chunks = ["<ba", "sh>l", "s -la</bash>"]
+        chunks = ["[/ba", "sh]l", "s -la[bash/]"]
 
         all_events = []
         for chunk in chunks:
@@ -276,7 +277,7 @@ def hello():
 
     def test_character_by_character(self):
         """Test feeding character by character."""
-        text = "<bash>test</bash>"
+        text = "[/bash]test[bash/]"
         parser = get_test_parser()
 
         all_events = []
@@ -292,15 +293,14 @@ def hello():
         """Test parser state tracking."""
         parser = get_test_parser()
 
-        assert parser.get_state() == ParserState.NORMAL
-        assert not parser.is_in_block()
+        assert parser.state == ParserState.NORMAL
 
-        parser.feed("<bash>")
-        assert parser.is_in_block()
+        parser.feed("[/bash]")
+        assert parser.state == ParserState.IN_BLOCK
 
-        parser.feed("test</bash>")
+        parser.feed("test[bash/]")
         parser.flush()
-        assert parser.get_state() == ParserState.NORMAL
+        assert parser.state == ParserState.NORMAL
 
     def test_incomplete_block(self):
         """Test handling of incomplete block at stream end."""
@@ -330,9 +330,9 @@ def hello():
         """Test response with various content types."""
         text = """Text before
 
-<bash>ls</bash>
+[/bash]ls[bash/]
 
-<info>bash</info>
+[/info]bash[info/]
 
 Text after"""
 
