@@ -98,12 +98,13 @@ IMPORTANT: You may ONLY call functions listed in the "Available Functions" secti
 """
 
 
-def _build_dynamic_hints(registry: Registry | None = None) -> str:
+def _build_dynamic_hints(
+    registry: Registry | None = None, tool_format: str = "bracket"
+) -> str:
     """Build framework hints with examples from actual registered tools."""
     parts = [_DYNAMIC_HINTS_HEADER.strip()]
 
-    # Generate examples from actual registry
-    examples = _build_tool_examples(registry)
+    examples = _build_tool_examples(registry, tool_format=tool_format)
     if examples:
         parts.append("Examples:\n" + examples)
 
@@ -111,11 +112,13 @@ def _build_dynamic_hints(registry: Registry | None = None) -> str:
     return "\n\n".join(parts)
 
 
-def _build_static_hints(registry: Registry | None = None) -> str:
+def _build_static_hints(
+    registry: Registry | None = None, tool_format: str = "bracket"
+) -> str:
     """Build static framework hints with examples from actual registered tools."""
     parts = [_STATIC_HINTS_HEADER.strip()]
 
-    examples = _build_tool_examples(registry)
+    examples = _build_tool_examples(registry, tool_format=tool_format)
     if examples:
         parts.append("Examples:\n" + examples)
 
@@ -123,8 +126,33 @@ def _build_static_hints(registry: Registry | None = None) -> str:
     return "\n\n".join(parts)
 
 
-def _build_tool_examples(registry: Registry | None) -> str:
-    """Generate call examples from actual registered tools and sub-agents."""
+_NATIVE_HINTS = """## Tool Usage
+
+Tools are called via the API's native function calling mechanism.
+You do not need to format tool calls manually — just decide which tool
+to use and provide the arguments. The system handles the rest.
+
+**Direct tools**: Results return after you finish your response.
+**Sub-agents**: Run in background, results reported back.
+
+You may ONLY call tools listed in the "Available Functions" section above.
+"""
+
+
+def _build_native_hints(registry: Registry | None = None) -> str:
+    """Build hints for native tool calling mode (no syntax examples)."""
+    return _NATIVE_HINTS.strip()
+
+
+def _build_tool_examples(
+    registry: Registry | None, tool_format: str = "bracket"
+) -> str:
+    """Generate call examples from actual registered tools and sub-agents.
+
+    Examples adapt to the tool_format:
+    - bracket: [/tool]@@arg=val\\ncontent[tool/]
+    - xml: <tool arg="val">content</tool>
+    """
     if not registry:
         return ""
 
@@ -132,39 +160,66 @@ def _build_tool_examples(registry: Registry | None) -> str:
     tool_names = set(registry.list_tools())
     subagent_names = set(registry.list_subagents())
 
-    # Pick examples based on what's actually available
-    # Tools with @@arg pattern
-    if "read" in tool_names:
-        examples.append("```\n[/read]@@path=file.py[read/]\n```")
-    elif "json_read" in tool_names:
-        examples.append("```\n[/json_read]@@path=data.json[json_read/]\n```")
-    elif "glob" in tool_names:
-        examples.append("```\n[/glob]@@pattern=**/*.py[glob/]\n```")
+    if tool_format == "xml":
+        # XML format examples
+        if "read" in tool_names:
+            examples.append('```\n<read path="file.py"/>\n```')
+        elif "glob" in tool_names:
+            examples.append('```\n<glob pattern="**/*.py"/>\n```')
 
-    # Tools with content body
-    if "think" in tool_names:
-        examples.append(
-            "```\n[/think]\nAnalyze the problem step by step...\n[think/]\n```"
-        )
-    elif "bash" in tool_names:
-        examples.append("```\n[/bash]ls -la[bash/]\n```")
+        if "bash" in tool_names:
+            examples.append("```\n<bash>ls -la</bash>\n```")
+        elif "think" in tool_names:
+            examples.append(
+                "```\n<think>Analyze the problem step by step...</think>\n```"
+            )
 
-    # Tools with both @@arg and body
-    if "write" in tool_names:
-        examples.append("```\n[/write]\n@@path=out.txt\ncontent here\n[write/]\n```")
-    elif "scratchpad" in tool_names:
-        examples.append(
-            "```\n[/scratchpad]\n@@action=set\n@@key=plan\nmy plan here\n[scratchpad/]\n```"
-        )
-    elif "send_message" in tool_names:
-        examples.append(
-            "```\n[/send_message]\n@@channel=inbox\nHello from agent\n[send_message/]\n```"
-        )
+        if "write" in tool_names:
+            examples.append('```\n<write path="out.txt">content here</write>\n```')
+        elif "send_message" in tool_names:
+            examples.append(
+                '```\n<send_message channel="inbox">Hello</send_message>\n```'
+            )
+    else:
+        # Bracket format examples (default)
+        if "read" in tool_names:
+            examples.append("```\n[/read]@@path=file.py[read/]\n```")
+        elif "json_read" in tool_names:
+            examples.append("```\n[/json_read]@@path=data.json[json_read/]\n```")
+        elif "glob" in tool_names:
+            examples.append("```\n[/glob]@@pattern=**/*.py[glob/]\n```")
+
+        if "think" in tool_names:
+            examples.append(
+                "```\n[/think]\nAnalyze the problem step by step...\n[think/]\n```"
+            )
+        elif "bash" in tool_names:
+            examples.append("```\n[/bash]ls -la[bash/]\n```")
+
+        if "write" in tool_names:
+            examples.append(
+                "```\n[/write]\n@@path=out.txt\ncontent here\n[write/]\n```"
+            )
+        elif "scratchpad" in tool_names:
+            examples.append(
+                "```\n[/scratchpad]\n@@action=set\n@@key=plan\nmy plan here\n[scratchpad/]\n```"
+            )
+        elif "send_message" in tool_names:
+            examples.append(
+                "```\n[/send_message]\n@@channel=inbox\nHello from agent\n[send_message/]\n```"
+            )
 
     # Sub-agent example
     if subagent_names:
         first_sa = sorted(subagent_names)[0]
-        examples.append(f"```\n[/{first_sa}]describe the task here[{first_sa}/]\n```")
+        if tool_format == "xml":
+            examples.append(
+                f"```\n<{first_sa}>describe the task here</{first_sa}>\n```"
+            )
+        else:
+            examples.append(
+                f"```\n[/{first_sa}]describe the task here[{first_sa}/]\n```"
+            )
 
     return "\n\n".join(examples)
 
@@ -176,6 +231,7 @@ def aggregate_system_prompt(
     include_tools: bool = True,
     include_hints: bool = True,
     skill_mode: str = "dynamic",
+    tool_format: str = "bracket",
     known_outputs: set[str] | None = None,
     channels: list[dict[str, str]] | None = None,
     extra_context: dict | None = None,
@@ -189,6 +245,8 @@ def aggregate_system_prompt(
         include_tools: Include tool list in prompt
         include_hints: Include framework command hints
         skill_mode: "dynamic" (use [/info]) or "static" (full docs in prompt)
+        tool_format: Tool calling format — "bracket", "xml", or "native".
+                     Native mode skips calling syntax examples (API handles it).
         known_outputs: Set of available named output targets (e.g., {"discord"})
         channels: Channel info for prompt injection (list of dicts with
                   name, type, description). Auto-detected from session if None.
@@ -242,16 +300,21 @@ def aggregate_system_prompt(
     # Add framework hints (different for each mode)
     if include_hints:
         # Build output model section with available outputs
-        output_hints = _build_output_hints(known_outputs)
-        if output_hints:
-            parts.append(output_hints)
+        # (skip for native mode — outputs are also API-driven)
+        if tool_format != "native":
+            output_hints = _build_output_hints(known_outputs)
+            if output_hints:
+                parts.append(output_hints)
 
-        # Add function calling hints (examples generated from actual registry)
-        hints = (
-            _build_static_hints(registry)
-            if skill_mode == "static"
-            else _build_dynamic_hints(registry)
-        )
+        # Add function calling hints
+        # Native mode: skip syntax examples entirely (API handles formatting)
+        # Bracket/XML/custom: show format-appropriate examples
+        if tool_format == "native":
+            hints = _build_native_hints(registry)
+        elif skill_mode == "static":
+            hints = _build_static_hints(registry, tool_format=tool_format)
+        else:
+            hints = _build_dynamic_hints(registry, tool_format=tool_format)
         parts.append(hints)
 
     result = "\n\n".join(parts)
