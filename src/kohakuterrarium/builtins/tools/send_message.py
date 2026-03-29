@@ -42,6 +42,8 @@ class SendMessageTool(BaseTool):
         """Send message to channel."""
         channel_name = args.get("channel", "")
         message = args.get("message", "")
+        channel_type = args.get("channel_type", "queue")
+        reply_to = args.get("reply_to", None) or None
 
         if not channel_name:
             return ToolResult(error="Channel name is required")
@@ -72,19 +74,20 @@ class SendMessageTool(BaseTool):
             if context and context.session
             else get_channel_registry()
         )
-        channel = registry.get_or_create(channel_name)
+        channel = registry.get_or_create(channel_name, channel_type=channel_type)
 
         # Send message
         msg = ChannelMessage(
             sender=sender,
             content=message,
             metadata=metadata,
+            reply_to=reply_to,
         )
         await channel.send(msg)
 
         logger.debug("Message sent", channel=channel_name, sender=sender)
         return ToolResult(
-            output=f"Message sent to channel '{channel_name}'",
+            output=f"Message sent to channel '{channel_name}' (id: {msg.message_id})",
             exit_code=0,
         )
 
@@ -100,6 +103,8 @@ Send a message to a named channel. Used for agent-to-agent communication.
 | channel | @@arg | Channel name (required) |
 | message | content | Message content (required) |
 | metadata | @@arg | Optional JSON metadata |
+| channel_type | @@arg | Channel type: "queue" (default) or "broadcast" |
+| reply_to | @@arg | Optional message ID to reply to (for threading) |
 
 ## Examples
 
@@ -119,7 +124,25 @@ Analysis complete. Found 3 issues.
 [send_message/]
 ```
 
+Reply to a previous message:
+```
+[/send_message]
+@@channel=inbox_agent_b
+@@reply_to=msg_abc123def456
+Here are the results you requested.
+[send_message/]
+```
+
+Broadcast channel:
+```
+[/send_message]
+@@channel=status_updates
+@@channel_type=broadcast
+Build completed successfully.
+[send_message/]
+```
+
 ## Output
 
-Confirmation that message was sent.
+Confirmation that message was sent, including the generated message ID.
 """

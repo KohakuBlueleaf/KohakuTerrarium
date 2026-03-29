@@ -3,7 +3,12 @@
 import asyncio
 from typing import Any
 
-from kohakuterrarium.core.channel import ChannelRegistry, get_channel_registry
+from kohakuterrarium.core.channel import (
+    AgentChannel,
+    ChannelRegistry,
+    ChannelSubscription,
+    get_channel_registry,
+)
 from kohakuterrarium.core.events import EventType, TriggerEvent
 from kohakuterrarium.modules.trigger.base import BaseTrigger
 from kohakuterrarium.utils.logging import get_logger
@@ -14,6 +19,9 @@ logger = get_logger(__name__)
 class ChannelTrigger(BaseTrigger):
     """
     Trigger that fires when a message arrives on a named channel.
+
+    Supports both queue (SubAgentChannel) and broadcast (AgentChannel) channels.
+    For broadcast channels, a subscriber_id is used to create a subscription.
 
     Usage:
         trigger = ChannelTrigger(
@@ -27,6 +35,7 @@ class ChannelTrigger(BaseTrigger):
     def __init__(
         self,
         channel_name: str,
+        subscriber_id: str | None = None,
         prompt: str | None = None,
         filter_sender: str | None = None,
         registry: ChannelRegistry | None = None,
@@ -38,6 +47,7 @@ class ChannelTrigger(BaseTrigger):
 
         Args:
             channel_name: Name of the channel to listen on
+            subscriber_id: Subscriber ID for broadcast channels (auto-generated if None)
             prompt: Prompt template to include in event (supports {content} substitution)
             filter_sender: Only fire for messages from this sender
             registry: Optional channel registry (defaults to global singleton)
@@ -46,9 +56,11 @@ class ChannelTrigger(BaseTrigger):
         """
         super().__init__(prompt=prompt, **options)
         self.channel_name = channel_name
+        self.subscriber_id = subscriber_id
         self.filter_sender = filter_sender
         self._registry = registry
         self._session = session
+        self._subscription: ChannelSubscription | None = None
 
     async def _on_start(self) -> None:
         """Resolve registry on start."""
@@ -60,7 +72,10 @@ class ChannelTrigger(BaseTrigger):
         logger.debug("Channel trigger started", channel=self.channel_name)
 
     async def _on_stop(self) -> None:
-        """Log stop."""
+        """Clean up subscription and log stop."""
+        if self._subscription is not None:
+            self._subscription.unsubscribe()
+            self._subscription = None
         logger.debug("Channel trigger stopped", channel=self.channel_name)
 
     async def wait_for_trigger(self) -> TriggerEvent | None:
@@ -73,7 +88,13 @@ class ChannelTrigger(BaseTrigger):
         while self._running:
             try:
                 # Use a timeout so we periodically check if still running
-                msg = await channel.receive(timeout=1.0)
+                if isinstance(channel, AgentChannel):
+                    if self._subscription is None:
+                        sub_id = self.subscriber_id or f"trigger_{self.channel_name}"
+                        self._subscription = channel.subscribe(sub_id)
+                    msg = await self._subscription.receive(timeout=1.0)
+                else:
+                    msg = await channel.receive(timeout=1.0)
             except asyncio.TimeoutError:
                 continue
 
@@ -95,6 +116,7 @@ class ChannelTrigger(BaseTrigger):
                 context={
                     "sender": msg.sender,
                     "channel": self.channel_name,
+                    "message_id": msg.message_id,
                     "raw_content": msg.content,
                     **msg.metadata,
                 },

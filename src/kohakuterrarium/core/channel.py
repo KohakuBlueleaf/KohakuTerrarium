@@ -1,19 +1,29 @@
 """
 Named async channel system for cross-component communication.
 
-Provides a simple pub/sub-like mechanism where components can send and receive
-messages through named channels, enabling decoupled communication between
-agents, tools, and other framework components.
+Provides queue-based and broadcast channel types for decoupled communication
+between agents, tools, and other framework components.
+
+Channel types:
+- SubAgentChannel (queue): Point-to-point, one consumer receives each message
+- AgentChannel (broadcast): All subscribers receive every message
 """
 
 import asyncio
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
+from uuid import uuid4
 
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def generate_message_id() -> str:
+    """Generate a unique message ID."""
+    return f"msg_{uuid4().hex[:12]}"
 
 
 @dataclass
@@ -24,17 +34,51 @@ class ChannelMessage:
     content: str | dict
     metadata: dict[str, Any] = field(default_factory=dict)
     timestamp: datetime = field(default_factory=datetime.now)
+    message_id: str = field(default_factory=generate_message_id)
+    reply_to: str | None = None
+    channel: str | None = None
 
 
-class Channel:
-    """Named async channel for cross-component communication."""
+class BaseChannel(ABC):
+    """Base interface for all channel types."""
+
+    def __init__(self, name: str):
+        self.name = name
+
+    @abstractmethod
+    async def send(self, message: ChannelMessage) -> None: ...
+
+    @property
+    @abstractmethod
+    def channel_type(self) -> str: ...
+
+    @property
+    @abstractmethod
+    def empty(self) -> bool: ...
+
+    @property
+    @abstractmethod
+    def qsize(self) -> int: ...
+
+
+class SubAgentChannel(BaseChannel):
+    """Named async queue channel for point-to-point communication.
+
+    Each message is consumed by exactly one receiver. Suitable for
+    sub-agent communication where one consumer processes each message.
+    """
 
     def __init__(self, name: str, maxsize: int = 0):
-        self.name = name
+        super().__init__(name)
         self._queue: asyncio.Queue[ChannelMessage] = asyncio.Queue(maxsize=maxsize)
+
+    @property
+    def channel_type(self) -> str:
+        return "queue"
 
     async def send(self, message: ChannelMessage) -> None:
         """Send a message to the channel."""
+        message.channel = self.name
         await self._queue.put(message)
         logger.debug(
             "Message sent on channel '%s' from '%s'",
@@ -89,29 +133,165 @@ class Channel:
         return self._queue.qsize()
 
 
+class ChannelSubscription:
+    """A subscriber's view of a broadcast channel."""
+
+    def __init__(
+        self,
+        channel: "AgentChannel",
+        subscriber_id: str,
+        queue: asyncio.Queue[ChannelMessage],
+    ):
+        self._channel = channel
+        self.subscriber_id = subscriber_id
+        self._queue = queue
+
+    async def receive(self, timeout: float | None = None) -> ChannelMessage:
+        """Receive the next message. Blocks until available.
+
+        Args:
+            timeout: Maximum seconds to wait. None means wait indefinitely.
+
+        Returns:
+            The next ChannelMessage delivered to this subscriber.
+
+        Raises:
+            asyncio.TimeoutError: If timeout is exceeded before a message arrives.
+        """
+        if timeout is not None:
+            return await asyncio.wait_for(self._queue.get(), timeout=timeout)
+        return await self._queue.get()
+
+    def try_receive(self) -> ChannelMessage | None:
+        """Non-blocking receive. Returns None if no message is available."""
+        try:
+            return self._queue.get_nowait()
+        except asyncio.QueueEmpty:
+            return None
+
+    def unsubscribe(self) -> None:
+        """Remove this subscription from the broadcast channel."""
+        self._channel.unsubscribe(self.subscriber_id)
+
+    @property
+    def empty(self) -> bool:
+        """Whether this subscriber has no pending messages."""
+        return self._queue.empty()
+
+    @property
+    def qsize(self) -> int:
+        """Approximate number of pending messages for this subscriber."""
+        return self._queue.qsize()
+
+
+class AgentChannel(BaseChannel):
+    """Broadcast channel - all subscribers receive every message.
+
+    Suitable for scenarios where multiple agents or components need to
+    observe the same stream of messages (e.g., status updates, events).
+    """
+
+    def __init__(self, name: str):
+        super().__init__(name)
+        self._subscribers: dict[str, asyncio.Queue[ChannelMessage]] = {}
+
+    @property
+    def channel_type(self) -> str:
+        return "broadcast"
+
+    async def send(self, message: ChannelMessage) -> None:
+        """Broadcast a message to all subscribers."""
+        message.channel = self.name
+        for queue in self._subscribers.values():
+            await queue.put(message)
+        logger.debug(
+            "Broadcast on '%s' to %d subscribers from '%s'",
+            self.name,
+            len(self._subscribers),
+            message.sender,
+        )
+
+    def subscribe(self, subscriber_id: str) -> ChannelSubscription:
+        """Subscribe to this channel. Returns existing subscription if already subscribed.
+
+        Args:
+            subscriber_id: Unique identifier for the subscriber.
+
+        Returns:
+            A ChannelSubscription for receiving messages.
+        """
+        if subscriber_id in self._subscribers:
+            return ChannelSubscription(
+                self, subscriber_id, self._subscribers[subscriber_id]
+            )
+        queue: asyncio.Queue[ChannelMessage] = asyncio.Queue()
+        self._subscribers[subscriber_id] = queue
+        logger.debug(
+            "Subscriber '%s' joined channel '%s'", subscriber_id, self.name
+        )
+        return ChannelSubscription(self, subscriber_id, queue)
+
+    def unsubscribe(self, subscriber_id: str) -> None:
+        """Remove a subscriber from this channel.
+
+        Args:
+            subscriber_id: The subscriber to remove.
+        """
+        if self._subscribers.pop(subscriber_id, None) is not None:
+            logger.debug(
+                "Subscriber '%s' left channel '%s'", subscriber_id, self.name
+            )
+
+    @property
+    def subscriber_count(self) -> int:
+        """Number of active subscribers."""
+        return len(self._subscribers)
+
+    @property
+    def empty(self) -> bool:
+        """Whether all subscriber queues are empty."""
+        return all(q.empty() for q in self._subscribers.values())
+
+    @property
+    def qsize(self) -> int:
+        """Total pending messages across all subscriber queues."""
+        return sum(q.qsize() for q in self._subscribers.values())
+
+
 class ChannelRegistry:
     """Registry of named channels."""
 
     def __init__(self) -> None:
-        self._channels: dict[str, Channel] = {}
+        self._channels: dict[str, BaseChannel] = {}
 
-    def get_or_create(self, name: str, maxsize: int = 0) -> Channel:
+    def get_or_create(
+        self,
+        name: str,
+        channel_type: str = "queue",
+        maxsize: int = 0,
+    ) -> BaseChannel:
         """Get an existing channel or create a new one.
 
         Args:
             name: The channel name.
-            maxsize: Maximum queue size for a newly created channel.
-                     Ignored if the channel already exists.
+            channel_type: Type of channel to create: "queue" or "broadcast".
+                          Ignored if the channel already exists.
+            maxsize: Maximum queue size for a newly created queue channel.
+                     Ignored if the channel already exists or type is broadcast.
 
         Returns:
-            The existing or newly created Channel.
+            The existing or newly created channel.
         """
         if name not in self._channels:
-            self._channels[name] = Channel(name, maxsize=maxsize)
-            logger.debug("Created channel '%s'", name)
+            match channel_type:
+                case "broadcast":
+                    self._channels[name] = AgentChannel(name)
+                case _:
+                    self._channels[name] = SubAgentChannel(name, maxsize=maxsize)
+            logger.debug("Created %s channel '%s'", channel_type, name)
         return self._channels[name]
 
-    def get(self, name: str) -> Channel | None:
+    def get(self, name: str) -> BaseChannel | None:
         """Get a channel by name, or None if it does not exist."""
         return self._channels.get(name)
 
@@ -133,6 +313,10 @@ class ChannelRegistry:
             logger.debug("Removed channel '%s'", name)
             return True
         return False
+
+
+# Backward compatibility alias
+Channel = SubAgentChannel
 
 
 def get_channel_registry() -> ChannelRegistry:

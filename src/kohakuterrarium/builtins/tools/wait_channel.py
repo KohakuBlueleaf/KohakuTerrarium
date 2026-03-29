@@ -5,7 +5,7 @@ import json
 from typing import Any
 
 from kohakuterrarium.builtins.tools.registry import register_builtin
-from kohakuterrarium.core.channel import get_channel_registry
+from kohakuterrarium.core.channel import AgentChannel, SubAgentChannel, get_channel_registry
 from kohakuterrarium.modules.tool.base import (
     BaseTool,
     ExecutionMode,
@@ -52,15 +52,32 @@ class WaitChannelTool(BaseTool):
         )
         channel = registry.get_or_create(channel_name)
 
+        subscription = None
         try:
-            msg = await channel.receive(timeout=timeout)
+            if isinstance(channel, AgentChannel):
+                # For broadcast channels, subscribe using agent name
+                subscriber_id = "unknown"
+                if context:
+                    subscriber_id = context.agent_name
+                subscription = channel.subscribe(subscriber_id)
+                msg = await subscription.receive(timeout=timeout)
+            elif isinstance(channel, SubAgentChannel):
+                msg = await channel.receive(timeout=timeout)
+            else:
+                msg = await channel.receive(timeout=timeout)
 
             # Format response
             content = msg.content
             if isinstance(content, dict):
                 content = json.dumps(content, indent=2)
 
-            output_parts = [f"From: {msg.sender}", f"Content: {content}"]
+            output_parts = [
+                f"From: {msg.sender}",
+                f"Message-ID: {msg.message_id}",
+                f"Content: {content}",
+            ]
+            if msg.reply_to:
+                output_parts.append(f"Reply-To: {msg.reply_to}")
             if msg.metadata:
                 output_parts.append(f"Metadata: {json.dumps(msg.metadata)}")
 
@@ -72,12 +89,19 @@ class WaitChannelTool(BaseTool):
                 output=f"Timeout waiting for message on '{channel_name}' after {timeout}s",
                 exit_code=1,
             )
+        finally:
+            if subscription is not None:
+                subscription.unsubscribe()
 
     def get_full_documentation(self) -> str:
         return """# wait_channel
 
 Wait for a message to arrive on a named channel. For request-response
 patterns: send a message, then wait for reply on another channel.
+
+Supports both queue channels (SubAgentChannel) and broadcast channels
+(AgentChannel). For broadcast channels, automatically subscribes using
+the agent name and unsubscribes after receiving.
 
 ## Arguments
 
@@ -97,7 +121,7 @@ patterns: send a message, then wait for reply on another channel.
 
 ## Output
 
-Returns sender, content, and metadata of the received message.
+Returns sender, message ID, content, and metadata of the received message.
 On timeout, returns timeout notification with exit code 1.
 
 ## Mode
