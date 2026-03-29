@@ -35,6 +35,9 @@ The boundary is clean: **a creature does not know it is in a terrarium.**
 | - swe_agent |     | - trigger wiring  |     | - MCP server    |
 | - reviewer  |     | - lifecycle mgmt  |     | - Web UI        |
 | - any other |     | - prompt injection|     | - none (auto)   |
+|             |     | - API layer       |     |                 |
+|             |     | - observer        |     |                 |
+|             |     | - output log      |     |                 |
 +-------------+     +-------------------+     +-----------------+
 ```
 
@@ -235,6 +238,58 @@ agent_a <--discussion(broadcast)--> agent_b <--discussion(broadcast)--> agent_c
 ### Hybrid
 
 Mix any of the above. Topology is determined entirely by the channel configuration, not by code changes.
+
+## API Layer
+
+The `TerrariumAPI` class (`terrarium/api.py`) wraps `TerrariumRuntime` with convenient methods for external interaction. It is accessed via the `runtime.api` property, which lazily creates the instance on first use.
+
+The API provides three groups of operations:
+
+- **Channel operations** - `list_channels()`, `channel_info(name)`, `send_to_channel(name, content, sender, metadata)`. These allow external code (scripts, web servers, CLI tools) to inspect and inject messages into the running terrarium.
+- **Creature operations** - `list_creatures()`, `get_creature_status(name)`, `stop_creature(name)`, `start_creature(name)`. These support runtime lifecycle management of individual creatures.
+- **Terrarium operations** - `get_status()`, `is_running`. High-level status queries.
+
+The API integrates with the observer: when `send_to_channel()` is called, the message is recorded in the observer automatically, ensuring queue channel traffic is visible even though queue channels cannot be observed non-destructively.
+
+See [API Reference](api.md) for full method signatures and examples.
+
+## Observer Pattern
+
+The `ChannelObserver` class (`terrarium/observer.py`) provides non-destructive visibility into channel traffic. It is accessed via the `runtime.observer` property (lazily created after the terrarium is started).
+
+Observation works differently depending on channel type:
+
+- **Broadcast channels** - The observer subscribes as a silent participant using a dedicated subscriber ID (`_observer_<channel_name>`). A background `asyncio.Task` loops on the subscription, recording every message without consuming it from other subscribers.
+- **Queue channels** - Queue messages are consumed on receive, so non-destructive peeking is not possible. Instead, the `TerrariumAPI.send_to_channel()` method calls `observer.record()` after each send, capturing API-injected messages. Messages sent by creatures via the `send_message` tool are not captured by the observer unless the channel is broadcast.
+
+The observer supports:
+
+- **Callbacks** - `on_message(callback)` registers a function called for every observed message. The CLI uses this to print live channel traffic when `--observe` is passed.
+- **History retrieval** - `get_messages(channel, last_n)` returns recent `ObservedMessage` entries, optionally filtered by channel name.
+- **Bounded memory** - The history buffer is capped at `max_history` (default 1000) entries.
+
+## Output Log Capture
+
+The `OutputLogCapture` class (`terrarium/output_log.py`) is a tee wrapper that intercepts a creature's output and records it into a ring buffer.
+
+When a creature has `output_log: true` in the terrarium config, the runtime wraps its default output module with `OutputLogCapture` during creature setup. All output flows to the original module unchanged, and a copy is stored in a `deque` of `LogEntry` objects.
+
+Three entry types are captured:
+
+| Entry type | Source | Description |
+|------------|--------|-------------|
+| `text` | `write()` calls | Complete text blocks from the output module |
+| `stream_flush` | `flush()` after streaming | Accumulated `write_stream()` chunks, flushed as one entry |
+| `activity` | `on_activity()` calls | Tool start/done/error notifications with `activity_type` metadata |
+
+Log access methods:
+
+- `get_entries(last_n, entry_type)` - Get recent entries, optionally filtered by type
+- `get_text(last_n)` - Get recent text output concatenated (excludes activity entries)
+- `entry_count` - Current number of entries in the buffer
+- `clear()` - Empty the buffer
+
+The ring buffer size is controlled by `output_log_size` in the terrarium config (default 100). See [Configuration Reference](configuration.md) for the config fields. See [API Reference](api.md) for programmatic access patterns.
 
 ## What the Terrarium Does NOT Do
 

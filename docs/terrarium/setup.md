@@ -228,6 +228,18 @@ if __name__ == "__main__":
 
 ### Step 5: Run
 
+**Using the CLI** (recommended):
+
+```bash
+# Run from the terrarium directory
+python -m kohakuterrarium terrarium run agents/my_terrarium/
+
+# Inspect the config before running
+python -m kohakuterrarium terrarium info agents/my_terrarium/
+```
+
+**Using the runner script**:
+
 ```bash
 python agents/my_terrarium/run.py
 ```
@@ -303,6 +315,132 @@ tools:
 ```
 
 The terrarium runtime does not auto-register these tools. They must be listed in the creature's own `config.yaml`.
+
+## CLI Usage
+
+The built-in CLI provides two terrarium commands.
+
+### `terrarium run`
+
+Launches a terrarium from a config path:
+
+```bash
+python -m kohakuterrarium terrarium run agents/my_terrarium/
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--log-level` | Logging verbosity: `DEBUG`, `INFO` (default), `WARNING`, `ERROR` |
+| `--observe` | Space-separated list of channel names to observe. Prints messages as they flow. |
+
+Example with observation:
+
+```bash
+python -m kohakuterrarium terrarium run agents/my_terrarium/ --observe findings --log-level DEBUG
+```
+
+When `--observe` is used, the CLI creates a `ChannelObserver` that prints each message with a timestamp, channel name, sender, and content preview. For broadcast channels, the observer subscribes silently. For queue channels, only API-injected messages are visible (see [Architecture - Observer Pattern](architecture.md#observer-pattern)).
+
+### `terrarium info`
+
+Displays terrarium configuration without running it:
+
+```bash
+python -m kohakuterrarium terrarium info agents/my_terrarium/
+```
+
+Output includes creature names, config paths, channel assignments, output log settings, and all declared channels with their types and descriptions.
+
+## Programmatic API Usage
+
+The `TerrariumAPI` is available on any running runtime via `runtime.api`. It provides methods for channel operations, creature lifecycle, and status queries.
+
+### Basic API usage
+
+```python
+from kohakuterrarium.terrarium import TerrariumRuntime, load_terrarium_config
+
+config = load_terrarium_config("agents/my_terrarium/")
+runtime = TerrariumRuntime(config)
+await runtime.start()
+
+api = runtime.api
+
+# List channels
+channels = await api.list_channels()
+# [{"name": "findings", "type": "queue", "description": "..."}]
+
+# Send a message into a channel
+msg_id = await api.send_to_channel("findings", "New data arrived", sender="human")
+
+# List creatures and their status
+creatures = await api.list_creatures()
+for c in creatures:
+    print(f"{c['name']}: running={c['running']}")
+
+# Stop a specific creature
+await api.stop_creature("researcher")
+
+# Restart it
+await api.start_creature("researcher")
+
+# Full terrarium status
+status = api.get_status()
+```
+
+See [API Reference](api.md) for the complete method list.
+
+### Channel observation
+
+```python
+observer = runtime.observer
+
+# Subscribe to a broadcast channel
+await observer.observe("team_chat")
+
+# Register a callback for live messages
+def on_msg(msg):
+    print(f"[{msg.channel}] {msg.sender}: {msg.content}")
+
+observer.on_message(on_msg)
+
+# Retrieve recent history
+messages = observer.get_messages(channel="team_chat", last_n=10)
+
+# Clean up when done
+await observer.stop()
+```
+
+### Output log access
+
+Enable output logging per-creature in `terrarium.yaml`:
+
+```yaml
+creatures:
+  - name: researcher
+    config: ./creatures/researcher/
+    output_log: true
+    output_log_size: 200
+    channels:
+      can_send: [findings]
+```
+
+Then access the log at runtime:
+
+```python
+handle = runtime._creatures["researcher"]
+
+# Get recent log entries
+entries = handle.get_log_entries(last_n=10)
+for entry in entries:
+    print(f"[{entry.timestamp}] ({entry.entry_type}) {entry.preview()}")
+
+# Get concatenated text output
+text = handle.get_log_text(last_n=5)
+print(text)
+```
 
 ## Monitoring
 

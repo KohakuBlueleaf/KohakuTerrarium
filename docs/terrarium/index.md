@@ -14,6 +14,10 @@ Each creature is a fully self-contained agent with its own LLM, tools, sub-agent
 | **Channel** | A named async message conduit connecting creatures. Two types: queue (point-to-point) and broadcast (all subscribers). |
 | **Trigger** | A `ChannelTrigger` injected into a creature so it reacts when messages arrive on its listen channels. |
 | **Topology** | The channel wiring between creatures. Emerges from configuration, not code. Supports pipeline, hub-and-spoke, group chat, and hybrid patterns. |
+| **API** | `TerrariumAPI` provides programmatic access to channels, creatures, and runtime status. See [API Reference](api.md). |
+| **Observer** | `ChannelObserver` watches channel traffic non-destructively. Broadcast channels are subscribed silently; queue messages are recorded via the API. |
+| **Output Log** | `OutputLogCapture` wraps a creature's output module and records everything into a ring buffer for later retrieval. Enabled per-creature in config. |
+| **CLI** | Built-in commands (`terrarium run`, `terrarium info`) for running and inspecting terrariums from the terminal. |
 
 ## Quick Start: Running the Novel Writer Example
 
@@ -31,7 +35,24 @@ cp .env.example .env
 #   OPENROUTER_API_KEY=sk-or-...
 ```
 
-### Run
+### Run with the CLI
+
+The quickest way to launch a terrarium is the built-in CLI:
+
+```bash
+# Run the terrarium
+python -m kohakuterrarium terrarium run agents/novel_terrarium/
+
+# Run with channel observation (prints messages as they flow)
+python -m kohakuterrarium terrarium run agents/novel_terrarium/ --observe team_chat ideas
+
+# Inspect terrarium config without running
+python -m kohakuterrarium terrarium info agents/novel_terrarium/
+```
+
+### Run with a script
+
+Alternatively, use the runner script directly:
 
 ```bash
 python agents/novel_terrarium/run.py
@@ -85,3 +106,4 @@ terrarium:
 - [Configuration Reference](configuration.md) - Full YAML format, all fields, environment variables
 - [Channel System](channels.md) - Channel types, tools, triggers, prompt awareness
 - [Setup Guide](setup.md) - Step-by-step guide to creating your own terrarium
+- [API Reference](api.md) - TerrariumAPI, ChannelObserver, OutputLogCapture
