@@ -1,0 +1,35 @@
+# Brainstorm Creature
+# Generates creative story ideas and sends them to the planner.
+
+name: brainstorm
+version: "1.0"
+
+controller:
+  model: "${OPENROUTER_MODEL:google/gemini-3-flash-preview}"
+  temperature: 0.9
+  max_tokens: 8192
+  api_key_env: OPENROUTER_API_KEY
+  base_url: https://openrouter.ai/api/v1
+
+system_prompt_file: prompts/system.md
+
+input:
+  type: none
+
+output:
+  type: stdout
+
+tools:
+  - name: send_message
+    type: builtin
+  - name: wait_channel
+    type: builtin
+  - name: think
+    type: builtin
+
+termination:
+  max_turns: 10
+  keywords: ["BRAINSTORM_COMPLETE"]
+
+startup_trigger:
+  prompt: "Begin brainstorming. Generate creative ideas for a short story, then send your best idea to the 'ideas' channel using send_message."

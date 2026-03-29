@@ -1,0 +1,37 @@
+# Writer Creature
+# Receives chapter outlines and writes the actual prose.
+
+name: writer
+version: "1.0"
+
+controller:
+  model: "${OPENROUTER_MODEL:google/gemini-3-flash-preview}"
+  temperature: 0.8
+  max_tokens: 16384
+  api_key_env: OPENROUTER_API_KEY
+  base_url: https://openrouter.ai/api/v1
+
+system_prompt_file: prompts/system.md
+
+input:
+  type: none
+
+output:
+  type: stdout
+
+tools:
+  - name: send_message
+    type: builtin
+  - name: wait_channel
+    type: builtin
+  - name: think
+    type: builtin
+  - name: write
+    type: builtin
+
+termination:
+  max_turns: 20
+  keywords: ["WRITING_COMPLETE"]
+
+startup_trigger:
+  prompt: "Wait for chapter outlines on the 'outline' channel using wait_channel. Write each chapter as vivid prose and save it to a file. After all chapters are written, compile them into novel.md."

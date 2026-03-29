@@ -1,0 +1,35 @@
+# Planner Creature
+# Takes a story concept and creates a chapter-by-chapter outline.
+
+name: planner
+version: "1.0"
+
+controller:
+  model: "${OPENROUTER_MODEL:google/gemini-3-flash-preview}"
+  temperature: 0.5
+  max_tokens: 8192
+  api_key_env: OPENROUTER_API_KEY
+  base_url: https://openrouter.ai/api/v1
+
+system_prompt_file: prompts/system.md
+
+input:
+  type: none
+
+output:
+  type: stdout
+
+tools:
+  - name: send_message
+    type: builtin
+  - name: wait_channel
+    type: builtin
+  - name: think
+    type: builtin
+
+termination:
+  max_turns: 15
+  keywords: ["PLANNING_COMPLETE"]
+
+startup_trigger:
+  prompt: "Wait for a story concept on the 'ideas' channel using wait_channel. Once received, create a detailed chapter-by-chapter outline and send each chapter outline to the 'outline' channel."

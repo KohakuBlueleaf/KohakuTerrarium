@@ -1,0 +1,38 @@
+# Novel Writer Terrarium
+# Three creatures collaborate to write a short story:
+#   brainstorm -> planner -> writer (pipeline topology)
+# with a feedback loop and team-wide broadcast channel.
+
+terrarium:
+  name: novel_writer
+
+  creatures:
+    - name: brainstorm
+      config: ./creatures/brainstorm/
+      channels:
+        listen: [feedback]
+        can_send: [ideas, team_chat]
+
+    - name: planner
+      config: ./creatures/planner/
+      channels:
+        listen: [ideas]
+        can_send: [outline, team_chat]
+
+    - name: writer
+      config: ./creatures/writer/
+      channels:
+        listen: [outline]
+        can_send: [draft, feedback, team_chat]
+
+  channels:
+    ideas:      { type: queue, description: "Raw ideas from brainstorm to planner" }
+    outline:    { type: queue, description: "Chapter outlines from planner to writer" }
+    draft:      { type: queue, description: "Written chapters for review" }
+    feedback:   { type: queue, description: "Feedback from writer back to brainstorm" }
+    team_chat:  { type: broadcast, description: "Team-wide status updates" }
+
+  interface:
+    type: cli
+    observe: [ideas, outline, draft, feedback, team_chat]
+    inject_to: [feedback]
