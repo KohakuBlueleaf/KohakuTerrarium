@@ -24,6 +24,7 @@ from kohakuterrarium.modules.tool.base import BaseTool, ExecutionMode
 from kohakuterrarium.parsing import (
     CommandResultEvent,
     SubAgentCallEvent,
+    TextEvent,
     ToolCallEvent,
 )
 from kohakuterrarium.utils.logging import get_logger
@@ -59,8 +60,22 @@ class AgentHandlersMixin:
         await self._process_event(event)
 
     async def _process_event(self, event: TriggerEvent) -> None:
-        """Process event using the primary controller."""
-        await self._process_event_with_controller(event, self.controller)
+        """Process event using the primary controller.
+
+        Uses a lock to prevent concurrent processing. When multiple
+        triggers fire simultaneously (e.g. broadcast), events are
+        serialized so only one LLM call runs at a time.
+        """
+        if not hasattr(self, "_processing_lock"):
+            import asyncio
+
+            self._processing_lock = asyncio.Lock()
+
+        async with self._processing_lock:
+            if not self._running:
+                logger.debug("Dropping event, agent stopped", event_type=event.type)
+                return
+            await self._process_event_with_controller(event, self.controller)
 
     async def _process_event_with_controller(
         self, event: TriggerEvent, controller: Controller
@@ -139,6 +154,7 @@ class AgentHandlersMixin:
             direct_job_ids: list[str] = []
             new_background_ids: list[str] = []  # Background: tracked until done
             new_subagent_ids: list[str] = []  # Sub-agents: always background
+            round_text_output: list[str] = []  # Collect text for termination check
 
             # ===================================================================
             # PHASE 2: Run LLM and handle parse events
@@ -187,6 +203,9 @@ class AgentHandlersMixin:
                             f"[{parse_event.command}] OK",
                         )
                 else:
+                    # Capture text output for termination keyword detection
+                    if isinstance(parse_event, TextEvent):
+                        round_text_output.append(parse_event.text)
                     await self.output_router.route(parse_event)
 
             # ===================================================================
@@ -194,10 +213,8 @@ class AgentHandlersMixin:
             # ===================================================================
             if self._termination_checker:
                 self._termination_checker.record_turn()
-                # Collect last output text for keyword check
-                last_output = getattr(
-                    self.output_router, "get_last_output", lambda: ""
-                )()
+                # Check the actual text the model output this round
+                last_output = "".join(round_text_output)
                 if self._termination_checker.should_terminate(last_output=last_output):
                     logger.info(
                         "Agent terminated",
