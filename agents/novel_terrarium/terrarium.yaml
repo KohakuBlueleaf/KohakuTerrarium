@@ -1,7 +1,7 @@
 # Novel Writer Terrarium
 # Three creatures collaborate to write a short story:
-#   brainstorm -> planner -> writer (pipeline topology)
-# with a feedback loop and team-wide broadcast channel.
+#   seed -> brainstorm -> planner -> writer (pipeline topology)
+#   + team_chat broadcast for shared awareness
 #
 # Usage:
 #   python -m kohakuterrarium terrarium run agents/novel_terrarium/ --seed "A story about a lighthouse keeper"
@@ -14,28 +14,28 @@ terrarium:
     - name: brainstorm
       config: ./creatures/brainstorm/
       channels:
-        listen: [seed, feedback]
+        listen: [seed, feedback, team_chat]
         can_send: [ideas, team_chat]
 
     - name: planner
       config: ./creatures/planner/
       channels:
-        listen: [ideas]
+        listen: [ideas, team_chat]
         can_send: [outline, team_chat]
 
     - name: writer
       config: ./creatures/writer/
       channels:
-        listen: [outline]
+        listen: [outline, team_chat]
         can_send: [draft, feedback, team_chat]
 
   channels:
     seed:       { type: queue, description: "User's story seed prompt" }
-    ideas:      { type: queue, description: "Raw ideas from brainstorm to planner" }
+    ideas:      { type: queue, description: "Story concept from brainstorm to planner" }
     outline:    { type: queue, description: "Chapter outlines from planner to writer" }
-    draft:      { type: queue, description: "Written chapters for review" }
+    draft:      { type: queue, description: "Completed chapter summaries" }
     feedback:   { type: queue, description: "Feedback from writer back to brainstorm" }
-    team_chat:  { type: broadcast, description: "Team-wide status updates" }
+    team_chat:  { type: broadcast, description: "Team-wide announcements (informational, no reply needed)" }
 
   interface:
     type: cli

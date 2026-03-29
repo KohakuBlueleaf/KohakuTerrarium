@@ -294,10 +294,22 @@ class TerrariumRuntime:
         agent = Agent(agent_config, input_module=input_module)
 
         # -- Inject ChannelTriggers for listen channels --
+        # Broadcast channels get a prompt that frames messages as informational
+        broadcast_names = {
+            ch.name for ch in self.config.channels if ch.channel_type == "broadcast"
+        }
         for ch_name in creature_cfg.listen_channels:
+            prompt = None
+            if ch_name in broadcast_names:
+                prompt = (
+                    "[Broadcast on '{channel}' from '{sender}']: {content}\n\n"
+                    "This message was broadcast to all team members on '{channel}'. "
+                    "Only act on it if it is relevant to your current task."
+                )
             trigger = ChannelTrigger(
                 channel_name=ch_name,
                 subscriber_id=creature_cfg.name,
+                prompt=prompt,
                 session=self._session,
             )
             agent._triggers.append(trigger)
@@ -305,6 +317,7 @@ class TerrariumRuntime:
                 "Injected channel trigger",
                 creature=creature_cfg.name,
                 channel=ch_name,
+                broadcast=ch_name in broadcast_names,
             )
 
         # -- Inject channel topology into the system prompt --

@@ -64,7 +64,7 @@ class TestConfigLoading:
         """Creature listen/send channels match the YAML."""
         config = load_terrarium_config(NOVEL_TERRARIUM_DIR)
         brainstorm = config.creatures[0]
-        assert brainstorm.listen_channels == ["seed", "feedback"]
+        assert brainstorm.listen_channels == ["seed", "feedback", "team_chat"]
         assert "ideas" in brainstorm.send_channels
         assert "team_chat" in brainstorm.send_channels
 

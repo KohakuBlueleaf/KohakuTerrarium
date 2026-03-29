@@ -244,7 +244,7 @@ class TestChannelErrorHints:
 
         # Queue channels auto-create, no error
         assert result.error is None
-        assert "Message sent" in result.output
+        assert "Delivered to" in result.output
 
         # Channel was created
         ch = session.channels.get("new_channel")

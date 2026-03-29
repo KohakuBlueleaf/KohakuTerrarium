@@ -102,8 +102,13 @@ class SendMessageTool(BaseTool):
         await channel.send(msg)
 
         logger.debug("Message sent", channel=channel_name, sender=sender)
+        content_preview = message[:60].replace("\n", " ")
         return ToolResult(
-            output=f"Message sent to channel '{channel_name}' (id: {msg.message_id})",
+            output=(
+                f"Delivered to '{channel_name}' (id: {msg.message_id}). "
+                f"Content: \"{content_preview}{'...' if len(message) > 60 else ''}\". "
+                f"Message delivered successfully, no further action needed for this send."
+            ),
             exit_code=0,
         )
 
