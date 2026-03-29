@@ -206,7 +206,7 @@ class TestBuildToolSchemas:
         assert schemas == []
 
     def test_single_tool_default_schema(self):
-        """Test building schema for tool without get_parameters_schema."""
+        """Test building schema for known builtin tool."""
         registry = Registry()
         registry.register_tool(_DummyTool("bash", "Execute shell commands"))
 
@@ -214,8 +214,19 @@ class TestBuildToolSchemas:
         assert len(schemas) == 1
         assert schemas[0].name == "bash"
         assert schemas[0].description == "Execute shell commands"
-        # Should get fallback content-based schema
+        # bash has a builtin schema with 'command' parameter
         assert schemas[0].parameters["type"] == "object"
+        assert "command" in schemas[0].parameters["properties"]
+
+    def test_unknown_tool_gets_generic_schema(self):
+        """Test that unknown tool gets generic content-based schema."""
+        registry = Registry()
+        registry.register_tool(_DummyTool("my_custom_tool", "A custom tool"))
+
+        schemas = build_tool_schemas(registry)
+        assert len(schemas) == 1
+        assert schemas[0].name == "my_custom_tool"
+        # Unknown tools get fallback content-based schema
         assert "content" in schemas[0].parameters["properties"]
 
     def test_tool_with_custom_schema(self):

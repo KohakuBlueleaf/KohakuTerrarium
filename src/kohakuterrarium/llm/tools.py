@@ -11,14 +11,157 @@ from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+# Known parameter schemas for builtin tools.
+# Maps tool name → OpenAI function parameters schema.
+_BUILTIN_SCHEMAS: dict[str, dict] = {
+    "bash": {
+        "type": "object",
+        "properties": {
+            "command": {"type": "string", "description": "Shell command to execute"},
+        },
+        "required": ["command"],
+    },
+    "python": {
+        "type": "object",
+        "properties": {
+            "code": {"type": "string", "description": "Python code to execute"},
+        },
+        "required": ["code"],
+    },
+    "read": {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "File path to read"},
+            "offset": {"type": "integer", "description": "Line offset (optional)"},
+            "limit": {"type": "integer", "description": "Max lines (optional)"},
+        },
+        "required": ["path"],
+    },
+    "write": {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "File path to write"},
+            "content": {"type": "string", "description": "File content"},
+        },
+        "required": ["path", "content"],
+    },
+    "edit": {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "File path to edit"},
+            "old": {"type": "string", "description": "Text to find"},
+            "new": {"type": "string", "description": "Replacement text"},
+        },
+        "required": ["path", "old", "new"],
+    },
+    "glob": {
+        "type": "object",
+        "properties": {
+            "pattern": {"type": "string", "description": "Glob pattern (e.g. **/*.py)"},
+            "path": {"type": "string", "description": "Base directory (optional)"},
+        },
+        "required": ["pattern"],
+    },
+    "grep": {
+        "type": "object",
+        "properties": {
+            "pattern": {"type": "string", "description": "Regex pattern to search"},
+            "path": {"type": "string", "description": "Directory or file to search"},
+            "glob": {"type": "string", "description": "File glob filter (optional)"},
+        },
+        "required": ["pattern"],
+    },
+    "tree": {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "Directory path"},
+            "depth": {"type": "integer", "description": "Max depth (optional)"},
+        },
+    },
+    "think": {
+        "type": "object",
+        "properties": {
+            "content": {
+                "type": "string",
+                "description": "Your reasoning and analysis",
+            },
+        },
+        "required": ["content"],
+    },
+    "scratchpad": {
+        "type": "object",
+        "properties": {
+            "action": {
+                "type": "string",
+                "enum": ["get", "set", "delete", "list"],
+                "description": "Operation to perform",
+            },
+            "key": {"type": "string", "description": "Key name"},
+            "value": {"type": "string", "description": "Value (for set)"},
+        },
+        "required": ["action"],
+    },
+    "send_message": {
+        "type": "object",
+        "properties": {
+            "channel": {"type": "string", "description": "Channel name"},
+            "message": {"type": "string", "description": "Message content"},
+            "reply_to": {"type": "string", "description": "Message ID to reply to"},
+        },
+        "required": ["channel", "message"],
+    },
+    "wait_channel": {
+        "type": "object",
+        "properties": {
+            "channel": {"type": "string", "description": "Channel name to listen on"},
+            "timeout": {
+                "type": "number",
+                "description": "Seconds to wait (default 30)",
+            },
+        },
+        "required": ["channel"],
+    },
+    "ask_user": {
+        "type": "object",
+        "properties": {
+            "question": {"type": "string", "description": "Question to ask the user"},
+        },
+        "required": ["question"],
+    },
+    "http": {
+        "type": "object",
+        "properties": {
+            "url": {"type": "string", "description": "URL to request"},
+            "method": {"type": "string", "description": "HTTP method (default GET)"},
+            "body": {"type": "string", "description": "Request body (optional)"},
+        },
+        "required": ["url"],
+    },
+    "json_read": {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "JSON file path"},
+            "query": {"type": "string", "description": "JMESPath query (optional)"},
+        },
+        "required": ["path"],
+    },
+    "json_write": {
+        "type": "object",
+        "properties": {
+            "path": {"type": "string", "description": "JSON file path"},
+            "content": {"type": "string", "description": "JSON content to write"},
+        },
+        "required": ["path", "content"],
+    },
+}
+
 
 def build_tool_schemas(registry: Registry) -> list[ToolSchema]:
     """
     Build native tool schemas from registered tools.
 
-    Inspects each tool for a `get_parameters_schema()` method. If not
-    available, falls back to a generic schema with a single "content"
-    string parameter.
+    Uses builtin schemas for known tools, falls back to tool's
+    get_parameters_schema() method, then to a generic schema.
 
     Args:
         registry: Registry containing registered tools
@@ -33,21 +176,23 @@ def build_tool_schemas(registry: Registry) -> list[ToolSchema]:
         if not info:
             continue
 
-        # Try to get a proper parameters schema from the tool
-        tool = registry.get_tool(name)
-        params: dict = {}
+        # 1. Check builtin schemas first (most accurate)
+        params = _BUILTIN_SCHEMAS.get(name)
 
-        if tool and hasattr(tool, "get_parameters_schema"):
-            try:
-                params = tool.get_parameters_schema() or {}  # type: ignore
-            except Exception as e:
-                logger.warning(
-                    "Failed to get parameters schema from tool",
-                    tool_name=name,
-                    error=str(e),
-                )
+        # 2. Try tool's own schema method
+        if not params:
+            tool = registry.get_tool(name)
+            if tool and hasattr(tool, "get_parameters_schema"):
+                try:
+                    params = tool.get_parameters_schema() or {}  # type: ignore
+                except Exception as e:
+                    logger.warning(
+                        "Failed to get parameters schema",
+                        tool_name=name,
+                        error=str(e),
+                    )
 
-        # Fall back to a generic content-based schema
+        # 3. Generic fallback
         if not params:
             params = {
                 "type": "object",
@@ -64,6 +209,31 @@ def build_tool_schemas(registry: Registry) -> list[ToolSchema]:
                 name=name,
                 description=info.description,
                 parameters=params,
+            )
+        )
+
+    # Also include sub-agents as callable functions
+    for name in registry.list_subagents():
+        subagent = registry.get_subagent(name)
+        desc = (
+            getattr(subagent, "description", f"Sub-agent: {name}")
+            if subagent
+            else f"Sub-agent: {name}"
+        )
+        schemas.append(
+            ToolSchema(
+                name=name,
+                description=desc,
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "task": {
+                            "type": "string",
+                            "description": "Task description for the sub-agent",
+                        }
+                    },
+                    "required": ["task"],
+                },
             )
         )
 

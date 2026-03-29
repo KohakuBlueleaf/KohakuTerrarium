@@ -410,17 +410,26 @@ class Controller:
 
             # After streaming, extract native tool calls
             if hasattr(self.llm, "last_tool_calls"):
+                known_subagents = set(self.registry.list_subagents())
                 for tc in self.llm.last_tool_calls:
                     logger.info(
                         "Native tool call",
                         tool_name=tc.name,
                         tool_args=tc.arguments[:100],
                     )
-                    yield ToolCallEvent(
-                        name=tc.name,
-                        args=tc.parsed_arguments(),
-                        raw=tc.arguments,
-                    )
+                    if tc.name in known_subagents:
+                        # Sub-agent call — dispatch as SubAgentCallEvent
+                        yield SubAgentCallEvent(
+                            name=tc.name,
+                            args=tc.parsed_arguments(),
+                            raw=tc.arguments,
+                        )
+                    else:
+                        yield ToolCallEvent(
+                            name=tc.name,
+                            args=tc.parsed_arguments(),
+                            raw=tc.arguments,
+                        )
         else:
             # Custom format mode: parse text stream for tool calls
             self._parser = self._get_parser()
