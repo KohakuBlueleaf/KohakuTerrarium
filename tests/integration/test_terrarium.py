@@ -37,7 +37,7 @@ class TestConfigLoading:
         config = load_terrarium_config(NOVEL_TERRARIUM_DIR)
         assert config.name == "novel_writer"
         assert len(config.creatures) == 3
-        assert len(config.channels) == 5
+        assert len(config.channels) == 6
 
     def test_creature_names(self):
         """Creature names match the YAML entries."""
@@ -64,7 +64,7 @@ class TestConfigLoading:
         """Creature listen/send channels match the YAML."""
         config = load_terrarium_config(NOVEL_TERRARIUM_DIR)
         brainstorm = config.creatures[0]
-        assert brainstorm.listen_channels == ["feedback"]
+        assert brainstorm.listen_channels == ["seed", "feedback"]
         assert "ideas" in brainstorm.send_channels
         assert "team_chat" in brainstorm.send_channels
 
