@@ -19,6 +19,7 @@ from kohakuterrarium.core.loader import ModuleLoader
 from kohakuterrarium.core.termination import TerminationChecker, TerminationConfig
 from kohakuterrarium.modules.input.base import InputModule
 from kohakuterrarium.modules.output.base import OutputModule
+from kohakuterrarium.modules.trigger.base import BaseTrigger
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -351,6 +352,72 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             self.output_router.default_output = callback_output
         else:
             self.output_router.add_secondary(callback_output)
+
+    # =========================================================================
+    # Hot-plug API
+    # =========================================================================
+
+    async def add_trigger(self, trigger: BaseTrigger) -> None:
+        """Add and start a trigger on a running agent.
+
+        Can be called while the agent is running. The trigger will
+        immediately begin listening and firing events.
+        """
+        await trigger.start()
+        self._triggers.append(trigger)
+        task = asyncio.create_task(self._run_trigger(trigger))
+        self._trigger_tasks.append(task)
+        logger.info("Trigger added at runtime", trigger=type(trigger).__name__)
+
+    async def remove_trigger(self, trigger: BaseTrigger) -> None:
+        """Stop and remove a trigger from a running agent."""
+        idx = None
+        for i, t in enumerate(self._triggers):
+            if t is trigger:
+                idx = i
+                break
+        if idx is None:
+            return
+
+        # Cancel the corresponding task
+        if idx < len(self._trigger_tasks):
+            self._trigger_tasks[idx].cancel()
+            try:
+                await self._trigger_tasks[idx]
+            except asyncio.CancelledError:
+                pass
+            self._trigger_tasks.pop(idx)
+
+        # Stop and remove the trigger
+        await trigger.stop()
+        self._triggers.pop(idx)
+        logger.info("Trigger removed at runtime", trigger=type(trigger).__name__)
+
+    def update_system_prompt(self, content: str, replace: bool = False) -> None:
+        """Update the system prompt of a running agent.
+
+        Args:
+            content: New content to append (or full replacement if replace=True)
+            replace: If True, replace entire system prompt. If False, append.
+        """
+        sys_msg = self.controller.conversation.get_system_message()
+        if sys_msg is None:
+            return
+
+        if replace:
+            sys_msg.content = content
+        else:
+            if isinstance(sys_msg.content, str):
+                sys_msg.content = sys_msg.content + "\n\n" + content
+
+        logger.info("System prompt updated", replace=replace, added_length=len(content))
+
+    def get_system_prompt(self) -> str:
+        """Get the current system prompt text."""
+        sys_msg = self.controller.conversation.get_system_message()
+        if sys_msg and isinstance(sys_msg.content, str):
+            return sys_msg.content
+        return ""
 
     def get_state(self) -> dict[str, Any]:
         """
