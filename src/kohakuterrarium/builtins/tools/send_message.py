@@ -69,12 +69,30 @@ class SendMessageTool(BaseTool):
                 pass
 
         # Get or create channel from context or global registry
-        registry = (
+        chan_registry = (
             context.session.channels
             if context and context.session
             else get_channel_registry()
         )
-        channel = registry.get_or_create(channel_name, channel_type=channel_type)
+
+        # For broadcast channels, require the channel to already exist
+        # (AgentChannels should be pre-declared or explicitly created)
+        existing = chan_registry.get(channel_name)
+        if existing is None and channel_type == "broadcast":
+            available = chan_registry.get_channel_info()
+            avail_str = ", ".join(
+                f"`{c['name']}` ({c['type']})" for c in available
+            ) or "none"
+            return ToolResult(
+                error=(
+                    f"Broadcast channel '{channel_name}' does not exist. "
+                    f"Available channels: {avail_str}"
+                )
+            )
+
+        channel = chan_registry.get_or_create(
+            channel_name, channel_type=channel_type
+        )
 
         # Send message
         msg = ChannelMessage(

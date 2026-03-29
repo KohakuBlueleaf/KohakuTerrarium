@@ -42,8 +42,9 @@ class ChannelMessage:
 class BaseChannel(ABC):
     """Base interface for all channel types."""
 
-    def __init__(self, name: str):
+    def __init__(self, name: str, description: str = ""):
         self.name = name
+        self.description = description
 
     @abstractmethod
     async def send(self, message: ChannelMessage) -> None: ...
@@ -68,8 +69,8 @@ class SubAgentChannel(BaseChannel):
     sub-agent communication where one consumer processes each message.
     """
 
-    def __init__(self, name: str, maxsize: int = 0):
-        super().__init__(name)
+    def __init__(self, name: str, maxsize: int = 0, description: str = ""):
+        super().__init__(name, description=description)
         self._queue: asyncio.Queue[ChannelMessage] = asyncio.Queue(maxsize=maxsize)
 
     @property
@@ -191,8 +192,8 @@ class AgentChannel(BaseChannel):
     observe the same stream of messages (e.g., status updates, events).
     """
 
-    def __init__(self, name: str):
-        super().__init__(name)
+    def __init__(self, name: str, description: str = ""):
+        super().__init__(name, description=description)
         self._subscribers: dict[str, asyncio.Queue[ChannelMessage]] = {}
 
     @property
@@ -269,6 +270,7 @@ class ChannelRegistry:
         name: str,
         channel_type: str = "queue",
         maxsize: int = 0,
+        description: str = "",
     ) -> BaseChannel:
         """Get an existing channel or create a new one.
 
@@ -278,6 +280,7 @@ class ChannelRegistry:
                           Ignored if the channel already exists.
             maxsize: Maximum queue size for a newly created queue channel.
                      Ignored if the channel already exists or type is broadcast.
+            description: Human-readable description of the channel's purpose.
 
         Returns:
             The existing or newly created channel.
@@ -285,11 +288,28 @@ class ChannelRegistry:
         if name not in self._channels:
             match channel_type:
                 case "broadcast":
-                    self._channels[name] = AgentChannel(name)
+                    self._channels[name] = AgentChannel(name, description=description)
                 case _:
-                    self._channels[name] = SubAgentChannel(name, maxsize=maxsize)
+                    self._channels[name] = SubAgentChannel(
+                        name, maxsize=maxsize, description=description
+                    )
             logger.debug("Created %s channel '%s'", channel_type, name)
         return self._channels[name]
+
+    def get_channel_info(self) -> list[dict[str, str]]:
+        """Get info about all registered channels for prompt injection.
+
+        Returns:
+            List of dicts with name, type, description for each channel.
+        """
+        return [
+            {
+                "name": ch.name,
+                "type": ch.channel_type,
+                "description": ch.description,
+            }
+            for ch in self._channels.values()
+        ]
 
     def get(self, name: str) -> BaseChannel | None:
         """Get a channel by name, or None if it does not exist."""

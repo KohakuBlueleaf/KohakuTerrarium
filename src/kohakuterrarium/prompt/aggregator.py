@@ -177,6 +177,7 @@ def aggregate_system_prompt(
     include_hints: bool = True,
     skill_mode: str = "dynamic",
     known_outputs: set[str] | None = None,
+    channels: list[dict[str, str]] | None = None,
     extra_context: dict | None = None,
 ) -> str:
     """
@@ -189,6 +190,8 @@ def aggregate_system_prompt(
         include_hints: Include framework command hints
         skill_mode: "dynamic" (use [/info]) or "static" (full docs in prompt)
         known_outputs: Set of available named output targets (e.g., {"discord"})
+        channels: Channel info for prompt injection (list of dicts with
+                  name, type, description). Auto-detected from session if None.
         extra_context: Extra variables for template rendering
 
     Returns:
@@ -226,6 +229,15 @@ def aggregate_system_prompt(
             tools_list = _build_tools_list(registry)
             if tools_list:
                 parts.append(tools_list)
+
+    # Add channel communication hints (when channel tools are registered)
+    if registry and include_hints:
+        hint_ctx = dict(extra_context or {})
+        if channels is not None:
+            hint_ctx["channels"] = channels
+        channel_hints = _build_channel_hints(registry, hint_ctx)
+        if channel_hints:
+            parts.append(channel_hints)
 
     # Add framework hints (different for each mode)
     if include_hints:
@@ -267,6 +279,82 @@ def _build_output_hints(known_outputs: set[str] | None) -> str:
     return FRAMEWORK_HINTS_OUTPUT_MODEL.format(
         named_outputs_section=named_section
     ).strip()
+
+
+def _build_channel_hints(
+    registry: Registry,
+    extra_context: dict | None = None,
+) -> str:
+    """Build channel communication hints when channel tools are registered.
+
+    Two paths:
+    - SubAgentChannel (queue): pre-defined, listed statically in prompt
+    - AgentChannel (broadcast): dynamic, seed prompt with current listing
+
+    Channel info can be provided via extra_context["channels"] (list of dicts
+    with name, type, description) or auto-detected from the session.
+    """
+    tool_names = set(registry.list_tools())
+    has_send = "send_message" in tool_names
+    has_wait = "wait_channel" in tool_names
+
+    if not has_send and not has_wait:
+        return ""
+
+    # Get channel info from extra_context or empty
+    channels: list[dict[str, str]] = []
+    if extra_context and "channels" in extra_context:
+        channels = extra_context["channels"]
+
+    lines = ["## Channel Communication", ""]
+    lines.append(
+        "You can communicate with other agents and sub-agents through named channels."
+    )
+    lines.append("")
+
+    # Split channels by type
+    queue_channels = [c for c in channels if c.get("type") == "queue"]
+    broadcast_channels = [c for c in channels if c.get("type") == "broadcast"]
+
+    if queue_channels:
+        lines.append("**Queue channels** (point-to-point, one consumer per message):")
+        for ch in queue_channels:
+            desc = f" — {ch['description']}" if ch.get("description") else ""
+            lines.append(f"- `{ch['name']}`{desc}")
+        lines.append("")
+
+    if broadcast_channels:
+        lines.append(
+            "**Broadcast channels** (all subscribers receive every message):"
+        )
+        for ch in broadcast_channels:
+            desc = f" — {ch['description']}" if ch.get("description") else ""
+            lines.append(f"- `{ch['name']}`{desc}")
+        lines.append("")
+
+    if not channels:
+        lines.append(
+            "No channels are pre-configured. You can create queue channels "
+            "on-the-fly by sending to any channel name."
+        )
+        lines.append("")
+
+    # Usage guidance
+    lines.append("**Usage:**")
+    if has_send:
+        lines.append(
+            "- Send: `[/send_message]@@channel=name\\nYour message[send_message/]`"
+        )
+    if has_wait:
+        lines.append(
+            "- Receive: `[/wait_channel]@@channel=name[wait_channel/]`"
+        )
+    lines.append(
+        "- Queue channels can be created on-the-fly. "
+        "Broadcast channels must already exist."
+    )
+
+    return "\n".join(lines)
 
 
 def _build_tools_list(registry: Registry) -> str:
