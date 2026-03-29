@@ -97,6 +97,7 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         self.config = config
         self._running = False
         self._shutdown_event = asyncio.Event()
+        self._processing_lock = asyncio.Lock()
 
         # Module loader for custom components
         self._loader = ModuleLoader(agent_path=config.agent_path)

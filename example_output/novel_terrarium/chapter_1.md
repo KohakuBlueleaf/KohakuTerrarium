@@ -1,47 +1,71 @@
-The underground exchange smelled of roasted copper, sweat, and ozone. Dust motes danced in the dim, jaundiced glow of the switchboard lamps, suspended in the suffocating heat of the basement. Clara’s hands moved with brutal efficiency—plug, twist, connect, disconnect—a mechanical waltz she performed five nights a week. Her headset pressed heavily against her aching ears, the leather band worn smooth by the oil of her hair. The cords crisscrossed the massive board like a nest of black snakes, each one carrying the mundane gossip, desperate pleas, and idle chatter of a sleeping city.
+# 第一章：鏽蝕之城的邂逅
 
-"Number, please," Clara murmured, her voice a hollow, practiced drone. "Connecting you now."
+鐵鏽與機油的味道，是這座城市的呼吸。
 
-She shoved a brass jack into the honeycomb of the board. Another light blinked out. Two more flared to life. The monotony was a physical weight, compounding the exhaustion that had settled deep in her bones. But she couldn't afford to slow down. The rent was three weeks past due, the grocer had cut off their tab, and Elias—her charming, reckless Elias—had left for Chicago a month ago to chase another phantom fortune. He had a smile that could talk the last dime out of a beggar's pocket, but a terrible habit of betting those dimes on losing horses. It was their anniversary, and she hadn't received so much as a telegram.
+「格里芬，這顆齒輪的咬合度差了零點三公釐，幫我換掉。」
 
-"Keep your times under three minutes, ladies," a sharp, nasal voice barked over the hum of the room. "The Bell Company does not pay you to eavesdrop or dawdle. No dead-end connections."
+萊恩抹了一把額頭上的汗水，隨手將扳手丟在工作檯上。這裡是「霧都」艾倫比亞的下城區，終年被厚重的蒸汽與工業廢氣籠罩。作為一名在機械工坊打工的學生，萊恩最擅長的就是跟這些冷冰冰的鋼鐵打交道。
 
-Supervisor Higgins prowled the narrow aisle behind the operators. He was a tall, severe man whose shadow seemed to stretch unnaturally long across the concrete floor. His bay rum cologne cut sharply through the smell of hot copper. Clara stiffened as his polished shoes stopped behind her stool. She could feel his gaze boring into the nape of her neck, scrutinizing her every twitch.
+他擁有一種特殊的天賦——「極致導魔體質」。在他人眼中，這是一個詛咒。他的身體就像一個完美的容器，能容納任何魔力，卻無法自行產生半點火花。在這個以魔導槍械決定地位的世界裡，他只是一個「空的槍膛」。
 
-"Posture, Clara," Higgins snapped. "You're slouching. It restricts the diaphragm. A restricted diaphragm leads to a weak voice, and a weak voice damages the company's reputation."
+「萊恩，你又在發呆了？」工坊老闆格里芬敲了敲煙斗，「快去把那箱廢棄零件搬到後巷，別擋著生意。」
 
-"Yes, Mr. Higgins," she said, straightening her spine until it popped. 
+萊恩聳聳肩，搬起沉重的木箱走向後巷。就在他推開後門的一瞬間，一道銀色的流光劃破了昏暗的霧氣。
 
-He lingered for another agonizing second before his footsteps receded down the line. Clara let out a slow, trembling breath. She reached up to massage her temple, where a dull headache had been throbbing since midnight. She hated the exchange. Most of all, she hated the quiet resentment growing in her chest toward her husband, who was supposed to be here, sharing the burden.
+「砰！」
 
-At 3:14 AM, the call volume finally dipped into the pre-dawn lull. Clara slumped slightly, letting her eyes drift across the massive, curving wall of the switchboard. 
+沉悶的撞擊聲響起，一個嬌小的身影重重地撞進了他的懷裡。萊恩下意識地接住對方，一股清冷如月光的香氣瞬間衝散了刺鼻的機油味。
 
-At the far right edge of her station sat the 'dead board'—a bank of disconnected lines that hadn't been active since the Great War. The brass jacks were tarnished black, the label plates stripped away. It was a dead zone, useless and ignored.
+「唔……」
 
-Until a single, small lamp flared to life.
+那是一個少女。她穿著一身與這髒亂巷弄格格不入的純白連身裙，銀色的長髮散亂，精緻如洋娃娃的臉龐上帶著一絲血痕。最引人注目的是，她的雙手緊緊抱著一個沉重的、佈滿符文的黑色手提箱。
 
-Clara blinked, rubbing her eyes. The light was a sickly, flickering amber, completely unlike the steady yellow glow of the active lines. It buzzed, a low, insectile hum that vibrated through the casing of the switchboard. 
+「快……逃……」少女聲音顫抖，碧藍的雙眸中充滿了驚恐。
 
-She glanced over her shoulder. Higgins was at the far end of the room.
+還沒等萊恩反應過來，巷口傳來了沉重的金屬踏步聲。三台漆成漆黑色的「發條獵犬」出現在迷霧中，紅色的義眼在黑暗中閃爍著殺戮的光芒。
 
-It had to be a glitch. A crossed wire somewhere in the damp walls. Standard procedure dictated she ignore it. If Higgins caught her wasting time on a dead line, he would dock her pay.
+「目標確認，執行回收程序。」機械合成的冰冷聲音在巷弄間迴盪。
 
-But the amber light pulsed. It felt frantic. Urgent. 
+萊恩看著那閃爍著寒光的機械爪，心跳如鼓。他只是個工讀生，不是什麼英雄。但當他看向懷中少女那求助的眼神時，一股莫名的衝動湧上心頭。
 
-Before she could rationalize the risk, Clara’s hand darted out. She grabbed a spare cord, the brass tip cold against her fingers, and drove it into the tarnished socket.
+「雖然不知道發生了什麼事，但隨便欺負女孩子可不是男人的作風！」
 
-A wave of static crashed through her headset, loud enough to make her wince. It sounded like tearing silk, underscored by a hollow, rushing wind. 
+萊恩一把拉起少女，鑽進了錯綜複雜的管道縫隙中。然而，發條獵犬的動作遠比人類敏捷。轉眼間，一頭獵犬已經躍上高牆，封鎖了他們的去路。
 
-"Exchange," Clara said, her voice dropping to a whisper. "Number, please?"
+「沒用的……」少女絕望地靠在牆角，緊緊抓著手提箱，「如果不啟動『武裝庫』，我們都會死在這裡。但我的魔力已經……」
 
-More static. Then, pushing through the crackle of the dead line, came a voice. 
+「妳說啟動？」萊恩看著那個手提箱，上面複雜的魔力迴路在他眼中竟然清晰可見，「如果只是需要魔力傳輸的話，我來當妳的導線！」
 
-"Clara?" 
+他想都沒想，直接握住了少女冰冷的手。
 
-Her breath caught in her throat. The spare brass jack slipped from her trembling fingers. 
+那一刻，世界彷彿靜止了。
 
-"Clara, are you there, sweetheart?" 
+「——連結請求，確認。」
 
-It was impossible. The line was dead. He was hundreds of miles away. But there was no mistaking the warm, slightly gravelly timbre of that voice. 
+一個冰冷的、毫無感情的系統音在兩人的腦海中同步響起。
 
-"Elias?" she whispered, the name tasting like ash and sudden, desperate hope.
+「同步率：85%……92%……100%。使用者：萊恩·艾斯托。武裝庫：希兒。」
+
+少女——希兒的身體突然綻放出耀眼的藍光。那個黑色的手提箱發出清脆的機械變形聲，無數零件在空中飛舞、重組，最後化作一把散發著幽藍微光的魔導長槍，穩穩地落入萊恩的手中。
+
+「這就是……妳的力量？」
+
+萊恩感覺到一股前所未有的澎湃力量湧入體內。原本空蕩蕩的「槍膛」，此刻被填滿了。
+
+「發射吧，萊恩！」希兒在他身後喊道，語氣中帶著一絲驚訝與期待。
+
+萊恩舉起長槍，瞄準了撲過來的發條獵犬。他不需要學習如何開火，因為槍械的構造、彈道的修正、魔力的匯聚，所有的資訊都透過連結直接刻印在他的直覺裡。
+
+「轟——！」
+
+一道湛藍的魔力光束貫穿了迷霧，將三台機械獵犬瞬間化為廢鐵。
+
+硝煙散去，萊恩氣喘吁吁地看著手中的長槍化為光點消失。他轉過頭，看著同樣一臉震驚的希兒。
+
+「妳到底是誰？」
+
+希兒站起身，優雅地拍掉裙子上的灰塵，對著他微微欠身，嘴角勾起一抹神秘的微笑。
+
+「我是希兒，你的『無限武裝庫』。而你，萊恩，你是這世界上唯一能喚醒我的人。」
+
+鏽蝕之城的齒輪繼續轉動，但萊恩知道，他的命運已經在這一刻徹底脫軌。

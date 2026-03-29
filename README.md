@@ -268,13 +268,13 @@ terrarium:
     - name: researcher
       config: ./creatures/researcher/
       channels:
-        listen: [tasks]
-        can_send: [findings]
+        listen: [tasks, team_chat]
+        can_send: [findings, team_chat]
     - name: writer
       config: ./creatures/writer/
       channels:
-        listen: [findings]
-        can_send: [draft]
+        listen: [findings, team_chat]
+        can_send: [draft, team_chat]
   channels:
     tasks:      { type: queue, description: "Research tasks" }
     findings:   { type: queue, description: "Research results" }

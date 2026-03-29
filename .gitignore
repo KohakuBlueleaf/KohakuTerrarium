@@ -2,6 +2,9 @@ temp/
 env
 .env
 ideas/
+example_output/
+novel_log.txt
+novel_out.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
