@@ -50,8 +50,8 @@ Each creature entry maps to a standalone agent config folder. The creature name 
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `name` | string | Yes | -- | Unique name for this creature instance |
-| `config` | path | Yes | -- | Path to agent config folder, relative to terrarium YAML |
+| `name` | string | Yes | - | Unique name for this creature instance |
+| `config` | path | Yes | - | Path to agent config folder, relative to terrarium YAML |
 | `channels.listen` | list[string] | No | `[]` | Channel names to receive messages from |
 | `channels.can_send` | list[string] | No | `[]` | Channel names allowed for sending |
 | `output_log` | bool | No | `false` | Enable output log capture |
@@ -257,4 +257,4 @@ startup_trigger:
   prompt: "Begin brainstorming. Generate creative ideas for a short story, then send your best idea to the 'ideas' channel using send_message."
 ```
 
-The `input: type: none` is significant -- in a terrarium, creatures receive work through channel triggers, not through direct user input. The terrarium runtime overrides input to `NoneInput` regardless of what the creature config specifies.
+The `input: type: none` is significant - in a terrarium, creatures receive work through channel triggers, not through direct user input. The terrarium runtime overrides input to `NoneInput` regardless of what the creature config specifies.

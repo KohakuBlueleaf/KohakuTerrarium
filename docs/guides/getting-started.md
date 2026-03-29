@@ -251,7 +251,7 @@ For agents driven entirely by triggers (timers, channel events), use `none` inpu
 
 ```yaml
 input:
-  type: none    # NoneInput -- blocks forever, never produces input events
+  type: none    # NoneInput - blocks forever, never produces input events
 
 triggers:
   - type: timer

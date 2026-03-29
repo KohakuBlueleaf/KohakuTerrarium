@@ -104,7 +104,7 @@ Send a message to a named channel. Direct execution mode (completes before retur
 | `reply_to` | `@@arg` | No | Message ID to reply to |
 | `metadata` | `@@arg` | No | JSON string of key-value metadata |
 
-**Example -- send to queue:**
+**Example - send to queue:**
 
 ```
 [/send_message]
@@ -114,7 +114,7 @@ that the light attracts memories instead of ships.
 [send_message/]
 ```
 
-**Example -- send to broadcast with metadata:**
+**Example - send to broadcast with metadata:**
 
 ```
 [/send_message]
@@ -125,7 +125,7 @@ Brainstorming phase is done. Moving to planning.
 [send_message/]
 ```
 
-**Example -- reply to a previous message:**
+**Example - reply to a previous message:**
 
 ```
 [/send_message]
@@ -216,9 +216,9 @@ TriggerEvent(
 
 ## Prompt Awareness
 
-When a terrarium wires channels to a creature, the runtime injects a "Terrarium Channels" section into the creature's system prompt. This section lists the channels relevant to that creature with their types, roles, and descriptions. See [Architecture -- System Prompt Injection](architecture.md#system-prompt-injection) for the full format.
+When a terrarium wires channels to a creature, the runtime injects a "Terrarium Channels" section into the creature's system prompt. This section lists the channels relevant to that creature with their types, roles, and descriptions. See [Architecture - System Prompt Injection](architecture.md#system-prompt-injection) for the full format.
 
-Creatures learn about their channels through this prompt section and use `send_message` / `wait_channel` tools to interact. They do not need any special configuration to understand channels -- the prompt injection handles awareness.
+Creatures learn about their channels through this prompt section and use `send_message` / `wait_channel` tools to interact. They do not need any special configuration to understand channels - the prompt injection handles awareness.
 
 ## ChannelRegistry
 

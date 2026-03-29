@@ -2,7 +2,7 @@
 
 ## What Is a Terrarium?
 
-A Terrarium is the multi-agent orchestration layer in KohakuTerrarium. It takes standalone agents ("creatures"), places them in a shared environment, and wires them together through named channels. The terrarium itself contains no intelligence -- it is pure wiring: channels, triggers, lifecycle management, and prompt injection.
+A Terrarium is the multi-agent orchestration layer in KohakuTerrarium. It takes standalone agents ("creatures"), places them in a shared environment, and wires them together through named channels. The terrarium itself contains no intelligence - it is pure wiring: channels, triggers, lifecycle management, and prompt injection.
 
 Each creature is a fully self-contained agent with its own LLM, tools, sub-agents, and memory. Creatures are built and tested independently. The terrarium adds the horizontal coordination layer that lets them collaborate without modifying their internals.
 
@@ -10,7 +10,7 @@ Each creature is a fully self-contained agent with its own LLM, tools, sub-agent
 
 | Concept | Role |
 |---------|------|
-| **Creature** | A standalone agent placed into the terrarium. Opaque -- the terrarium does not inspect or modify its internals. |
+| **Creature** | A standalone agent placed into the terrarium. Opaque - the terrarium does not inspect or modify its internals. |
 | **Channel** | A named async message conduit connecting creatures. Two types: queue (point-to-point) and broadcast (all subscribers). |
 | **Trigger** | A `ChannelTrigger` injected into a creature so it reacts when messages arrive on its listen channels. |
 | **Topology** | The channel wiring between creatures. Emerges from configuration, not code. Supports pipeline, hub-and-spoke, group chat, and hybrid patterns. |
@@ -81,7 +81,7 @@ terrarium:
 
 ## Documentation
 
-- [Architecture](architecture.md) -- Two-level composition, runtime components, communication model
-- [Configuration Reference](configuration.md) -- Full YAML format, all fields, environment variables
-- [Channel System](channels.md) -- Channel types, tools, triggers, prompt awareness
-- [Setup Guide](setup.md) -- Step-by-step guide to creating your own terrarium
+- [Architecture](architecture.md) - Two-level composition, runtime components, communication model
+- [Configuration Reference](configuration.md) - Full YAML format, all fields, environment variables
+- [Channel System](channels.md) - Channel types, tools, triggers, prompt awareness
+- [Setup Guide](setup.md) - Step-by-step guide to creating your own terrarium
