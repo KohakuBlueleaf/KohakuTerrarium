@@ -141,72 +141,23 @@ async def main():
 asyncio.run(main())
 ```
 
-### Inject Input Programmatically
+### Programmatic Control
 
 ```python
 async def main():
     agent = Agent.from_path("agents/swe_agent")
     await agent.start()
 
-    # Send input without CLI
     await agent.inject_input("Create a hello world script")
+    agent.set_output_handler(lambda text: print(f"AI: {text}"))
 
-    # Check state
     print(agent.tools)       # ['bash', 'read', 'write', ...]
     print(agent.subagents)   # ['explore', 'plan', 'worker', ...]
 
     await agent.stop()
 ```
 
-### Custom Output Handler
-
-```python
-async def main():
-    agent = Agent.from_path("agents/swe_agent")
-
-    # Capture output with a callback
-    agent.set_output_handler(lambda text: print(f"AI: {text}"))
-
-    await agent.start()
-    await agent.inject_input("What files are in src/?")
-    await agent.stop()
-```
-
-### Wrap with FastAPI
-
-```python
-from fastapi import FastAPI, WebSocket
-from kohakuterrarium.core.agent import Agent
-
-app = FastAPI()
-agents: dict[str, Agent] = {}
-
-@app.post("/agents")
-async def create_agent(config_path: str = "agents/swe_agent"):
-    agent = Agent.from_path(config_path)
-    await agent.start()
-    agents[agent.config.name] = agent
-    return {"name": agent.config.name, "tools": agent.tools}
-
-@app.websocket("/agents/{name}/chat")
-async def chat(websocket: WebSocket, name: str):
-    await websocket.accept()
-    agent = agents[name]
-
-    # Capture streaming output
-    agent.set_output_handler(
-        lambda text: asyncio.ensure_future(websocket.send_text(text))
-    )
-
-    while True:
-        user_input = await websocket.receive_text()
-        await agent.inject_input(user_input)
-
-@app.on_event("shutdown")
-async def shutdown():
-    for agent in agents.values():
-        await agent.stop()
-```
+Agents can also be embedded in web servers (FastAPI, etc.) - see [Configuration Reference](docs/guides/configuration.md) for details.
 
 ## Built-in Tools (16)
 
@@ -231,19 +182,42 @@ async def shutdown():
 | `critic` | Review and critique | `response` | Generate user responses |
 | `summarize` | Condense long content | `research` | Web + file research |
 
-## Example Agents
+## Examples
 
-| Agent | Pattern | Key Feature |
-|-------|---------|-------------|
-| [swe_agent](agents/swe_agent/) | SWE coding assistant | think + scratchpad + worker/critic |
-| [swe_agent_tui](agents/swe_agent_tui/) | SWE assistant (TUI) | TUI input/output, shared session |
-| [novel_terrarium](agents/novel_terrarium/) | Multi-agent novel writer | 3 creatures, 5 channels, pipeline topology |
-| [multi_agent](agents/multi_agent/) | Multi-agent coordination | Parallel sub-agent dispatch |
-| [planner_agent](agents/planner_agent/) | Plan-execute-reflect | Scratchpad-driven planning |
-| [monitor_agent](agents/monitor_agent/) | Trigger-driven autonomous | Timer + channel triggers |
-| [conversational](agents/conversational/) | Streaming ASR/TTS chat | Interactive output sub-agent |
-| [discord_bot](agents/discord_bot/) | Group chat bot | Custom I/O, ephemeral mode |
-| [rp_agent](agents/rp_agent/) | Character roleplay | Memory-first personality |
+### Terrariums (Multi-Agent)
+
+| Terrarium | Topology | Creatures |
+|-----------|----------|-----------|
+| [novel_terrarium](agents/novel_terrarium/) | Pipeline with feedback | brainstorm, planner, writer |
+
+### Novel Writer Terrarium
+
+Three creatures collaborate to write a short story:
+
+```
+brainstorm --[ideas]--> planner --[outline]--> writer --[draft]-->
+     ^                                           |
+     +-------------------[feedback]--------------+
+```
+
+```bash
+# Run it
+python -m kohakuterrarium terrarium run agents/novel_terrarium/ --observe ideas outline
+
+# See the config
+python -m kohakuterrarium terrarium info agents/novel_terrarium/
+```
+
+Output: 4 chapters + compiled `novel.md` in the working directory.
+
+### Agents (Single)
+
+| Agent | Pattern |
+|-------|---------|
+| [swe_agent](agents/swe_agent/) | SWE coding assistant with native tool calling |
+| [swe_agent_tui](agents/swe_agent_tui/) | SWE assistant with TUI interface |
+| [planner_agent](agents/planner_agent/) | Plan-execute-reflect loop |
+| [monitor_agent](agents/monitor_agent/) | Trigger-driven autonomous agent |
 
 ## Configuration
 
