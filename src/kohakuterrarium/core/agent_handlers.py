@@ -204,6 +204,8 @@ class AgentHandlersMixin:
                         reason=self._termination_checker.reason,
                         turns=self._termination_checker.turn_count,
                     )
+                    # Stop the agent so it won't accept new triggers
+                    self._running = False
                     break
 
             # ===================================================================

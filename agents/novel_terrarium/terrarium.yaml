@@ -35,7 +35,7 @@ terrarium:
     outline:    { type: queue, description: "Chapter outlines from planner to writer" }
     draft:      { type: queue, description: "Completed chapter summaries" }
     feedback:   { type: queue, description: "Feedback from writer back to brainstorm" }
-    team_chat:  { type: broadcast, description: "Team-wide announcements (informational, no reply needed)" }
+    team_chat:  { type: broadcast, description: "Team-wide shared context and announcements" }
 
   interface:
     type: cli
