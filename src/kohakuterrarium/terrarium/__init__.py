@@ -7,6 +7,7 @@ from kohakuterrarium.terrarium.config import (
     TerrariumConfig,
     load_terrarium_config,
 )
+from kohakuterrarium.terrarium.hotplug import HotPlugMixin
 from kohakuterrarium.terrarium.observer import ChannelObserver, ObservedMessage
 from kohakuterrarium.terrarium.output_log import LogEntry, OutputLogCapture
 from kohakuterrarium.terrarium.runtime import TerrariumRuntime
@@ -15,6 +16,7 @@ __all__ = [
     "ChannelConfig",
     "ChannelObserver",
     "CreatureConfig",
+    "HotPlugMixin",
     "LogEntry",
     "ObservedMessage",
     "OutputLogCapture",

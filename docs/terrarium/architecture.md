@@ -291,6 +291,50 @@ Log access methods:
 
 The ring buffer size is controlled by `output_log_size` in the terrarium config (default 100). See [Configuration Reference](configuration.md) for the config fields. See [API Reference](api.md) for programmatic access patterns.
 
+## Hot-Plug
+
+The terrarium supports runtime modification of its topology. Creatures, channels, and triggers can be added or removed without stopping and restarting the entire system.
+
+### What Can Be Modified at Runtime
+
+| Component | Add | Remove | Notes |
+|-----------|-----|--------|-------|
+| Trigger (agent-level) | Yes | Yes | Starts/stops immediately |
+| System prompt (agent-level) | Append or replace | N/A | Takes effect on next LLM call |
+| Creature (terrarium-level) | Yes | Yes | Full wiring before first trigger |
+| Channel (terrarium-level) | Yes | N/A | Available immediately after creation |
+| Channel wiring | Yes | N/A | Adds trigger or send permission |
+
+### Timing Guarantees
+
+When a creature is added at runtime via `runtime.add_creature()`, the runtime performs the same wiring steps as during initial startup:
+
+1. Load the agent config from the creature's `config_path`.
+2. Create the `Agent` instance with the shared session.
+3. Inject `ChannelTrigger` instances for each listen channel.
+4. Inject channel topology into the system prompt.
+5. Start the agent.
+
+The creature is fully wired before its first trigger fires. There is no window where a partially-configured creature could receive a message.
+
+Similarly, `agent.add_trigger()` calls `trigger.start()` before creating the background task, so the trigger is fully initialized before it begins listening.
+
+### Session Sharing
+
+Hot-added creatures share the same `Session` (and therefore the same `ChannelRegistry`) as creatures that were present at startup. This means:
+
+- Hot-added creatures can immediately send to and receive from any existing channel.
+- Channels created via `runtime.add_channel()` are visible to all creatures, both existing and future.
+- There is no separate session for hot-added components.
+
+### Agent-Level vs Terrarium-Level
+
+Agent-level hot-plug methods (`add_trigger`, `remove_trigger`, `update_system_prompt`, `get_system_prompt`) operate on a single agent. They do not require a terrarium and can be used with standalone agents.
+
+Terrarium-level methods (`add_creature`, `remove_creature`, `add_channel`, `wire_channel`) coordinate across multiple agents and handle the wiring that the terrarium runtime normally performs at startup.
+
+See [API Reference](api.md#hot-plug-api) for method signatures and code examples.
+
 ## What the Terrarium Does NOT Do
 
 - It does **not** replace creature I/O modules. Creatures keep their original input/output.

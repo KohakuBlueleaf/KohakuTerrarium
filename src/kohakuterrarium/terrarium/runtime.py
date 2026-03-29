@@ -13,6 +13,7 @@ from kohakuterrarium.core.config import load_agent_config
 from kohakuterrarium.core.session import Session, get_session, set_session
 from kohakuterrarium.terrarium.config import CreatureConfig, TerrariumConfig
 from kohakuterrarium.terrarium.creature import CreatureHandle
+from kohakuterrarium.terrarium.hotplug import HotPlugMixin
 from kohakuterrarium.terrarium.output_log import OutputLogCapture
 from kohakuterrarium.utils.logging import get_logger
 from kohakuterrarium.builtins.inputs.none import NoneInput
@@ -80,9 +81,7 @@ def _build_channel_topology_prompt(
             roles.append("send")
         role_str = f" ({', '.join(roles)})" if roles else ""
 
-        lines.append(
-            f"- `{ch_name}` [{ch_cfg.channel_type}]{role_str}{desc}"
-        )
+        lines.append(f"- `{ch_name}` [{ch_cfg.channel_type}]{role_str}{desc}")
 
     lines.append("")
 
@@ -95,12 +94,15 @@ def _build_channel_topology_prompt(
     return "\n".join(lines)
 
 
-class TerrariumRuntime:
+class TerrariumRuntime(HotPlugMixin):
     """
     Multi-agent orchestration runtime.
 
     Loads creature configs, creates channels, wires triggers,
     and manages lifecycle.  No intelligence -- pure wiring.
+
+    Hot-plug methods (add_creature, remove_creature, add_channel,
+    wire_channel) are provided by HotPlugMixin.
     """
 
     def __init__(self, config: TerrariumConfig):

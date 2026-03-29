@@ -349,3 +349,123 @@ entry.preview(80)  # "First 80 characters of content..."
 ### Ring buffer behavior
 
 The buffer is a `collections.deque` with a fixed `maxlen`. When full, the oldest entries are discarded automatically. The size is set by `output_log_size` in the terrarium config (default 100).
+
+## Hot-Plug API
+
+Add or remove creatures, channels, and triggers at runtime without restarting the terrarium. The hot-plug API operates at two levels: individual agents and the terrarium runtime.
+
+### Agent-Level
+
+These methods are on the `Agent` class and can be called while the agent is running.
+
+#### `agent.add_trigger(trigger) -> None`
+
+Add and start a trigger on a running agent. The trigger begins listening and firing events immediately.
+
+```python
+from kohakuterrarium.modules.trigger.channel import ChannelTrigger
+
+trigger = ChannelTrigger(
+    channel_name="alerts",
+    subscriber_id="my_agent",
+    session=agent.session,
+)
+await agent.add_trigger(trigger)
+```
+
+The trigger is appended to `agent._triggers` and a background task is created to run its event loop.
+
+#### `agent.remove_trigger(trigger) -> None`
+
+Stop and remove a trigger from a running agent. The trigger's background task is cancelled and the trigger is stopped.
+
+```python
+await agent.remove_trigger(trigger)
+# trigger.is_running is now False
+```
+
+If the trigger is not found in the agent's trigger list, this is a no-op.
+
+#### `agent.update_system_prompt(content, replace=False) -> None`
+
+Update the system prompt of a running agent. By default, new content is appended. Pass `replace=True` to replace the entire prompt.
+
+```python
+# Append a new section
+agent.update_system_prompt("## New Instructions\nAlways respond in JSON.")
+
+# Replace the whole prompt
+agent.update_system_prompt("You are a JSON-only agent.", replace=True)
+```
+
+The change takes effect on the next LLM call. Previous conversation history is not affected.
+
+#### `agent.get_system_prompt() -> str`
+
+Read the current system prompt text.
+
+```python
+current = agent.get_system_prompt()
+print(len(current), "characters")
+```
+
+### Terrarium-Level
+
+These methods are on the `TerrariumRuntime` class and operate on the running terrarium.
+
+#### `runtime.add_creature(config) -> None`
+
+Add and start a new creature in the running terrarium. The creature is fully wired (channels, triggers, system prompt injection) before its agent starts.
+
+```python
+from kohakuterrarium.terrarium.config import CreatureConfig
+
+new_creature = CreatureConfig(
+    name="reviewer",
+    config_path="agents/swe_agent",
+    listen_channels=["review_requests"],
+    send_channels=["review_results"],
+)
+await runtime.add_creature(new_creature)
+```
+
+Raises `RuntimeError` if the terrarium is not running or a creature with the same name already exists.
+
+#### `runtime.remove_creature(name) -> bool`
+
+Stop and remove a creature from the running terrarium. Returns `True` if the creature was found and removed, `False` if no creature with that name exists.
+
+```python
+removed = await runtime.remove_creature("reviewer")
+if removed:
+    print("Reviewer removed")
+```
+
+The creature's agent is stopped and its entry is removed from the runtime's creature registry.
+
+#### `runtime.add_channel(name, type, description) -> None`
+
+Create a new channel in the shared session's channel registry.
+
+```python
+await runtime.add_channel("alerts", "broadcast", "System-wide alerts")
+```
+
+The channel is immediately available for wiring and message passing. Existing creatures are not automatically connected to it; use `wire_channel` to set up connections.
+
+#### `runtime.wire_channel(creature, channel, direction) -> None`
+
+Connect a creature to a channel. The `direction` parameter controls the connection type:
+
+- `"listen"` - adds a `ChannelTrigger` to the creature so it receives messages from the channel.
+- `"send"` - adds the channel to the creature's `send_channels` list so it can send messages.
+
+```python
+# Make the reviewer listen for review requests
+await runtime.wire_channel("reviewer", "review_requests", "listen")
+
+# Let the reviewer send results
+await runtime.wire_channel("reviewer", "review_results", "send")
+```
+
+Raises `ValueError` (or `KeyError`) if the creature does not exist.
