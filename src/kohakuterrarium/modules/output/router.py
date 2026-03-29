@@ -114,6 +114,9 @@ class OutputRouter:
         # Track completed outputs for feedback to controller
         self._completed_outputs: list[CompletedOutput] = []
 
+        # Secondary output modules (receive copies of all text output)
+        self._secondary_outputs: list[OutputModule] = []
+
     @property
     def state(self) -> OutputState:
         """Current output state."""
@@ -176,6 +179,10 @@ class OutputRouter:
         """Get list of registered output target names."""
         return list(self.named_outputs.keys())
 
+    def add_secondary(self, output: OutputModule) -> None:
+        """Add a secondary output that receives copies of all text output."""
+        self._secondary_outputs.append(output)
+
     async def start(self) -> None:
         """Start the router and output modules."""
         await self.default_output.start()
@@ -227,9 +234,12 @@ class OutputRouter:
 
     async def _handle_text(self, text: str) -> None:
         """Handle text event based on current state."""
+        # Always send to secondary outputs (for API streaming, logging, etc.)
+        for secondary in self._secondary_outputs:
+            await secondary.write_stream(text)
+
         match self._state:
             case OutputState.NORMAL:
-                # Default output (stdout) - for model "thinking"
                 await self.default_output.write_stream(text)
 
             case OutputState.TOOL_BLOCK:
@@ -241,11 +251,9 @@ class OutputRouter:
                     await self.default_output.write_stream(text)
 
             case OutputState.COMMAND_BLOCK:
-                # Commands are typically suppressed
                 pass
 
             case OutputState.OUTPUT_BLOCK:
-                # Output blocks are handled via OutputEvent, suppress streaming
                 pass
 
     async def _handle_output(self, event: OutputEvent) -> None:
