@@ -99,7 +99,7 @@ class TestAgentChannel:
     """Tests for broadcast channel."""
 
     async def test_broadcast_all_subscribers_receive(self):
-        """All subscribers get every message."""
+        """All non-sender subscribers get every message."""
         ch = AgentChannel("discussion")
         sub_a = ch.subscribe("agent_a")
         sub_b = ch.subscribe("agent_b")
@@ -107,24 +107,23 @@ class TestAgentChannel:
 
         await ch.send(ChannelMessage(sender="agent_a", content="hello everyone"))
 
-        # All three should receive
-        msg_a = await sub_a.receive(timeout=1.0)
+        # B and C should receive (not A, sender is skipped)
         msg_b = await sub_b.receive(timeout=1.0)
         msg_c = await sub_c.receive(timeout=1.0)
 
-        assert msg_a.content == "hello everyone"
         assert msg_b.content == "hello everyone"
         assert msg_c.content == "hello everyone"
-        # Same message_id (same message broadcast)
-        assert msg_a.message_id == msg_b.message_id == msg_c.message_id
+        assert msg_b.message_id == msg_c.message_id
 
-    async def test_broadcast_sender_receives_own(self):
-        """Sender also receives their own message if subscribed."""
+        # Sender's queue should be empty
+        assert sub_a.try_receive() is None
+
+    async def test_broadcast_sender_not_echoed(self):
+        """Sender does NOT receive their own message (no self-echo)."""
         ch = AgentChannel("chat")
         sub = ch.subscribe("agent_a")
-        await ch.send(ChannelMessage(sender="agent_a", content="echo"))
-        msg = await sub.receive(timeout=1.0)
-        assert msg.content == "echo"
+        await ch.send(ChannelMessage(sender="agent_a", content="hello"))
+        assert sub.try_receive() is None
 
     async def test_late_subscriber_misses_old_messages(self):
         """Subscriber added after send doesn't get old messages."""
