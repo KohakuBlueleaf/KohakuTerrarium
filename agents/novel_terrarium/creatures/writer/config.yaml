@@ -10,6 +10,7 @@ controller:
   max_tokens: 16384
   api_key_env: OPENROUTER_API_KEY
   base_url: https://openrouter.ai/api/v1
+  tool_format: native
 
 system_prompt_file: prompts/system.md
 

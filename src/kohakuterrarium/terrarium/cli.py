@@ -26,9 +26,23 @@ def add_terrarium_subparser(subparsers: argparse._SubParsersAction) -> None:
         default="INFO",
     )
     run_p.add_argument(
+        "--seed",
+        help="Seed prompt to inject into the 'seed' channel on startup",
+    )
+    run_p.add_argument(
+        "--seed-channel",
+        default="seed",
+        help="Channel to send the seed prompt to (default: seed)",
+    )
+    run_p.add_argument(
         "--observe",
         nargs="*",
-        help="Channels to observe (prints messages)",
+        help="Channels to observe. Omit to observe all channels.",
+    )
+    run_p.add_argument(
+        "--no-observe",
+        action="store_true",
+        help="Disable channel observation",
     )
 
     # terrarium info <path>
@@ -69,54 +83,56 @@ def _run_terrarium_cli(args: argparse.Namespace) -> int:
     print(f"Terrarium: {config.name}")
     print(f"Creatures: {[c.name for c in config.creatures]}")
     print(f"Channels: {[c.name for c in config.channels]}")
+
+    # Prompt for seed if not provided and seed channel exists
+    seed_prompt = args.seed
+    seed_channel = args.seed_channel
+    has_seed_channel = any(c.name == seed_channel for c in config.channels)
+
+    if has_seed_channel and not seed_prompt:
+        print()
+        try:
+            seed_prompt = input(f"Enter seed prompt (for '{seed_channel}' channel): ")
+        except (EOFError, KeyboardInterrupt):
+            print("\nCancelled")
+            return 0
+
+    if seed_prompt:
+        print(f"Seed: {seed_prompt[:80]}")
     print()
 
     async def _run() -> None:
         runtime = TerrariumRuntime(config)
+        await runtime.start()
 
-        # Setup channel observation if requested
-        observe_channels = args.observe or []
-        if observe_channels:
-            await runtime.start()
-            # Try to import and setup observer
-            try:
-                from kohakuterrarium.terrarium.observer import ChannelObserver
+        # Setup observer
+        observer = None
+        if not args.no_observe:
+            observer = await _setup_observer(runtime, args, config)
 
-                observer = ChannelObserver(runtime._session)
+        # Inject seed prompt
+        if seed_prompt and has_seed_channel:
+            await runtime.api.send_to_channel(
+                seed_channel, seed_prompt, sender="human"
+            )
+            print(f"  Seed sent to '{seed_channel}' channel")
+            print()
 
-                def print_message(msg):
-                    ts = msg.timestamp.strftime("%H:%M:%S")
-                    content_preview = msg.content[:80].replace("\n", "\\n")
-                    print(
-                        f"  [{ts}] [{msg.channel}] " f"{msg.sender}: {content_preview}"
-                    )
-
-                observer.on_message(print_message)
-                for ch_name in observe_channels:
-                    await observer.observe(ch_name)
-                    print(f"  Observing: {ch_name}")
-                print()
-            except ImportError:
-                observer = None
-                print("Warning: Observer not available")
-
-            # Run creature tasks (already started, just launch loops)
-            try:
-                for handle in runtime._creatures.values():
-                    task = asyncio.create_task(
-                        runtime._run_creature(handle),
-                        name=f"creature_{handle.name}",
-                    )
-                    runtime._creature_tasks.append(task)
-                await asyncio.gather(*runtime._creature_tasks, return_exceptions=True)
-            except KeyboardInterrupt:
-                pass
-            finally:
-                if observer is not None:
-                    await observer.stop()
-                await runtime.stop()
-        else:
-            await runtime.run()
+        # Run creature tasks
+        try:
+            for handle in runtime._creatures.values():
+                task = asyncio.create_task(
+                    runtime._run_creature(handle),
+                    name=f"creature_{handle.name}",
+                )
+                runtime._creature_tasks.append(task)
+            await asyncio.gather(*runtime._creature_tasks, return_exceptions=True)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            if observer is not None:
+                await observer.stop()
+            await runtime.stop()
 
     try:
         asyncio.run(_run())
@@ -127,6 +143,36 @@ def _run_terrarium_cli(args: argparse.Namespace) -> int:
     except Exception as e:
         print(f"Error: {e}")
         return 1
+
+
+async def _setup_observer(runtime, args, config):
+    """Setup channel observer and return it."""
+    from kohakuterrarium.terrarium.observer import ChannelObserver
+
+    observer = ChannelObserver(runtime._session)
+
+    def print_message(msg):
+        ts = msg.timestamp.strftime("%H:%M:%S")
+        content_preview = msg.content[:100].replace("\n", "\\n")
+        print(f"  [{ts}] [{msg.channel}] {msg.sender}: {content_preview}")
+
+    observer.on_message(print_message)
+
+    # Determine which channels to observe
+    if args.observe is not None:
+        # Explicit list (--observe ideas outline)
+        channels = args.observe if args.observe else []
+    else:
+        # Default: observe all channels
+        channels = [c.name for c in config.channels]
+
+    for ch_name in channels:
+        await observer.observe(ch_name)
+
+    if channels:
+        print(f"  Observing: {', '.join(channels)}")
+
+    return observer
 
 
 def _info_terrarium_cli(args: argparse.Namespace) -> int:
@@ -160,7 +206,7 @@ def _info_terrarium_cli(args: argparse.Namespace) -> int:
 
     print(f"\nChannels ({len(config.channels)}):")
     for ch in config.channels:
-        desc = f" -- {ch.description}" if ch.description else ""
+        desc = f" - {ch.description}" if ch.description else ""
         print(f"  {ch.name} ({ch.channel_type}){desc}")
 
     return 0
