@@ -130,39 +130,60 @@ The critic will review each chapter and send feedback before the writer continue
 
 ## Hot-Plug Architecture
 
-For the root agent to work, the terrarium layer needs hot-plug support:
+For the root agent to work, the terrarium layer needs hot-plug support. Code analysis reveals what works today and what needs building.
 
-### Hot-Add Creature
-1. Load creature config
-2. Create Agent instance with shared session
-3. Inject ChannelTriggers for listen channels
-4. Inject channel topology into system prompt
-5. Start the agent
-6. Add to runtime's creature registry
+### What Already Works (No Changes Needed)
 
-### Hot-Remove Creature
-1. Set creature's `_running = False`
-2. Cancel creature's trigger tasks
-3. Stop the agent
-4. Unsubscribe from broadcast channels
-5. Remove from runtime's creature registry
+**Channel creation at runtime** - `ChannelRegistry.get_or_create()` is fully dynamic. Call it anytime, channels appear instantly. Messages can flow immediately.
 
-### Hot-Add Channel
-1. Create channel in shared ChannelRegistry (queue or broadcast)
-2. Update topology prompts for affected creatures (if needed)
+**Session sharing** - Sessions are global singletons keyed by session_key. Any agent created with the same session_key automatically shares channels and scratchpad. Hot-added creatures join the shared session by design.
 
-### Hot-Wire Channel
-1. Create ChannelTrigger for the creature
-2. Start the trigger
-3. Add to creature's trigger list
-4. Optionally update the creature's system prompt
+### What Needs Building
 
-### Config Hot-Reload
-1. Stop creature
-2. Reload config from file or dict
-3. Rebuild agent with new config
-4. Re-inject triggers and topology
-5. Restart
+**1. Agent.add_trigger() / remove_trigger()** (Small, ~50-100 lines in `agent.py`)
+
+Currently triggers are only added during `Agent.__init__` and started during `Agent.start()`. No way to add a trigger to a running agent. Need:
+- `async def add_trigger(trigger)` - start trigger + create task
+- `async def remove_trigger(trigger)` - cancel task + stop trigger
+
+**2. Agent.update_system_prompt()** (Small, ~20-30 lines in `agent.py`)
+
+The mechanism exists (mutate `conversation.get_system_message().content`) but isn't exposed as a clean API. Need:
+- `async def update_system_prompt(new_text)` - update the system message in the conversation
+
+**3. In-memory AgentConfig** (Small, ~0-30 lines in `loader.py`)
+
+`Agent.__init__(config: AgentConfig)` already works without disk. The only issue: `ModuleLoader` warns when `agent_path` is None. For builtin-only agents (the common case for hot-plug), this is not a blocker. For custom modules, need ModuleLoader to handle None gracefully.
+
+**4. TerrariumRuntime.add_creature()** (Medium, ~100-150 lines in `runtime.py`)
+
+The `_build_creature()` method does all wiring but is only called during `start()`. Need:
+- `async def add_creature(config)` - build + wire + start + launch task
+- Refactor task creation out of `run()` into a reusable `_start_creature_task()`
+- Handle timing: creature must be fully wired before its first trigger fires
+
+**5. TerrariumRuntime.remove_creature()** (Small, ~50 lines in `runtime.py`)
+
+Need:
+- Set `_running = False` on the creature's agent
+- Cancel the creature's task
+- Stop the agent (cleanup triggers, output)
+- Unsubscribe from broadcast channels
+- Remove from `_creatures` dict
+
+### Summary
+
+| Component | Status | Effort |
+|-----------|--------|--------|
+| Channel creation | Works as-is | 0 |
+| Session sharing | Works as-is | 0 |
+| Agent.add_trigger() | Needs new code | Small |
+| Agent.update_system_prompt() | Needs small wrapper | Small |
+| In-memory AgentConfig | Works for builtins | Small |
+| TerrariumRuntime.add_creature() | Needs new code | Medium |
+| TerrariumRuntime.remove_creature() | Needs new code | Small |
+
+**Total for MVP hot-plug: ~200-360 lines of new code. All additive, no breaking changes.**
 
 ## The Root Agent's Own Config
 

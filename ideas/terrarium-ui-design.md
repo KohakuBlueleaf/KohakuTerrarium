@@ -308,12 +308,180 @@ my_terrarium.zip
 
 Import: extract zip, run `kohaku terrarium run ./my_terrarium/`
 
+## Topology Graph: Channels as First-Class Nodes
+
+Drawing individual edges between agents doesn't scale. With 12 agents on one broadcast channel, you'd get 66 edges. Unusable.
+
+**Solution**: Channels are visual nodes, not edges.
+
+```
+Instead of (N*N edges):     Use (N+1 nodes):
+
+  A ----> B                   A --\
+  A ----> C                        +-->[tasks queue]--+--> B
+  A ----> D                   E --/                   +--> C
+  E ----> B                                           +--> D
+  E ----> C
+  E ----> D
+  (6 edges)                   (4 creature-to-channel edges)
+```
+
+The graph has TWO node types:
+- **Creature nodes** (circles/rounded rects) - agent instances
+- **Channel nodes** (smaller rects, color-coded) - queue or broadcast
+
+Connections are always creature-to-channel or channel-to-creature. This naturally handles all topologies:
+
+| Pattern | Visual |
+|---------|--------|
+| 1:1 queue | `A --> [ch] --> B` |
+| N:1 fan-in | `A,B,C --> [ch] --> D` |
+| 1:N broadcast | `A --> [ch] --> B,C,D` |
+| N:N group chat | `A,B,C <--> [ch] <--> A,B,C` (bidirectional) |
+
+UI interactions:
+- Click creature node: show status, output log, controls (stop/restart)
+- Click channel node: filter the channel stream to that channel
+- Hover edge: highlight the flow direction (send vs listen)
+- Animate edges when messages flow through (pulse effect)
+- For config editor: drag to connect creatures to channels
+
+Library options: vue-flow (most flexible), D3 (powerful but manual), plain SVG (simplest, may be enough)
+
+## Implementation Phases
+
+### Phase A: Hot-Plug API (Python, no HTTP)
+
+Enable adding/removing creatures and channels at runtime. Required for the root agent and for runtime management via any interface.
+
+**New methods on Agent:**
+- `add_trigger(trigger)` - add and start a trigger on a running agent
+- `remove_trigger(trigger)` - stop and remove a trigger
+
+**New methods on TerrariumRuntime:**
+- `add_creature(config)` - create, wire, and start a new creature
+- `remove_creature(name)` - stop, cleanup, and remove a creature
+- `add_channel(name, type, desc)` - create a channel at runtime
+- `wire_channel(creature, channel, direction)` - connect creature to channel
+
+**Other:**
+- Support in-memory AgentConfig (no disk path required)
+- System prompt update at runtime (replace topology section)
+
+Estimated: ~300 lines of new code across Agent + TerrariumRuntime. No architectural changes.
+
+### Phase B: HTTP API (FastAPI, no frontend)
+
+Backend that wraps the Python API. Testable with curl/httpie/any HTTP client. This is also what Claude Code or other agent CLIs would use.
+
+**Deliverables:**
+```
+src/kohakuterrarium/web/
+  app.py              FastAPI app factory
+  routes/
+    terrariums.py     CRUD + lifecycle
+    creatures.py      Status + control
+    channels.py       List + send + history
+    agents.py         Standalone agent chat
+    configs.py        Config CRUD + validate + export
+  ws.py               WebSocket handlers (channel stream, agent chat)
+  manager.py          TerrariumManager (multiple concurrent terrariums)
+  models.py           SQLite models (config storage, message history)
+  schemas.py          Pydantic schemas
+```
+
+**Key decisions:**
+- SQLite for persistence (configs, message history, run logs)
+- WebSocket for real-time (channel messages, creature events, chat streaming)
+- Pydantic for request/response validation
+- CORS enabled for dev (frontend on different port)
+
+**Testable milestone:** Run a terrarium via HTTP:
+```bash
+curl -X POST localhost:8000/api/terrariums -d '{"config_path": "agents/novel_terrarium/"}'
+curl localhost:8000/api/terrariums/1/channels
+wscat -c ws://localhost:8000/ws/terrariums/1/channels  # live stream
+curl -X POST localhost:8000/api/terrariums/1/channels/seed/send -d '{"content": "Write a story"}'
+```
+
+### Phase C: Frontend Skeleton (Vue3, basic pages)
+
+Minimal viable frontend. Four pages, functional but not polished.
+
+**Deliverables:**
+```
+web/frontend/
+  src/
+    pages/
+      index.vue             Dashboard (list terrariums + agents)
+      terrarium/[id].vue    Terrarium viewer
+      agent/[id].vue        Agent chat
+      config/new.vue        Config editor (basic)
+    components/
+      TopologyGraph.vue     Channel-as-node graph
+      ChannelStream.vue     Real-time message feed
+      CreatureStatus.vue    Status cards
+      ChatMessage.vue       Chat bubble
+    stores/
+      terrarium.ts          Pinia store for terrarium state
+      websocket.ts          WebSocket connection manager
+    api/
+      client.ts             HTTP API client
+```
+
+**Terrarium viewer layout:**
+```
++-------------------+---------------------------+
+| TopologyGraph     | ChannelStream             |
+| (vue-flow or SVG) | (scrolling message feed)  |
+|                   |                           |
+|  [creature]       | [ideas] brainstorm: ...   |
+|     |             | [outline] planner: ...    |
+|  [channel]        |                           |
+|     |             | > Send: [channel] [msg]   |
+|  [creature]       |                           |
++-------------------+---------------------------+
+| CreatureStatus bar                             |
+| [brainstorm:DONE] [planner:RUN] [writer:2/4]  |
++------------------------------------------------+
+```
+
+**Agent chat layout:**
+```
++------------------------------------------------+
+| Agent: swe_agent                    [Stop]     |
++------------------------------------------------+
+| System prompt (collapsible)                    |
++------------------------------------------------+
+|                                                |
+| User: Fix the auth bug                        |
+|                                                |
+| Agent: I'll investigate the auth module...     |
+|   [tool: bash] ls src/auth/                    |
+|   [tool: read] src/auth/middleware.py          |
+|   Found the issue in line 42...                |
+|                                                |
+| > [Type a message...]                [Send]   |
++------------------------------------------------+
+```
+
+### Phase D: UI Polish + Advanced Features
+
+- Config editor with visual topology wiring (drag to connect)
+- Export/import terrarium as zip
+- Real-time edge animation on topology graph
+- Creature output log viewer (expandable)
+- Message search across channels
+- Run history (past terrarium runs)
+- Dark mode / theme support
+
 ## Summary
 
-The current API is a foundation. For a full Web UI, we need:
-1. HTTP REST API wrapping `TerrariumAPI` + config CRUD
-2. WebSocket streams for real-time channel/creature observation
-3. `TerrariumManager` for multiple concurrent terrariums
-4. SQLite for persistent config storage and message history
-5. Vue3 frontend with topology graph, channel stream, and creature details
-6. Agent chat interface for standalone creatures
+| Phase | What | Depends On | Effort |
+|-------|------|-----------|--------|
+| A | Hot-plug Python API | - | Small (~300 lines) |
+| B | HTTP API + WebSocket | A | Medium (~800 lines) |
+| C | Vue3 frontend skeleton | B | Medium-Large |
+| D | Polish + advanced features | C | Ongoing |
+
+Phase A unblocks everything. Phase B makes it usable by any client (Claude Code, curl, frontend). Phase C gives us the visual experience. Phase D is iterative polish.
