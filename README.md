@@ -1,27 +1,38 @@
 # KohakuTerrarium
 
-**A universal agent framework for building fully autonomous systems.**
+**A universal agent framework with peer-to-peer multi-agent orchestration.**
 
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-green)
 
 ---
 
-KohakuTerrarium is a Python framework for building any kind of agent -- coding assistants, conversational AI, monitoring drones, multi-agent swarms. Define your agent in YAML, pick tools and sub-agents, and let the framework handle orchestration, streaming, and coordination.
+KohakuTerrarium is a Python framework for building any kind of agent -- coding assistants, conversational AI, monitoring drones, multi-agent teams. It provides **two levels of agent composition**:
+
+1. **Creature** -- a self-contained agent with its own LLM, tools, sub-agents, and memory. Handles task decomposition internally via hierarchical sub-agents.
+2. **Terrarium** -- a runtime that wires multiple standalone creatures together via channels for peer-to-peer collaboration. No creature is special. The terrarium is pure wiring, not intelligence.
+
+Build agents individually, test them standalone, then place them in a terrarium to collaborate.
 
 ## Key Features
 
+### Agent Framework (Creature)
 - **Any agent type** -- SWE agents, chatbots, autonomous monitors, multi-agent coordinators
 - **Async-first execution** -- tools start during LLM streaming, run in parallel via `asyncio`
 - **Nested sub-agents** -- full agents with their own LLM, tools, and lifecycle
-- **Session registry** -- keyed shared state (`channels`, `scratchpad`, TUI, extras) per agent or shared across agents
-- **TUI input/output** -- built-in terminal UI modules with shared session for richer interactive experience
-- **Channel-based coordination** -- async named message queues for cross-agent communication
 - **YAML-driven config** -- define agents declaratively, minimal code required
 - **16 built-in tools** -- bash, read, write, edit, glob, grep, http, think, scratchpad, and more
 - **10 built-in sub-agents** -- explore, plan, worker, critic, summarize, research, coordinator, and more
 - **Trigger system** -- timers, channel events for autonomous operation
 - **On-demand docs** -- tool documentation loaded only when the LLM requests it
+
+### Multi-Agent Orchestration (Terrarium)
+- **Peer-to-peer channels** -- queue (point-to-point) and broadcast (all subscribers) channel types
+- **Zero-modification wiring** -- standalone creatures work in a terrarium without config changes
+- **Trigger-based receiving** -- channel messages arrive automatically as events, no polling
+- **Explicit sending** -- creatures decide what to communicate via `send_message`
+- **Topology-aware prompts** -- system prompt auto-injects channel info with descriptions
+- **Lifecycle management** -- start, stop, monitor all creatures from one runtime
 
 ## Quick Start
 
