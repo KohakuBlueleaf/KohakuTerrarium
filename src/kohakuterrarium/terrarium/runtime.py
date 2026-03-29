@@ -15,6 +15,7 @@ from kohakuterrarium.core.session import Session, get_session, set_session
 from kohakuterrarium.modules.trigger.channel import ChannelTrigger
 from kohakuterrarium.terrarium.config import CreatureConfig, TerrariumConfig
 from kohakuterrarium.terrarium.creature import CreatureHandle
+from kohakuterrarium.terrarium.output_log import OutputLogCapture
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -103,6 +104,30 @@ class TerrariumRuntime:
         self._session: Session | None = None
         self._running = False
         self._creature_tasks: list[asyncio.Task] = []
+
+    # ------------------------------------------------------------------
+    # Lazy-initialized API / observer
+    # ------------------------------------------------------------------
+
+    @property
+    def api(self) -> "TerrariumAPI":
+        """Get the programmatic API for this runtime."""
+        if not hasattr(self, "_api"):
+            from kohakuterrarium.terrarium.api import TerrariumAPI
+
+            self._api = TerrariumAPI(self)
+        return self._api
+
+    @property
+    def observer(self) -> "ChannelObserver":
+        """Get the channel observer."""
+        if not hasattr(self, "_observer"):
+            from kohakuterrarium.terrarium.observer import ChannelObserver
+
+            if self._session is None:
+                raise RuntimeError("Cannot create observer before terrarium is started")
+            self._observer = ChannelObserver(self._session)
+        return self._observer
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -287,12 +312,23 @@ class TerrariumRuntime:
         if topology_prompt:
             self._inject_prompt_section(agent, topology_prompt)
 
+        # -- Output log capture --
+        capture: OutputLogCapture | None = None
+        if creature_cfg.output_log:
+            capture = OutputLogCapture(
+                agent.output_router.default_output,
+                max_entries=creature_cfg.output_log_size,
+            )
+            agent.output_router.default_output = capture
+            logger.debug("Output log attached", creature=creature_cfg.name)
+
         return CreatureHandle(
             name=creature_cfg.name,
             agent=agent,
             config=creature_cfg,
             listen_channels=list(creature_cfg.listen_channels),
             send_channels=list(creature_cfg.send_channels),
+            output_log=capture,
         )
 
     @staticmethod
