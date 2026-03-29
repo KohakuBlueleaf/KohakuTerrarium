@@ -15,6 +15,7 @@ Each creature is a fully self-contained agent with its own LLM, tools, sub-agent
 | **Trigger** | A `ChannelTrigger` injected into a creature so it reacts when messages arrive on its listen channels. |
 | **Topology** | The channel wiring between creatures. Emerges from configuration, not code. Supports pipeline, hub-and-spoke, group chat, and hybrid patterns. |
 | **API** | `TerrariumAPI` provides programmatic access to channels, creatures, and runtime status. See [API Reference](api.md). |
+| **Hot-Plug** | Add/remove creatures and channels at runtime without restarting. See [Hot-Plug API](api.md#hot-plug-api) and [Architecture](architecture.md#hot-plug). |
 | **Observer** | `ChannelObserver` watches channel traffic non-destructively. Broadcast channels are subscribed silently; queue messages are recorded via the API. |
 | **Output Log** | `OutputLogCapture` wraps a creature's output module and records everything into a ring buffer for later retrieval. Enabled per-creature in config. |
 | **CLI** | Built-in commands (`terrarium run`, `terrarium info`) for running and inspecting terrariums from the terminal. |
