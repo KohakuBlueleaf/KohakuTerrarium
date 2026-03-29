@@ -13,6 +13,8 @@ These tests run offline without API keys.
 import pytest
 
 from kohakuterrarium.parsing import (
+    BRACKET_FORMAT,
+    XML_FORMAT,
     CommandEvent,
     DEFAULT_COMMANDS,
     DEFAULT_CONTENT_ARG_MAP,
@@ -21,6 +23,7 @@ from kohakuterrarium.parsing import (
     StreamParser,
     SubAgentCallEvent,
     TextEvent,
+    ToolCallFormat,
     ToolCallEvent,
     extract_subagent_calls,
     extract_text,
@@ -415,3 +418,149 @@ class TestKnownTags:
         """Test that all expected commands are in DEFAULT_COMMANDS."""
         expected = {"info", "read_job"}
         assert expected.issubset(DEFAULT_COMMANDS)
+
+
+class TestXMLFormat:
+    """Tests for XML-style tool call format."""
+
+    def test_xml_tool_call(self):
+        """Test basic XML format tool call."""
+        config = ParserConfig(tool_format=XML_FORMAT, known_tools={"bash"})
+        parser = StreamParser(config)
+        events = parser.feed("<bash>ls -la</bash>")
+        events.extend(parser.flush())
+        tools = extract_tool_calls(events)
+        assert len(tools) == 1
+        assert tools[0].name == "bash"
+        assert tools[0].args.get("command") == "ls -la"
+
+    def test_xml_with_attributes(self):
+        """Test XML format with inline attributes and self-closing tag."""
+        config = ParserConfig(tool_format=XML_FORMAT, known_tools={"read"})
+        parser = StreamParser(config)
+        events = parser.feed('<read path="main.py"/>')
+        events.extend(parser.flush())
+        tools = extract_tool_calls(events)
+        assert len(tools) == 1
+        assert tools[0].args.get("path") == "main.py"
+
+    def test_xml_mixed_html_not_parsed(self):
+        """HTML tags that aren't known tools should pass through as text."""
+        config = ParserConfig(tool_format=XML_FORMAT, known_tools={"bash"})
+        parser = StreamParser(config)
+        events = parser.feed("<div>hello</div>")
+        events.extend(parser.flush())
+        tools = extract_tool_calls(events)
+        assert len(tools) == 0  # div is not a known tool
+        text = extract_text(events)
+        assert "hello" in text
+
+    def test_xml_with_attrs_and_content(self):
+        """Test XML format with both attributes and body content."""
+        config = ParserConfig(tool_format=XML_FORMAT, known_tools={"write"})
+        parser = StreamParser(config)
+        events = parser.feed('<write path="test.py">print("hello")</write>')
+        events.extend(parser.flush())
+        tools = extract_tool_calls(events)
+        assert len(tools) == 1
+        assert tools[0].args.get("path") == "test.py"
+        assert tools[0].args.get("content") == 'print("hello")'
+
+    def test_xml_streaming_chunks(self):
+        """Test XML format with character-by-character streaming."""
+        config = ParserConfig(tool_format=XML_FORMAT, known_tools={"bash"})
+        parser = StreamParser(config)
+        text = "<bash>echo hi</bash>"
+        all_events = []
+        for char in text:
+            all_events.extend(parser.feed(char))
+        all_events.extend(parser.flush())
+        tools = extract_tool_calls(all_events)
+        assert len(tools) == 1
+        assert tools[0].args.get("command") == "echo hi"
+
+    def test_xml_multiple_tool_calls(self):
+        """Test multiple XML tool calls in sequence."""
+        config = ParserConfig(tool_format=XML_FORMAT, known_tools={"bash"})
+        parser = StreamParser(config)
+        events = parser.feed("<bash>ls</bash>\n<bash>pwd</bash>")
+        events.extend(parser.flush())
+        tools = extract_tool_calls(events)
+        assert len(tools) == 2
+        assert tools[0].args.get("command") == "ls"
+        assert tools[1].args.get("command") == "pwd"
+
+    def test_xml_text_around_tool(self):
+        """Test that text before and after XML tool calls is preserved."""
+        config = ParserConfig(tool_format=XML_FORMAT, known_tools={"bash"})
+        parser = StreamParser(config)
+        events = parser.feed("before <bash>ls</bash> after")
+        events.extend(parser.flush())
+        tools = extract_tool_calls(events)
+        assert len(tools) == 1
+        text = extract_text(events)
+        assert "before" in text
+        assert "after" in text
+
+    def test_xml_command(self):
+        """Test XML format with a framework command."""
+        config = ParserConfig(tool_format=XML_FORMAT, known_tools={"bash"})
+        parser = StreamParser(config)
+        events = parser.feed("<info>bash</info>")
+        events.extend(parser.flush())
+        commands = [e for e in events if isinstance(e, CommandEvent)]
+        assert len(commands) == 1
+        assert commands[0].command == "info"
+        assert commands[0].args == "bash"
+
+    def test_xml_self_closing_no_content(self):
+        """Test self-closing XML tag produces tool call with no body."""
+        config = ParserConfig(tool_format=XML_FORMAT, known_tools={"read"})
+        parser = StreamParser(config)
+        events = parser.feed('<read path="src/main.py"/>')
+        events.extend(parser.flush())
+        tools = extract_tool_calls(events)
+        assert len(tools) == 1
+        assert tools[0].args.get("path") == "src/main.py"
+        # No content/body arg should be set
+        assert "content" not in tools[0].args
+
+    def test_xml_false_close_tag_in_normal(self):
+        """Test that </tag> in normal state (no open block) is just text."""
+        config = ParserConfig(tool_format=XML_FORMAT, known_tools={"bash"})
+        parser = StreamParser(config)
+        events = parser.feed("some </bash> text")
+        events.extend(parser.flush())
+        tools = extract_tool_calls(events)
+        assert len(tools) == 0
+        text = extract_text(events)
+        assert "</bash>" in text
+
+    def test_bracket_format_unchanged(self):
+        """Verify default bracket format still works identically."""
+        config = ParserConfig(tool_format=BRACKET_FORMAT, known_tools={"bash", "write"})
+        parser = StreamParser(config)
+        events = parser.feed("[/bash]ls -la[bash/]")
+        events.extend(parser.flush())
+        tools = extract_tool_calls(events)
+        assert len(tools) == 1
+        assert tools[0].name == "bash"
+        assert tools[0].args.get("command") == "ls -la"
+
+    def test_tool_call_format_presets(self):
+        """Test that preset formats have correct values."""
+        assert BRACKET_FORMAT.start_char == "["
+        assert BRACKET_FORMAT.end_char == "]"
+        assert BRACKET_FORMAT.slash_means_open is True
+        assert BRACKET_FORMAT.arg_style == "line"
+
+        assert XML_FORMAT.start_char == "<"
+        assert XML_FORMAT.end_char == ">"
+        assert XML_FORMAT.slash_means_open is False
+        assert XML_FORMAT.arg_style == "inline"
+
+    def test_tool_call_format_frozen(self):
+        """Test that ToolCallFormat is immutable."""
+        fmt = ToolCallFormat()
+        with pytest.raises(AttributeError):
+            fmt.start_char = "{"

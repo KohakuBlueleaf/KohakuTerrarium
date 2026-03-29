@@ -7,6 +7,8 @@ Supports custom format tool calls: [/tool_name]@@arg=value content[tool_name/]
 import re
 from dataclasses import dataclass, field
 
+from kohakuterrarium.parsing.format import BRACKET_FORMAT, ToolCallFormat
+
 
 # Default content argument mapping for built-in tools
 DEFAULT_CONTENT_ARG_MAP: dict[str, str] = {
@@ -69,6 +71,9 @@ class ParserConfig:
     content_arg_map: dict[str, str] = field(
         default_factory=lambda: DEFAULT_CONTENT_ARG_MAP.copy()
     )
+
+    # Tool call format (bracket, XML, or custom)
+    tool_format: ToolCallFormat = field(default_factory=lambda: BRACKET_FORMAT)
 
 
 # Regex for parsing XML-style opening tags with attributes

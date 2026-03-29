@@ -1,19 +1,23 @@
 """
 Parsing module - Stream parsing for LLM output.
 
-Provides state machine parser for detecting custom format tool calls
+Provides state machine parser for detecting configurable format tool calls
 and framework commands from streaming LLM output.
 
-Format:
+Bracket format (default):
     [/function_name]
     @@arg=value
     content
     [function_name/]
 
+XML format:
+    <function_name arg="value">content</function_name>
+
 Exports:
 - StreamParser: Main streaming parser
 - ParseEvent types: TextEvent, ToolCallEvent, SubAgentCallEvent, CommandEvent
 - ParserConfig: Parser configuration
+- ToolCallFormat, BRACKET_FORMAT, XML_FORMAT: Format configuration
 """
 
 from kohakuterrarium.parsing.events import (
@@ -28,6 +32,11 @@ from kohakuterrarium.parsing.events import (
     ToolCallEvent,
     is_action_event,
     is_text_event,
+)
+from kohakuterrarium.parsing.format import (
+    BRACKET_FORMAT,
+    XML_FORMAT,
+    ToolCallFormat,
 )
 from kohakuterrarium.parsing.patterns import (
     DEFAULT_COMMANDS,
@@ -92,6 +101,10 @@ __all__ = [
     "extract_text",
     # Config
     "ParserConfig",
+    # Format
+    "ToolCallFormat",
+    "BRACKET_FORMAT",
+    "XML_FORMAT",
     # Pattern functions
     "parse_opening_tag",
     "parse_closing_tag",
