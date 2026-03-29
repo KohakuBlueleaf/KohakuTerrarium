@@ -8,15 +8,15 @@ Not an agent -- pure wiring.
 import asyncio
 from typing import Any
 
-from kohakuterrarium.builtins.inputs.none import NoneInput
 from kohakuterrarium.core.agent import Agent
 from kohakuterrarium.core.config import load_agent_config
 from kohakuterrarium.core.session import Session, get_session, set_session
-from kohakuterrarium.modules.trigger.channel import ChannelTrigger
 from kohakuterrarium.terrarium.config import CreatureConfig, TerrariumConfig
 from kohakuterrarium.terrarium.creature import CreatureHandle
 from kohakuterrarium.terrarium.output_log import OutputLogCapture
 from kohakuterrarium.utils.logging import get_logger
+from kohakuterrarium.builtins.inputs.none import NoneInput
+from kohakuterrarium.modules.trigger.channel import ChannelTrigger
 
 logger = get_logger(__name__)
 
