@@ -68,18 +68,29 @@ Trigger -------+           |            <----> Sub-Agents (nested LLMs)
 | - reviewer  |     | - lifecycle mgmt  |     | - Web UI        |
 | - any other |     | - prompt injection|     | - none (auto)   |
 +-------------+     +-------------------+     +-----------------+
+```
 
-  Creatures communicate via named channels:
+Two channel types support any topology:
 
-  brainstorm --[ideas]--> planner --[outline]--> writer --[draft]-->
-       ^                                           |
-       +-------------------[feedback]--------------+
+```
+Queue (point-to-point):          Broadcast (group chat):
+
+  A --[tasks]--> B               A --+
+  B --[results]--> A              B --+--> [discussion] --> all subscribers
+                                  C --+
+
+Pipeline:                        Hub-and-spoke:
+
+  research --> plan --> implement     architect --[tasks]--> worker_1
+      ^                    |         architect --[tasks]--> worker_2
+      +----[feedback]------+         worker_* --[results]--> architect
 ```
 
 | Concept | Role |
 |---------|------|
 | **Creature** | Opaque, self-contained agent (microservice analogy) |
-| **Channel** | Named async message queue (queue or broadcast) |
+| **Queue channel** | Point-to-point: one consumer per message (task dispatch, pipelines) |
+| **Broadcast channel** | Group chat: all subscribers see every message (shared awareness) |
 | **Terrarium** | Pure wiring: channels, triggers, lifecycle. No intelligence |
 | **Human Interface** | CLI, API, or Web UI. Pluggable, optional |
 
@@ -192,12 +203,13 @@ Agents can also be embedded in web servers (FastAPI, etc.) - see [Configuration 
 
 ### Novel Writer Terrarium
 
-Three creatures collaborate to write a short story:
+Three creatures collaborate via queue channels (pipeline) + one broadcast channel (team awareness):
 
 ```
-brainstorm --[ideas]--> planner --[outline]--> writer --[draft]-->
-     ^                                           |
-     +-------------------[feedback]--------------+
+brainstorm --[ideas q]--> planner --[outline q]--> writer --[draft q]-->
+     ^                                               |
+     +------------------[feedback q]-----------------+
+                    [team_chat broadcast] --> all
 ```
 
 ```bash
@@ -264,9 +276,10 @@ terrarium:
         listen: [findings]
         can_send: [draft]
   channels:
-    tasks:    { type: queue, description: "Research tasks" }
-    findings: { type: queue, description: "Research results" }
-    draft:    { type: queue, description: "Written output" }
+    tasks:      { type: queue, description: "Research tasks" }
+    findings:   { type: queue, description: "Research results" }
+    draft:      { type: queue, description: "Written output" }
+    team_chat:  { type: broadcast, description: "Shared awareness" }
 ```
 
 ## Project Structure
