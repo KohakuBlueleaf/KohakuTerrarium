@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, AsyncIterator
 
 if TYPE_CHECKING:
+    from kohakuterrarium.llm.base import ToolSchema
     from kohakuterrarium.llm.message import ContentPart
 
 from kohakuterrarium.commands.base import Command, CommandResult
@@ -60,6 +61,7 @@ class ControllerConfig:
         max_messages: Maximum number of messages to keep
         ephemeral: If True, clear conversation after each interaction (keep system only)
         known_outputs: Set of known output target names (e.g., "discord")
+        tool_format: Tool calling format — "bracket", "xml", "native", or None
     """
 
     system_prompt: str = "You are a helpful assistant."
@@ -70,6 +72,7 @@ class ControllerConfig:
     max_messages: int = 50  # Keep last 50 messages
     ephemeral: bool = False  # Clear after each interaction (for group chat bots)
     known_outputs: set[str] = field(default_factory=set)  # Output targets for parser
+    tool_format: str | None = None  # "bracket", "xml", "native", or None (auto)
 
 
 @dataclass
@@ -191,15 +194,36 @@ class Controller:
 
     def _get_parser(self) -> StreamParser:
         """Get parser with current registry tools, sub-agents, and outputs."""
+        from kohakuterrarium.parsing.format import BRACKET_FORMAT, XML_FORMAT
+
         # Build config from current registry state
         known_tools = set(self.registry.list_tools())
         known_subagents = set(self.registry.list_subagents())
+
+        # Resolve tool format for parser
+        fmt = self.config.tool_format
+        tool_format = BRACKET_FORMAT  # default
+        if fmt == "xml":
+            tool_format = XML_FORMAT
+
         self._parser_config = ParserConfig(
             known_tools=known_tools,
             known_subagents=known_subagents,
             known_outputs=self.config.known_outputs,
+            tool_format=tool_format,
         )
         return StreamParser(self._parser_config)
+
+    @property
+    def _is_native_mode(self) -> bool:
+        """Check if using native API tool calling."""
+        return self.config.tool_format == "native"
+
+    def _get_native_tool_schemas(self) -> "list[ToolSchema]":
+        """Build native tool schemas from registry."""
+        from kohakuterrarium.llm.tools import build_tool_schemas
+
+        return build_tool_schemas(self.registry)
 
     def _setup_system_prompt(self) -> None:
         """Setup initial system prompt."""
@@ -372,18 +396,60 @@ class Controller:
         logger.info("Generating response...")
 
         assistant_content = ""
-        self._parser = self._get_parser()
 
-        async for chunk in self.llm.chat(messages, stream=True):
-            assistant_content += chunk
+        if self._is_native_mode:
+            # Native mode: pass tool schemas to API, get structured tool_calls
+            tool_schemas = self._get_native_tool_schemas()
+            async for chunk in self.llm.chat(
+                messages, stream=True, tools=tool_schemas or None
+            ):
+                assistant_content += chunk
+                # In native mode, text is still streamed as TextEvents
+                if chunk:
+                    yield TextEvent(text=chunk)
 
-            # Parse chunk
-            parse_events = self._parser.feed(chunk)
+            # After streaming, extract native tool calls
+            if hasattr(self.llm, "last_tool_calls"):
+                for tc in self.llm.last_tool_calls:
+                    logger.info(
+                        "Native tool call",
+                        tool_name=tc.name,
+                        tool_args=tc.arguments[:100],
+                    )
+                    yield ToolCallEvent(
+                        name=tc.name,
+                        args=tc.parsed_arguments(),
+                        raw=tc.arguments,
+                    )
+        else:
+            # Custom format mode: parse text stream for tool calls
+            self._parser = self._get_parser()
 
-            for event in parse_events:
-                # Commands execute inline; yield result as CommandResultEvent
-                # (NOT TextEvent - command results are internal feedback,
-                # not user-facing output)
+            async for chunk in self.llm.chat(messages, stream=True):
+                assistant_content += chunk
+
+                # Parse chunk
+                parse_events = self._parser.feed(chunk)
+
+                for event in parse_events:
+                    # Commands execute inline; yield result as CommandResultEvent
+                    if isinstance(event, CommandEvent):
+                        result = await self._handle_command(event)
+                        if result.content:
+                            assistant_content += f"\n{result.content}\n"
+                            yield CommandResultEvent(
+                                command=event.command, content=result.content
+                            )
+                        elif result.error:
+                            assistant_content += f"\n[Command Error: {result.error}]\n"
+                            yield CommandResultEvent(
+                                command=event.command, error=result.error
+                            )
+                    else:
+                        yield event
+
+            # Flush parser
+            for event in self._parser.flush():
                 if isinstance(event, CommandEvent):
                     result = await self._handle_command(event)
                     if result.content:
@@ -398,21 +464,6 @@ class Controller:
                         )
                 else:
                     yield event
-
-        # Flush parser
-        for event in self._parser.flush():
-            if isinstance(event, CommandEvent):
-                result = await self._handle_command(event)
-                if result.content:
-                    assistant_content += f"\n{result.content}\n"
-                    yield CommandResultEvent(
-                        command=event.command, content=result.content
-                    )
-                elif result.error:
-                    assistant_content += f"\n[Command Error: {result.error}]\n"
-                    yield CommandResultEvent(command=event.command, error=result.error)
-            else:
-                yield event
 
         # Add assistant message to conversation
         self.conversation.append("assistant", assistant_content)

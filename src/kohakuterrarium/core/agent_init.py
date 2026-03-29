@@ -262,17 +262,28 @@ class AgentInitMixin:
                 base_prompt = base_prompt + "\n\n" + subagents_prompt
 
         known_outputs = getattr(self, "_known_outputs", set())
-        logger.debug("Building system prompt", known_outputs=known_outputs)
+
+        # Resolve tool format from config
+        self._tool_format = self._resolve_tool_format()
+        tool_format_name = (
+            self.config.tool_format
+            if isinstance(self.config.tool_format, str)
+            else "custom"
+        )
+
+        logger.debug(
+            "Building system prompt",
+            known_outputs=known_outputs,
+            tool_format=tool_format_name,
+        )
         system_prompt = aggregate_system_prompt(
             base_prompt,
             self.registry,
             include_tools=self.config.include_tools_in_prompt,
             include_hints=self.config.include_hints_in_prompt,
+            tool_format=tool_format_name,
             known_outputs=known_outputs,
         )
-
-        # Resolve tool format from config
-        self._tool_format = self._resolve_tool_format()
 
         # Store controller config for creating controllers on-demand (parallel mode)
         self._controller_config = ControllerConfig(
@@ -283,6 +294,7 @@ class AgentInitMixin:
             max_context_chars=self.config.max_context_chars,
             ephemeral=self.config.ephemeral,
             known_outputs=getattr(self, "_known_outputs", set()),
+            tool_format=tool_format_name,
         )
 
         # Primary controller (always exists)
