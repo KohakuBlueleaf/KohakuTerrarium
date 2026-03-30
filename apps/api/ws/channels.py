@@ -1,0 +1,31 @@
+"""WebSocket endpoint for streaming terrarium channel events."""
+
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
+from apps.api.deps import get_manager
+
+router = APIRouter()
+
+
+@router.websocket("/ws/terrariums/{terrarium_id}/channels")
+async def channel_stream(websocket: WebSocket, terrarium_id: str):
+    """Stream all channel messages from a terrarium in real-time."""
+    await websocket.accept()
+    manager = get_manager()
+
+    try:
+        async for event in manager.stream_channel_events(terrarium_id):
+            await websocket.send_json(
+                {
+                    "type": "channel_message",
+                    "channel": event.channel,
+                    "sender": event.sender,
+                    "content": event.content,
+                    "message_id": event.message_id,
+                    "timestamp": event.timestamp.isoformat(),
+                }
+            )
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        await websocket.close()
