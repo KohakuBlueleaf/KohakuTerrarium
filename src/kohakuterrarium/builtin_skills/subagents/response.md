@@ -25,9 +25,9 @@ Output sub-agent for generating user-facing responses.
 ## HOW TO USE
 
 ```
-[/response]
+tool call: response(
 what to communicate
-[response/]
+)
 ```
 
 ## Arguments
@@ -39,21 +39,21 @@ what to communicate
 ## Examples
 
 ```
-[/response]
+tool call: response(
 Explain how the authentication system works
-[response/]
+)
 ```
 
 ```
-[/response]
+tool call: response(
 Present the analysis results in a clear format
-[response/]
+)
 ```
 
 ```
-[/response]
+tool call: response(
 Greet the user as the character
-[response/]
+)
 ```
 
 ## OUTPUT ROUTING

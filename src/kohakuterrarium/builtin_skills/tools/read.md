@@ -19,19 +19,19 @@ Read file contents with optional line range.
 ## HOW TO USE
 
 ```
-[/read]
-@@path=file_path
-[read/]
+tool call: read(
+  path: file_path
+)
 ```
 
 Or with optional parameters:
 
 ```
-[/read]
-@@path=file_path
-@@offset=10
-@@limit=20
-[read/]
+tool call: read(
+  path: file_path
+  offset: 10
+  limit: 20
+)
 ```
 
 ## Arguments
@@ -45,17 +45,17 @@ Or with optional parameters:
 ## Examples
 
 ```
-[/read]
-@@path=src/main.py
-[read/]
+tool call: read(
+  path: src/main.py
+)
 ```
 
 ```
-[/read]
-@@path=src/main.py
-@@offset=10
-@@limit=20
-[read/]
+tool call: read(
+  path: src/main.py
+  offset: 10
+  limit: 20
+)
 ```
 
 ## Output Format

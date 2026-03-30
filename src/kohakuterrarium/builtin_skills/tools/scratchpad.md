@@ -23,11 +23,11 @@ framework-managed, structured (key-value), and cheap (no LLM cost to read/write)
 ## HOW TO USE
 
 ```
-[/scratchpad]
-@@action=set
-@@key=key_name
+tool call: scratchpad(
+  action: set
+  key: key_name
 value content here
-[scratchpad/]
+)
 ```
 
 Supported actions: `get`, `set`, `delete`, `list`, `clear`.
@@ -44,44 +44,44 @@ Supported actions: `get`, `set`, `delete`, `list`, `clear`.
 
 Store a plan:
 ```
-[/scratchpad]
-@@action=set
-@@key=plan
+tool call: scratchpad(
+  action: set
+  key: plan
 1. Read the config file
 2. Identify the broken handler
 3. Fix the handler
 4. Run tests
-[scratchpad/]
+)
 ```
 
 Retrieve a value:
 ```
-[/scratchpad]
-@@action=get
-@@key=plan
-[scratchpad/]
+tool call: scratchpad(
+  action: get
+  key: plan
+)
 ```
 
 List all stored keys:
 ```
-[/scratchpad]
-@@action=list
-[scratchpad/]
+tool call: scratchpad(
+  action: list
+)
 ```
 
 Delete a key:
 ```
-[/scratchpad]
-@@action=delete
-@@key=plan
-[scratchpad/]
+tool call: scratchpad(
+  action: delete
+  key: plan
+)
 ```
 
 Clear all data:
 ```
-[/scratchpad]
-@@action=clear
-[scratchpad/]
+tool call: scratchpad(
+  action: clear
+)
 ```
 
 ## Output Format

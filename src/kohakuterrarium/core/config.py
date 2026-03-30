@@ -103,6 +103,9 @@ class AgentConfig:
     name: str
     version: str = "1.0"
 
+    # Inheritance: path to base creature/agent config directory
+    base_config: str | None = None
+
     # LLM settings
     model: str = "openai/gpt-4o-mini"
     auth_mode: str = "api-key"  # "api-key" (default) or "codex-oauth"
@@ -242,6 +245,122 @@ def _load_config_file(path: Path) -> dict[str, Any]:
         raise ValueError(f"Unsupported config format: {suffix}")
 
 
+def _resolve_base_config_path(base_config: str, child_dir: Path) -> Path | None:
+    """
+    Resolve base_config path to an actual directory.
+
+    Resolution order:
+    1. If starts with 'creatures/', resolve relative to project root
+       (walk up from child_dir until we find a directory containing 'creatures/')
+    2. Otherwise resolve relative to child config's parent directory
+    """
+    if base_config.startswith("creatures/"):
+        # Walk up from child_dir to find project root (containing creatures/)
+        search = child_dir
+        for _ in range(10):  # safety limit
+            candidate = search / base_config
+            if candidate.is_dir():
+                return candidate
+            parent = search.parent
+            if parent == search:
+                break
+            search = parent
+        logger.warning(
+            "Could not resolve creatures/ path from project root",
+            base_config=base_config,
+            child_dir=str(child_dir),
+        )
+        return None
+
+    # Relative to child config's parent directory
+    resolved = (child_dir / base_config).resolve()
+    if resolved.is_dir():
+        return resolved
+    logger.warning(
+        "Base config directory not found",
+        base_config=base_config,
+        resolved=str(resolved),
+    )
+    return None
+
+
+def _merge_configs(base_data: dict[str, Any], child_data: dict[str, Any]) -> dict:
+    """
+    Merge child config over base config following creature hierarchy rules.
+
+    - tools, subagents: child entries EXTEND base list (deduplicated by name)
+    - Dicts (controller, input, output): shallow-merged (child keys override)
+    - Scalars: child overrides base
+    - system_prompt_file: tracked separately for append behavior
+    """
+    # Keys whose lists should be extended, not replaced
+    _EXTEND_KEYS = {"tools", "subagents"}
+
+    result = dict(base_data)
+    for key, value in child_data.items():
+        if key == "base_config":
+            continue  # Don't propagate base_config into merged result
+        if value is None:
+            continue  # Only override if child explicitly sets a value
+        if (
+            key in _EXTEND_KEYS
+            and isinstance(value, list)
+            and key in result
+            and isinstance(result[key], list)
+        ):
+            # Extend: base list + child entries (deduplicate by name)
+            existing_names = {
+                item.get("name") for item in result[key] if isinstance(item, dict)
+            }
+            merged_list = list(result[key])
+            for item in value:
+                item_name = item.get("name") if isinstance(item, dict) else None
+                if item_name and item_name not in existing_names:
+                    merged_list.append(item)
+                    existing_names.add(item_name)
+            result[key] = merged_list
+        elif (
+            isinstance(value, dict) and key in result and isinstance(result[key], dict)
+        ):
+            # Shallow merge for dicts (controller, input, output)
+            merged = dict(result[key])
+            merged.update(value)
+            result[key] = merged
+        else:
+            # Scalars and other lists: child replaces base
+            result[key] = value
+    return result
+
+
+def _load_base_config_data(base_path: Path) -> dict[str, Any] | None:
+    """Load raw config data from a base config directory."""
+    config_file = _find_config_file(base_path)
+    if config_file is None:
+        logger.warning("No config file in base directory", path=str(base_path))
+        return None
+
+    raw = _load_config_file(config_file)
+    data = _interpolate_env_vars(raw)
+
+    # Recursively resolve base_config if the base also has one
+    if "base_config" in data and data["base_config"]:
+        grandparent_path = _resolve_base_config_path(data["base_config"], base_path)
+        if grandparent_path:
+            grandparent_data = _load_base_config_data(grandparent_path)
+            if grandparent_data:
+                data = _merge_configs(grandparent_data, data)
+
+    # Track prompt files with their resolved paths for append chain
+    prompt_file = data.get("system_prompt_file")
+    if prompt_file:
+        prompt_path = base_path / prompt_file
+        if prompt_path.exists():
+            existing_chain = data.get("_prompt_chain", [])
+            data["_prompt_chain"] = existing_chain + [str(prompt_path)]
+
+    return data
+
+
 def _parse_input_config(data: dict[str, Any] | None) -> InputConfig:
     """Parse input configuration."""
     if data is None:
@@ -372,6 +491,27 @@ def load_agent_config(agent_path: str | Path) -> AgentConfig:
     # Interpolate environment variables
     config_data = _interpolate_env_vars(raw_config)
 
+    # Resolve base_config inheritance
+    base_config_ref = config_data.get("base_config")
+    if base_config_ref:
+        base_path = _resolve_base_config_path(base_config_ref, agent_path)
+        if base_path:
+            base_data = _load_base_config_data(base_path)
+            if base_data:
+                logger.debug(
+                    "Merging base config",
+                    base=str(base_path),
+                    child=str(agent_path),
+                )
+                config_data = _merge_configs(base_data, config_data)
+                # Store resolved base path for system prompt resolution
+                config_data["_base_path"] = base_path
+        else:
+            logger.warning(
+                "Base config not found, continuing with child-only config",
+                base_config=base_config_ref,
+            )
+
     # Extract controller section if present
     controller_data = config_data.get("controller", {})
 
@@ -431,13 +571,40 @@ def load_agent_config(agent_path: str | Path) -> AgentConfig:
         session_key=config_data.get("session_key"),
     )
 
-    # Load system prompt from file if specified
+    # Load system prompt from file(s)
+    # Inheritance: base prompt chain is loaded first, then child prompt appended
+    base_path = config_data.get("_base_path")
+    prompt_chain: list[str] = config_data.get("_prompt_chain", [])
+    prompt_parts: list[str] = []
+
+    # Load all base prompt files from the inheritance chain
+    for chain_path in prompt_chain:
+        chain_file = Path(chain_path)
+        if chain_file.exists():
+            with open(chain_file, encoding="utf-8") as f:
+                prompt_parts.append(f.read())
+            logger.debug("Loaded chain prompt", path=str(chain_file))
+
+    # Load child's own system prompt (from agent_path or base_path fallback)
     if config.system_prompt_file and config.agent_path:
         prompt_path = config.agent_path / config.system_prompt_file
+        if not prompt_path.exists() and base_path:
+            prompt_path = base_path / config.system_prompt_file
         if prompt_path.exists():
-            with open(prompt_path, encoding="utf-8") as f:
-                config.system_prompt = f.read()
-            logger.debug("Loaded system prompt", path=str(prompt_path))
+            # Only add if not already in chain (avoid duplicates)
+            resolved = str(prompt_path.resolve())
+            chain_resolved = [str(Path(p).resolve()) for p in prompt_chain]
+            if resolved not in chain_resolved:
+                with open(prompt_path, encoding="utf-8") as f:
+                    prompt_parts.append(f.read())
+                logger.debug("Loaded child prompt", path=str(prompt_path))
+
+    if prompt_parts:
+        config.system_prompt = "\n\n".join(prompt_parts)
+        logger.debug(
+            "Assembled system prompt from chain",
+            parts=len(prompt_parts),
+        )
 
     # Load prompt context files and render into system prompt
     if config.prompt_context_files and config.agent_path:

@@ -27,11 +27,11 @@ Sub-agent for reviewing and self-critiquing code changes, plans, or outputs.
 ## HOW TO USE
 
 ```
-[/critic]
+tool call: critic(
 Review the following change and check for issues:
 
 <content to review>
-[critic/]
+)
 ```
 
 ## Arguments
@@ -43,37 +43,37 @@ Review the following change and check for issues:
 ## Examples
 
 ```
-[/critic]
+tool call: critic(
 Review this function for correctness and edge cases:
 
 def divide(a: float, b: float) -> float:
     return a / b
-[critic/]
+)
 ```
 
 ```
-[/critic]
+tool call: critic(
 Check if this implementation plan covers all requirements:
 
 1. Add user authentication endpoint
 2. Store sessions in Redis
 3. Return JWT tokens
-[critic/]
+)
 ```
 
 ```
-[/critic]
+tool call: critic(
 Review the changes in src/core/controller.py for potential issues.
 Focus on error handling and concurrency safety.
-[critic/]
+)
 ```
 
 ```
-[/critic]
+tool call: critic(
 Evaluate whether this output is clear and complete for the user:
 
 "The build failed because of a missing dependency. Run pip install foo."
-[critic/]
+)
 ```
 
 ## CAPABILITIES

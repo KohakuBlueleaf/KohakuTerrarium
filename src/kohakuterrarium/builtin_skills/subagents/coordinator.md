@@ -25,9 +25,9 @@ Sub-agent that coordinates multiple specialist agents to complete complex tasks.
 ## HOW TO USE
 
 ```
-[/coordinator]
+tool call: coordinator(
 task description
-[coordinator/]
+)
 ```
 
 ## Arguments
@@ -39,24 +39,24 @@ task description
 ## Examples
 
 ```
-[/coordinator]
+tool call: coordinator(
 Refactor the auth module: have the explore agent find all usages, the plan agent design the new API, then the worker agent implement the changes.
 Channels: explore, plan, worker
-[coordinator/]
+)
 ```
 
 ```
-[/coordinator]
+tool call: coordinator(
 Investigate and fix the failing test suite. Use explore to find the broken tests, critic to analyze root cause, and worker to apply the fix.
 Channels: explore, critic, worker
-[coordinator/]
+)
 ```
 
 ```
-[/coordinator]
+tool call: coordinator(
 Build a new REST endpoint for /users. Dispatch plan to design the schema, worker to implement, and critic to review the result.
 Channels: plan, worker, critic
-[coordinator/]
+)
 ```
 
 ## CAPABILITIES

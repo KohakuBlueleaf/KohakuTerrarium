@@ -25,9 +25,9 @@ Autonomous sub-agent for codebase exploration and analysis.
 ## HOW TO USE
 
 ```
-[/explore]
+tool call: explore(
 task description
-[explore/]
+)
 ```
 
 ## Arguments
@@ -39,27 +39,27 @@ task description
 ## Examples
 
 ```
-[/explore]
+tool call: explore(
 Find all files related to authentication
-[explore/]
+)
 ```
 
 ```
-[/explore]
+tool call: explore(
 How does the config loading system work?
-[explore/]
+)
 ```
 
 ```
-[/explore]
+tool call: explore(
 Find where user permissions are checked
-[explore/]
+)
 ```
 
 ```
-[/explore]
+tool call: explore(
 What modules import the database module?
-[explore/]
+)
 ```
 
 ## CAPABILITIES

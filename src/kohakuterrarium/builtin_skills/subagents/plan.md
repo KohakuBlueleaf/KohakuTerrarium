@@ -25,9 +25,9 @@ Sub-agent for creating implementation plans and design decisions.
 ## HOW TO USE
 
 ```
-[/plan]
+tool call: plan(
 task description
-[plan/]
+)
 ```
 
 ## Arguments
@@ -39,27 +39,27 @@ task description
 ## Examples
 
 ```
-[/plan]
+tool call: plan(
 Plan implementation for user authentication with JWT
-[plan/]
+)
 ```
 
 ```
-[/plan]
+tool call: plan(
 Plan refactoring the database layer to use async
-[plan/]
+)
 ```
 
 ```
-[/plan]
+tool call: plan(
 Design the caching strategy for API responses
-[plan/]
+)
 ```
 
 ```
-[/plan]
+tool call: plan(
 Plan migration from REST to GraphQL
-[plan/]
+)
 ```
 
 ## CAPABILITIES

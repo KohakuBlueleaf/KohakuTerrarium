@@ -18,10 +18,10 @@ Write content to a file. Creates if doesn't exist, overwrites if it does.
 ## HOW TO USE
 
 ```
-[/write]
-@@path=file_path
+tool call: write(
+  path: file_path
 content here
-[write/]
+)
 ```
 
 ## Arguments
@@ -34,24 +34,24 @@ content here
 ## Examples
 
 ```
-[/write]
-@@path=src/hello.py
+tool call: write(
+  path: src/hello.py
 def hello():
     print("Hello, World!")
 
 if __name__ == "__main__":
     hello()
-[write/]
+)
 ```
 
 ```
-[/write]
-@@path=config.json
+tool call: write(
+  path: config.json
 {
   "name": "my-app",
   "version": "1.0.0"
 }
-[write/]
+)
 ```
 
 ## Output Format

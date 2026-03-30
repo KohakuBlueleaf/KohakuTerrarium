@@ -1,76 +1,30 @@
 # SWE Agent Configuration
-# A software engineering agent similar to Claude Code
+# Inherits tools, sub-agents, and prompts from creatures/swe
 
 name: swe_agent
 version: "1.0"
+base_config: creatures/swe
 
-# LLM Configuration
 controller:
   # --- OpenRouter (API credits) ---
-  model: "${OPENROUTER_MODEL:google/gemini-3.1-pro-preview}"
+  model: "${OPENROUTER_MODEL:google/gemini-3-flash-preview}"
   temperature: 0.5
   max_tokens: 512000
   api_key_env: OPENROUTER_API_KEY
   base_url: https://openrouter.ai/api/v1
   tool_format: native
 
-  # --- Codex OAuth (ChatGPT subscription, no API key needed) ---
-  # Uncomment below and comment out the OpenRouter section above:
+  # --- Codex OAuth (ChatGPT subscription) ---
   # model: gpt-5.4
   # auth_mode: codex-oauth
   # reasoning_effort: xhigh
   # service_tier: priority
   # tool_format: native
 
-# System prompt (loaded from file)
-system_prompt_file: prompts/system.md
-
-# Input configuration
 input:
   type: cli
   prompt: "You: "
 
-# Available tools
-tools:
-  - name: bash
-    type: builtin
-  - name: python
-    type: builtin
-  - name: read
-    type: builtin
-  - name: write
-    type: builtin
-  - name: edit
-    type: builtin
-  - name: glob
-    type: builtin
-  - name: grep
-    type: builtin
-  - name: think
-    type: builtin
-  - name: scratchpad
-    type: builtin
-  - name: ask_user
-    type: builtin
-
-# Available sub-agents
-subagents:
-  - name: explore
-    type: builtin
-    extra_prompt: "Focus on the project's language and conventions."
-  - name: plan
-    type: builtin
-    extra_prompt_file: prompts/plan_extra.md
-  - name: worker
-    type: builtin
-  - name: critic
-    type: builtin
-  - name: summarize
-    type: builtin
-
-# Termination conditions
-
-# Output configuration
 output:
   type: stdout
   controller_direct: true

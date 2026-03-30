@@ -19,18 +19,18 @@ Read and query JSON files with simple dot-path expressions.
 ## HOW TO USE
 
 ```
-[/json_read]
-@@path=file_path
-[json_read/]
+tool call: json_read(
+  path: file_path
+)
 ```
 
 Or with a query to extract a specific value:
 
 ```
-[/json_read]
-@@path=file_path
-@@query=.key.nested
-[json_read/]
+tool call: json_read(
+  path: file_path
+  query: .key.nested
+)
 ```
 
 ## Arguments
@@ -52,25 +52,25 @@ Or with a query to extract a specific value:
 
 Read entire file:
 ```
-[/json_read]
-@@path=package.json
-[json_read/]
+tool call: json_read(
+  path: package.json
+)
 ```
 
 Read a nested value:
 ```
-[/json_read]
-@@path=config.json
-@@query=.database.host
-[json_read/]
+tool call: json_read(
+  path: config.json
+  query: .database.host
+)
 ```
 
 Read from an array:
 ```
-[/json_read]
-@@path=data.json
-@@query=.users[0].name
-[json_read/]
+tool call: json_read(
+  path: data.json
+  query: .users[0].name
+)
 ```
 
 ## Output Format

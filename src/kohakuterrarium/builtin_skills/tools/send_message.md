@@ -20,21 +20,21 @@ Send a message to a named channel. Used for agent-to-agent communication, allowi
 ## HOW TO USE
 
 ```
-[/send_message]
-@@channel=channel_name
+tool call: send_message(
+  channel: channel_name
 Message content here.
-[send_message/]
+)
 ```
 
 Or with optional metadata and threading:
 
 ```
-[/send_message]
-@@channel=channel_name
-@@metadata={"priority": "high"}
-@@reply_to=msg_abc123def456
+tool call: send_message(
+  channel: channel_name
+  metadata: {"priority": "high"}
+  reply_to: msg_abc123def456
 Message content here.
-[send_message/]
+)
 ```
 
 ## Arguments
@@ -56,46 +56,46 @@ Message content here.
 
 Send a task to another agent:
 ```
-[/send_message]
-@@channel=inbox_agent_b
+tool call: send_message(
+  channel: inbox_agent_b
 Please research the authentication module and report your findings.
-[send_message/]
+)
 ```
 
 Send results with metadata:
 ```
-[/send_message]
-@@channel=results
-@@metadata={"priority": "high", "source": "code_review"}
+tool call: send_message(
+  channel: results
+  metadata: {"priority": "high", "source": "code_review"}
 Analysis complete. Found 3 issues in the auth module.
-[send_message/]
+)
 ```
 
 Broadcast to all listeners:
 ```
-[/send_message]
-@@channel=status_updates
-@@channel_type=broadcast
+tool call: send_message(
+  channel: status_updates
+  channel_type: broadcast
 Build completed successfully. All tests passing.
-[send_message/]
+)
 ```
 
 Reply to a previous message:
 ```
-[/send_message]
-@@channel=inbox_agent_b
-@@reply_to=msg_abc123def456
+tool call: send_message(
+  channel: inbox_agent_b
+  reply_to: msg_abc123def456
 Here are the results you requested.
-[send_message/]
+)
 ```
 
 Notify a monitoring channel:
 ```
-[/send_message]
-@@channel=alerts
-@@metadata={"severity": "warning"}
+tool call: send_message(
+  channel: alerts
+  metadata: {"severity": "warning"}
 Memory usage exceeded 80% threshold.
-[send_message/]
+)
 ```
 
 ## Output Format

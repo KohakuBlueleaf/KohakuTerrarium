@@ -18,19 +18,19 @@ Find files matching a glob pattern.
 ## HOW TO USE
 
 ```
-[/glob]
+tool call: glob(
 pattern
-[glob/]
+)
 ```
 
 Or with optional parameters:
 
 ```
-[/glob]
-@@path=base_dir
-@@limit=50
+tool call: glob(
+  path: base_dir
+  limit: 50
 pattern
-[glob/]
+)
 ```
 
 ## Arguments
@@ -53,30 +53,30 @@ pattern
 ## Examples
 
 ```
-[/glob]
+tool call: glob(
 **/*.py
-[glob/]
+)
 ```
 
 ```
-[/glob]
-@@path=src/components
+tool call: glob(
+  path: src/components
 *.ts
-[glob/]
+)
 ```
 
 ```
-[/glob]
+tool call: glob(
 **/*.{json,yaml,toml}
-[glob/]
+)
 ```
 
 ```
-[/glob]
-@@path=.
-@@limit=50
+tool call: glob(
+  path: .
+  limit: 50
 **/*.md
-[glob/]
+)
 ```
 
 ## Output Format

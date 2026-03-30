@@ -25,9 +25,9 @@ Autonomous sub-agent for implementing code changes, fixing bugs, and refactoring
 ## HOW TO USE
 
 ```
-[/worker]
+tool call: worker(
 task description
-[worker/]
+)
 ```
 
 ## Arguments
@@ -39,27 +39,27 @@ task description
 ## Examples
 
 ```
-[/worker]
+tool call: worker(
 Add input validation to the parse_config function in src/config.py
-[worker/]
+)
 ```
 
 ```
-[/worker]
+tool call: worker(
 Fix the off-by-one error in pagination logic in src/api/routes.py
-[worker/]
+)
 ```
 
 ```
-[/worker]
+tool call: worker(
 Refactor the UserAuth class to separate token generation from validation
-[worker/]
+)
 ```
 
 ```
-[/worker]
+tool call: worker(
 Add error handling for network timeouts in src/client.py and write tests
-[worker/]
+)
 ```
 
 ## CAPABILITIES

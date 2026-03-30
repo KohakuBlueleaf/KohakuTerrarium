@@ -20,21 +20,21 @@ Make HTTP requests (GET, POST, PUT, DELETE, PATCH) to APIs and web services.
 ## HOW TO USE
 
 ```
-[/http]
-@@method=GET
-@@url=https://api.example.com/resource
-[http/]
+tool call: http(
+  method: GET
+  url: https://api.example.com/resource
+)
 ```
 
 Or with headers and body:
 
 ```
-[/http]
-@@method=POST
-@@url=https://api.example.com/resource
-@@headers={"Content-Type": "application/json", "Authorization": "Bearer TOKEN"}
+tool call: http(
+  method: POST
+  url: https://api.example.com/resource
+  headers: {"Content-Type": "application/json", "Authorization": "Bearer TOKEN"}
 {"key": "value", "data": [1, 2, 3]}
-[http/]
+)
 ```
 
 ## Arguments
@@ -50,38 +50,38 @@ Or with headers and body:
 
 Simple GET:
 ```
-[/http]
-@@url=https://httpbin.org/get
-[http/]
+tool call: http(
+  url: https://httpbin.org/get
+)
 ```
 
 POST with JSON body:
 ```
-[/http]
-@@method=POST
-@@url=https://httpbin.org/post
-@@headers={"Content-Type": "application/json"}
+tool call: http(
+  method: POST
+  url: https://httpbin.org/post
+  headers: {"Content-Type": "application/json"}
 {"name": "test", "value": 42}
-[http/]
+)
 ```
 
 PUT with authorization:
 ```
-[/http]
-@@method=PUT
-@@url=https://api.example.com/items/1
-@@headers={"Authorization": "Bearer my-token", "Content-Type": "application/json"}
+tool call: http(
+  method: PUT
+  url: https://api.example.com/items/1
+  headers: {"Authorization": "Bearer my-token", "Content-Type": "application/json"}
 {"status": "updated"}
-[http/]
+)
 ```
 
 DELETE request:
 ```
-[/http]
-@@method=DELETE
-@@url=https://api.example.com/items/1
-@@headers={"Authorization": "Bearer my-token"}
-[http/]
+tool call: http(
+  method: DELETE
+  url: https://api.example.com/items/1
+  headers: {"Authorization": "Bearer my-token"}
+)
 ```
 
 ## Output Format
@@ -106,7 +106,7 @@ If the response body exceeds 50KB, it is truncated with a notice.
 ## TIPS
 
 - Always include `Content-Type` header for POST/PUT requests with a body
-- For JSON APIs, set `@@headers={"Content-Type": "application/json"}`
+- For JSON APIs, set `  headers: {"Content-Type": "application/json"}`
 - Use GET when you only need to read data; use POST/PUT for mutations
 - Check the status code in the output to confirm success (2xx) vs error (4xx/5xx)
 - For large responses, consider whether you actually need the full body or just the status

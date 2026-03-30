@@ -19,18 +19,18 @@ Wait for a message to arrive on a named channel.
 ## HOW TO USE
 
 ```
-[/wait_channel]
-@@channel=channel_name
-[wait_channel/]
+tool call: wait_channel(
+  channel: channel_name
+)
 ```
 
 Or with a custom timeout:
 
 ```
-[/wait_channel]
-@@channel=channel_name
-@@timeout=60
-[wait_channel/]
+tool call: wait_channel(
+  channel: channel_name
+  timeout: 60
+)
 ```
 
 ## Arguments
@@ -50,32 +50,32 @@ Or with a custom timeout:
 Wait for a result on the default timeout:
 
 ```
-[/wait_channel]
-@@channel=results_inbox
-[wait_channel/]
+tool call: wait_channel(
+  channel: results_inbox
+)
 ```
 
 Wait up to 2 minutes for a long-running task:
 
 ```
-[/wait_channel]
-@@channel=processing_done
-@@timeout=120
-[wait_channel/]
+tool call: wait_channel(
+  channel: processing_done
+  timeout: 120
+)
 ```
 
 Request-response pattern (send then wait):
 
 ```
-[/send_message]
-@@channel=worker_queue
+tool call: send_message(
+  channel: worker_queue
 Process this data
-[send_message/]
+)
 
-[/wait_channel]
-@@channel=results_inbox
-@@timeout=60
-[wait_channel/]
+tool call: wait_channel(
+  channel: results_inbox
+  timeout: 60
+)
 ```
 
 ## Output Format
