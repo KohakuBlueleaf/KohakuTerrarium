@@ -110,6 +110,8 @@ class AgentConfig:
     base_url: str = "https://openrouter.ai/api/v1"
     temperature: float = 0.7
     max_tokens: int = 4096
+    reasoning_effort: str = "medium"  # none/minimal/low/medium/high/xhigh
+    service_tier: str | None = None  # None/priority/flex
 
     # System prompt (loaded from file or inline)
     system_prompt: str = "You are a helpful assistant."
@@ -394,6 +396,12 @@ def load_agent_config(agent_path: str | Path) -> AgentConfig:
         ),
         max_tokens=controller_data.get(
             "max_tokens", config_data.get("max_tokens", 4096)
+        ),
+        reasoning_effort=controller_data.get(
+            "reasoning_effort", config_data.get("reasoning_effort", "medium")
+        ),
+        service_tier=controller_data.get(
+            "service_tier", config_data.get("service_tier", None)
         ),
         system_prompt=config_data.get("system_prompt", "You are a helpful assistant."),
         system_prompt_file=config_data.get("system_prompt_file"),

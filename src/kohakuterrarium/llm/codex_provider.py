@@ -46,10 +46,14 @@ class CodexOAuthProvider(BaseLLMProvider):
         self,
         model: str = "gpt-5.4",
         *,
+        reasoning_effort: str = "medium",
+        service_tier: str | None = None,
         timeout: float = 300.0,
         max_retries: int = 2,
     ):
         self.model = model
+        self.reasoning_effort = reasoning_effort  # none/minimal/low/medium/high/xhigh
+        self.service_tier = service_tier  # None/priority/flex
         self.timeout = timeout
         self.max_retries = max_retries
         self._tokens: CodexTokens | None = None
@@ -270,6 +274,13 @@ class CodexOAuthProvider(BaseLLMProvider):
             input_preview=_json.dumps(api_input, ensure_ascii=False)[:500],
         )
 
+        # Build optional params
+        extra_params: dict[str, Any] = {}
+        if self.reasoning_effort and self.reasoning_effort != "none":
+            extra_params["reasoning"] = {"effort": self.reasoning_effort}
+        if self.service_tier:
+            extra_params["service_tier"] = self.service_tier
+
         def _create_stream() -> Any:
             return self._client.responses.create(
                 model=self.model,
@@ -278,6 +289,7 @@ class CodexOAuthProvider(BaseLLMProvider):
                 tools=api_tools,
                 store=False,
                 stream=True,
+                **extra_params,
             )
 
         try:
