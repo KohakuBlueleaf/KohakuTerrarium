@@ -1,24 +1,18 @@
 """
 Codex OAuth LLM provider - uses ChatGPT subscription for model access.
 
-Routes requests through the Codex backend endpoint which bills against
-the user's ChatGPT Plus/Pro subscription instead of API credits.
-
-The endpoint accepts OpenAI Responses API format and returns SSE streams
-with response.* event types. We also handle Chat Completions format as
-a fallback since some endpoint configurations may return it.
+Uses the OpenAI Python SDK with the Codex backend endpoint. Authenticates
+via OAuth PKCE (browser or device code flow). Billing goes to the user's
+ChatGPT Plus/Pro subscription, not API credits.
 """
 
 import asyncio
 import json
 from typing import Any, AsyncIterator
 
-import httpx
-
 from kohakuterrarium.llm.base import (
     BaseLLMProvider,
     ChatResponse,
-    LLMConfig,
     NativeToolCall,
     ToolSchema,
 )
@@ -31,16 +25,14 @@ from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-CODEX_ENDPOINT = "https://chatgpt.com/backend-api/codex/responses"
+CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
 
 
 class CodexOAuthProvider(BaseLLMProvider):
-    """
-    LLM provider that uses a ChatGPT subscription via Codex OAuth.
+    """LLM provider using ChatGPT subscription via Codex OAuth.
 
-    Authenticates via OAuth PKCE (opens browser on first use) and routes
-    requests to the Codex backend endpoint. Usage is billed against the
-    ChatGPT Plus/Pro subscription quota, not API credits.
+    Uses the OpenAI SDK's Responses API routed through the Codex backend.
+    Supports streaming, tool calls, and auto token refresh.
 
     Usage:
         provider = CodexOAuthProvider(model="gpt-5.4")
@@ -52,111 +44,62 @@ class CodexOAuthProvider(BaseLLMProvider):
 
     def __init__(
         self,
-        model: str = "gpt-4o",
+        model: str = "gpt-5.4",
         *,
         timeout: float = 300.0,
         max_retries: int = 2,
-        retry_delay: float = 2.0,
     ):
-        super().__init__(LLMConfig(model=model))
         self.model = model
         self.timeout = timeout
         self.max_retries = max_retries
-        self.retry_delay = retry_delay
         self._tokens: CodexTokens | None = None
-        self._client: httpx.AsyncClient | None = None
-
-        logger.debug("CodexOAuthProvider initialized", model=model)
-
-    # ------------------------------------------------------------------
-    # Authentication
-    # ------------------------------------------------------------------
+        self._client: Any = None  # openai.OpenAI
+        self._last_tool_calls: list[NativeToolCall] = []
 
     async def ensure_authenticated(self) -> None:
-        """
-        Ensure valid OAuth tokens are available.
-
-        Loads cached tokens from disk, refreshes if expired, or opens
-        the browser for a fresh login if no tokens exist.
-        """
+        """Ensure valid tokens exist. Opens browser/device code if needed."""
         self._tokens = CodexTokens.load()
 
         if self._tokens and self._tokens.is_expired():
             try:
                 self._tokens = await refresh_tokens(self._tokens)
             except Exception as e:
-                logger.warning("Token refresh failed, will re-login", error=str(e))
+                logger.warning("Token refresh failed", error=str(e))
                 self._tokens = None
 
         if not self._tokens:
             self._tokens = await oauth_login()
 
-    async def _ensure_valid_token(self) -> str:
-        """Get a valid access token, refreshing or logging in as needed."""
+        self._rebuild_client()
+
+    def _rebuild_client(self) -> None:
+        """Create or recreate the OpenAI SDK client with current token."""
+        from openai import OpenAI
+
+        if not self._tokens:
+            return
+        self._client = OpenAI(
+            api_key=self._tokens.access_token,
+            base_url=CODEX_BASE_URL,
+            timeout=self.timeout,
+            max_retries=self.max_retries,
+        )
+
+    async def _ensure_valid_token(self) -> None:
+        """Refresh token if expired and rebuild client."""
         if not self._tokens:
             await self.ensure_authenticated()
-        assert self._tokens is not None
+            return
         if self._tokens.is_expired():
             self._tokens = await refresh_tokens(self._tokens)
-        return self._tokens.access_token
+            self._rebuild_client()
+
+    @property
+    def last_tool_calls(self) -> list[NativeToolCall]:
+        return self._last_tool_calls
 
     # ------------------------------------------------------------------
-    # HTTP client
-    # ------------------------------------------------------------------
-
-    async def _get_client(self) -> httpx.AsyncClient:
-        """Get or create the httpx async client."""
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
-                timeout=httpx.Timeout(self.timeout, connect=15.0),
-            )
-        return self._client
-
-    async def close(self) -> None:
-        """Close the httpx client."""
-        if self._client and not self._client.is_closed:
-            await self._client.aclose()
-            self._client = None
-
-    # ------------------------------------------------------------------
-    # Request building
-    # ------------------------------------------------------------------
-
-    def _build_request_body(
-        self,
-        messages: list[dict[str, Any]],
-        *,
-        tools: list[ToolSchema] | None = None,
-    ) -> dict[str, Any]:
-        """
-        Build request body for the Codex backend.
-
-        Uses standard Chat Completions format (messages, model, stream).
-        The Codex backend accepts this format directly, same as OpenCode
-        which sends standard OpenAI SDK requests and just rewrites the URL.
-        """
-        # Extract system message as "instructions" (required by Codex backend)
-        instructions = ""
-        chat_messages = []
-        for msg in messages:
-            if msg.get("role") == "system":
-                instructions = msg.get("content", "")
-            else:
-                chat_messages.append(msg)
-
-        body: dict[str, Any] = {
-            "model": self.model,
-            "instructions": instructions or "You are a helpful assistant.",
-            "input": chat_messages,
-            "stream": True,
-            "store": False,
-        }
-        if tools:
-            body["tools"] = [t.to_api_format() for t in tools]
-        return body
-
-    # ------------------------------------------------------------------
-    # Streaming
+    # Streaming (called by BaseLLMProvider.chat)
     # ------------------------------------------------------------------
 
     async def _stream_chat(
@@ -166,202 +109,97 @@ class CodexOAuthProvider(BaseLLMProvider):
         tools: list[ToolSchema] | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
-        """Stream a chat response from the Codex backend with retry."""
+        """Stream response from Codex backend using OpenAI SDK."""
         self._last_tool_calls = []
-        pending_calls: dict[int, dict[str, str]] = {}
+        await self._ensure_valid_token()
 
-        last_error: Exception | None = None
+        if not self._client:
+            self._rebuild_client()
 
-        for attempt in range(self.max_retries + 1):
-            if attempt > 0:
-                delay = self.retry_delay * (2 ** (attempt - 1))
-                logger.warning(
-                    "Retrying Codex request",
-                    attempt=attempt,
-                    delay=delay,
+        # Extract system message as instructions
+        instructions = ""
+        input_messages = []
+        for msg in messages:
+            if msg.get("role") == "system":
+                instructions = msg.get("content", "")
+            else:
+                input_messages.append(msg)
+
+        # Build tools in Responses API format
+        api_tools = None
+        if tools:
+            api_tools = []
+            for t in tools:
+                api_tools.append(
+                    {
+                        "type": "function",
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": t.parameters,
+                    }
                 )
-                await asyncio.sleep(delay)
-                pending_calls = {}
 
-            token = await self._ensure_valid_token()
-            client = await self._get_client()
-            body = self._build_request_body(messages, tools=tools)
-            headers = {
-                "Authorization": f"Bearer {token}",
-                "Content-Type": "application/json",
-            }
+        # Call SDK in a thread (SDK is sync, we're async)
+        loop = asyncio.get_running_loop()
 
-            try:
-                async with client.stream(
-                    "POST", CODEX_ENDPOINT, json=body, headers=headers
-                ) as response:
-                    if response.status_code == 401:
-                        logger.warning("Token rejected (401), refreshing...")
-                        assert self._tokens is not None
-                        try:
-                            self._tokens = await refresh_tokens(self._tokens)
-                        except Exception:
-                            self._tokens = None
-                            await self.ensure_authenticated()
-                        last_error = RuntimeError("Auth expired, retried")
-                        continue
-
-                    if response.status_code >= 500 or response.status_code == 429:
-                        error_text = (await response.aread()).decode()
-                        logger.error(
-                            "Codex API error (retryable)",
-                            status=response.status_code,
-                            error=error_text,
-                        )
-                        last_error = httpx.HTTPStatusError(
-                            f"Codex API: {response.status_code}",
-                            request=response.request,
-                            response=response,
-                        )
-                        if attempt < self.max_retries:
-                            continue
-                        raise last_error
-
-                    if response.status_code >= 400:
-                        error_body = (await response.aread()).decode()
-                        logger.error(
-                            "Codex API error",
-                            status=response.status_code,
-                            body=error_body[:500],
-                        )
-                        response.raise_for_status()
-
-                    async for line in response.aiter_lines():
-                        if not line.startswith("data: "):
-                            continue
-                        data_str = line[6:]
-                        if data_str == "[DONE]":
-                            break
-
-                        try:
-                            data = json.loads(data_str)
-                        except json.JSONDecodeError:
-                            continue
-
-                        # --- Responses API events ---
-                        event_type = data.get("type", "")
-
-                        if event_type == "response.output_text.delta":
-                            text = data.get("delta", "")
-                            if text:
-                                yield text
-
-                        if event_type == "response.function_call_arguments.done":
-                            self._last_tool_calls.append(
-                                NativeToolCall(
-                                    id=data.get("call_id", ""),
-                                    name=data.get("name", ""),
-                                    arguments=data.get("arguments", ""),
-                                )
-                            )
-
-                        # --- Chat Completions fallback ---
-                        if "choices" in data:
-                            for choice in data["choices"]:
-                                delta = choice.get("delta", {})
-                                content = delta.get("content", "")
-                                if content:
-                                    yield content
-                                if "tool_calls" in delta:
-                                    self._accumulate_tool_calls(
-                                        delta["tool_calls"], pending_calls
-                                    )
-
-                    # Stream finished successfully
-                    self._finalize_tool_calls(pending_calls)
-                    return
-
-            except httpx.TimeoutException as e:
-                logger.error(
-                    "Codex request timed out",
-                    timeout=self.timeout,
-                    attempt=attempt,
-                )
-                last_error = e
-                if attempt < self.max_retries:
-                    continue
-                raise
-            except httpx.HTTPStatusError:
-                raise
-            except Exception as e:
-                if (
-                    isinstance(
-                        e,
-                        (
-                            httpx.RemoteProtocolError,
-                            httpx.ReadError,
-                            httpx.ConnectError,
-                        ),
-                    )
-                    and attempt < self.max_retries
-                ):
-                    logger.warning(
-                        "Retryable network error", error=str(e), attempt=attempt
-                    )
-                    last_error = e
-                    continue
-                raise
-
-        # All retries exhausted
-        self._finalize_tool_calls(pending_calls)
-        if last_error:
-            raise last_error
-
-    # ------------------------------------------------------------------
-    # Tool call accumulation (Chat Completions format fallback)
-    # ------------------------------------------------------------------
-
-    def _accumulate_tool_calls(
-        self,
-        deltas: list[dict[str, Any]],
-        pending: dict[int, dict[str, str]],
-    ) -> None:
-        """Accumulate incremental tool_call deltas from streaming chunks."""
-        for tc in deltas:
-            idx = tc.get("index", 0)
-            if idx not in pending:
-                pending[idx] = {"id": tc.get("id", ""), "name": "", "arguments": ""}
-            if tc.get("id"):
-                pending[idx]["id"] = tc["id"]
-            fn = tc.get("function", {})
-            if fn.get("name"):
-                pending[idx]["name"] = fn["name"]
-            if fn.get("arguments"):
-                pending[idx]["arguments"] += fn["arguments"]
-
-    def _finalize_tool_calls(self, pending: dict[int, dict[str, str]]) -> None:
-        """Convert accumulated pending tool calls into NativeToolCall list."""
-        for _, call in sorted(pending.items()):
-            if call["name"]:
-                self._last_tool_calls.append(
-                    NativeToolCall(
-                        id=call["id"],
-                        name=call["name"],
-                        arguments=call["arguments"],
-                    )
-                )
-        if self._last_tool_calls:
-            logger.debug(
-                "Native tool calls received",
-                count=len(self._last_tool_calls),
-                tools=[tc.name for tc in self._last_tool_calls],
+        def _create_stream() -> Any:
+            return self._client.responses.create(
+                model=self.model,
+                instructions=instructions or "You are a helpful assistant.",
+                input=input_messages,
+                tools=api_tools,
+                store=False,
+                stream=True,
             )
 
+        stream = await loop.run_in_executor(None, _create_stream)
+
+        # Process events in a thread and push to queue
+        text_queue: asyncio.Queue[str | None] = asyncio.Queue()
+        collected_tool_calls: list[NativeToolCall] = []
+
+        def _consume_stream() -> None:
+            try:
+                for event in stream:
+                    match event.type:
+                        case "response.output_text.delta":
+                            text_queue.put_nowait(event.delta)
+                        case "response.function_call_arguments.done":
+                            collected_tool_calls.append(
+                                NativeToolCall(
+                                    id=getattr(event, "call_id", "")
+                                    or getattr(event, "item_id", ""),
+                                    name=getattr(event, "name", "") or "",
+                                    arguments=event.arguments,
+                                )
+                            )
+                        case "response.completed":
+                            pass
+            except Exception as e:
+                logger.error("Stream error", error=str(e))
+            finally:
+                text_queue.put_nowait(None)  # signal done
+
+        consume_task = loop.run_in_executor(None, _consume_stream)
+
+        # Yield text chunks as they arrive
+        while True:
+            chunk = await text_queue.get()
+            if chunk is None:
+                break
+            yield chunk
+
+        await consume_task
+        self._last_tool_calls = collected_tool_calls
+
     # ------------------------------------------------------------------
-    # Non-streaming convenience
+    # Non-streaming
     # ------------------------------------------------------------------
 
     async def _complete_chat(
-        self,
-        messages: list[dict[str, Any]],
-        **kwargs: Any,
+        self, messages: list[dict[str, Any]], **kwargs: Any
     ) -> ChatResponse:
-        """Non-streaming completion (collects full stream)."""
+        """Non-streaming completion (collects streaming output)."""
         parts: list[str] = []
         async for chunk in self._stream_chat(messages, **kwargs):
             parts.append(chunk)
@@ -372,12 +210,6 @@ class CodexOAuthProvider(BaseLLMProvider):
             model=self.model,
         )
 
-    # ------------------------------------------------------------------
-    # Context manager
-    # ------------------------------------------------------------------
-
-    async def __aenter__(self) -> "CodexOAuthProvider":
-        return self
-
-    async def __aexit__(self, *args: Any) -> None:
-        await self.close()
+    async def close(self) -> None:
+        """Cleanup."""
+        self._client = None

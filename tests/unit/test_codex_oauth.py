@@ -21,7 +21,7 @@ from kohakuterrarium.llm.codex_auth import (
     _build_auth_url,
     _generate_pkce,
 )
-from kohakuterrarium.llm.codex_provider import CODEX_ENDPOINT, CodexOAuthProvider
+from kohakuterrarium.llm.codex_provider import CODEX_BASE_URL, CodexOAuthProvider
 
 
 # =========================================================================
@@ -159,54 +159,13 @@ class TestCodexOAuthProvider:
 
     def test_init_defaults(self):
         provider = CodexOAuthProvider()
-        assert provider.model == "gpt-4o"
+        assert provider.model == "gpt-5.4"
         assert provider._tokens is None
         assert provider._client is None
 
     def test_init_custom_model(self):
         provider = CodexOAuthProvider(model="o3")
         assert provider.model == "o3"
-
-    def test_build_request_body_basic(self):
-        provider = CodexOAuthProvider(model="gpt-4o")
-        messages = [
-            {"role": "system", "content": "You are helpful."},
-            {"role": "user", "content": "Hello"},
-        ]
-        body = provider._build_request_body(messages)
-
-        assert body["model"] == "gpt-4o"
-        assert body["instructions"] == "You are helpful."
-        assert body["input"] == [m for m in messages if m.get("role") != "system"]
-        assert body["stream"] is True
-        assert "tools" not in body
-
-    def test_build_request_body_with_tools(self):
-        from kohakuterrarium.llm.base import ToolSchema
-
-        provider = CodexOAuthProvider()
-        tools = [
-            ToolSchema(
-                name="bash",
-                description="Execute a shell command",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "command": {"type": "string"},
-                    },
-                    "required": ["command"],
-                },
-            )
-        ]
-        messages = [{"role": "user", "content": "run ls"}]
-        body = provider._build_request_body(messages, tools=tools)
-
-        assert "tools" in body
-        assert len(body["tools"]) == 1
-        tool = body["tools"][0]
-        assert tool["type"] == "function"
-        assert tool["function"]["name"] == "bash"
-        assert tool["function"]["description"] == "Execute a shell command"
 
     def test_last_tool_calls_default_empty(self):
         provider = CodexOAuthProvider()
@@ -235,23 +194,12 @@ class TestCodexOAuthProvider:
         provider = CodexOAuthProvider()
         await provider.close()  # Should not raise
 
-    @pytest.mark.asyncio
-    async def test_context_manager(self):
-        """Provider works as an async context manager."""
-        async with CodexOAuthProvider() as provider:
-            assert isinstance(provider, CodexOAuthProvider)
-
-
-# =========================================================================
-# Constants
-# =========================================================================
-
 
 class TestConstants:
     """Verify critical constants are correct."""
 
     def test_codex_endpoint(self):
-        assert CODEX_ENDPOINT == "https://chatgpt.com/backend-api/codex/responses"
+        assert CODEX_BASE_URL == "https://chatgpt.com/backend-api/codex"
 
     def test_default_token_path(self):
         assert (
