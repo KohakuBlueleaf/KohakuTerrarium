@@ -1,9 +1,9 @@
 """
 Codex OAuth PKCE authentication for ChatGPT subscription access.
 
-Implements the OAuth 2.0 + PKCE flow used by Codex CLI to authenticate
-with a ChatGPT subscription. Tokens are cached locally and refreshed
-automatically.
+Two flows:
+- Browser flow (local machine): OAuth PKCE redirect to localhost
+- Device code flow (headless/SSH): user visits URL and enters code
 
 Token search order:
   1. ~/.kohakuterrarium/codex-auth.json  (our own cache)
@@ -14,6 +14,7 @@ import asyncio
 import base64
 import hashlib
 import json
+import os
 import secrets
 import time
 import webbrowser
@@ -22,7 +23,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from threading import Thread
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 
@@ -32,6 +33,7 @@ logger = get_logger(__name__)
 
 AUTH_URL = "https://auth.openai.com/oauth/authorize"
 TOKEN_URL = "https://auth.openai.com/oauth/token"
+DEVICE_CODE_URL = "https://auth.openai.com/oauth/device/code"
 CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 REDIRECT_PORT = 1455
 REDIRECT_URI = f"http://127.0.0.1:{REDIRECT_PORT}"
@@ -48,7 +50,7 @@ class CodexTokens:
 
     access_token: str
     refresh_token: str
-    expires_at: float = 0.0  # Unix timestamp
+    expires_at: float = 0.0
 
     def is_expired(self) -> bool:
         """Check if the access token is expired (with 60s safety buffer)."""
@@ -71,12 +73,7 @@ class CodexTokens:
 
     @classmethod
     def load(cls, path: Path | None = None) -> "CodexTokens | None":
-        """
-        Load tokens from disk.
-
-        Tries our path first, then the Codex CLI path as fallback.
-        Returns None if no valid tokens found.
-        """
+        """Load tokens from disk. Tries our path, then Codex CLI fallback."""
         candidates = [path or DEFAULT_TOKEN_PATH, CODEX_CLI_TOKEN_PATH]
         for p in candidates:
             if p and p.exists():
@@ -95,6 +92,19 @@ class CodexTokens:
         return None
 
 
+# =========================================================================
+# PKCE Helpers
+# =========================================================================
+
+
+def _generate_pkce() -> tuple[str, str]:
+    """Generate PKCE code_verifier and code_challenge."""
+    code_verifier = secrets.token_urlsafe(64)
+    digest = hashlib.sha256(code_verifier.encode()).digest()
+    code_challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+    return code_verifier, code_challenge
+
+
 def _build_auth_url(code_challenge: str, state: str) -> str:
     """Construct the OAuth authorization URL with PKCE parameters."""
     params = {
@@ -107,39 +117,34 @@ def _build_auth_url(code_challenge: str, state: str) -> str:
         "code_challenge_method": "S256",
         "state": state,
     }
-    query = "&".join(f"{k}={v}" for k, v in params.items())
-    return f"{AUTH_URL}?{query}"
+    return f"{AUTH_URL}?{urlencode(params)}"
 
 
-def _generate_pkce() -> tuple[str, str]:
-    """
-    Generate PKCE code_verifier and code_challenge.
+def _is_headless() -> bool:
+    """Detect if running in a headless environment (no display)."""
+    if os.environ.get("SSH_CLIENT") or os.environ.get("SSH_TTY"):
+        return True
+    if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+        # No display on Linux
+        if os.name != "nt":  # Not Windows
+            return True
+    return False
 
-    Returns:
-        (code_verifier, code_challenge_b64)
-    """
-    code_verifier = secrets.token_urlsafe(64)
-    digest = hashlib.sha256(code_verifier.encode()).digest()
-    code_challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
-    return code_verifier, code_challenge
+
+# =========================================================================
+# Browser Flow (local machine)
+# =========================================================================
 
 
 class _OAuthCallbackHandler(BaseHTTPRequestHandler):
-    """
-    Minimal HTTP handler that captures the OAuth callback.
-
-    Stores the authorization code and state on the server instance
-    so the caller can retrieve them after the request completes.
-    """
+    """Captures the OAuth callback on localhost."""
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         qs = parse_qs(parsed.query)
-
         server: Any = self.server
         server.auth_code = qs.get("code", [None])[0]
         server.callback_state = qs.get("state", [None])[0]
-
         self.send_response(200)
         self.send_header("Content-Type", "text/html")
         self.end_headers()
@@ -150,39 +155,25 @@ class _OAuthCallbackHandler(BaseHTTPRequestHandler):
             b"</body></html>"
         )
 
-    # Suppress default request logging
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
         pass
 
 
-async def oauth_login() -> CodexTokens:
-    """
-    Run the full OAuth PKCE flow via browser.
-
-    1. Start a local HTTP server on REDIRECT_PORT
-    2. Open the authorization URL in the default browser
-    3. Wait for the callback with the authorization code
-    4. Exchange the code for tokens
-    5. Save and return the tokens
-
-    Raises:
-        RuntimeError: If the login times out or state mismatches.
-    """
+async def _browser_flow() -> CodexTokens:
+    """OAuth PKCE flow with browser redirect to localhost."""
     code_verifier, code_challenge = _generate_pkce()
     state = secrets.token_urlsafe(32)
-
     auth_url = _build_auth_url(code_challenge, state)
 
-    # Run stdlib HTTPServer in a background thread
     server = HTTPServer(("127.0.0.1", REDIRECT_PORT), _OAuthCallbackHandler)
     server.auth_code = None  # type: ignore[attr-defined]
     server.callback_state = None  # type: ignore[attr-defined]
-    server.timeout = 120  # per-request timeout
+    server.timeout = 300
 
     received = asyncio.Event()
 
     def _serve_once() -> None:
-        server.handle_request()  # blocks until one request arrives
+        server.handle_request()
         received._loop.call_soon_threadsafe(received.set)  # type: ignore[attr-defined]
 
     loop = asyncio.get_running_loop()
@@ -191,32 +182,105 @@ async def oauth_login() -> CodexTokens:
     thread = Thread(target=_serve_once, daemon=True)
     thread.start()
 
-    logger.info("Opening browser for authentication...")
-    print("Opening browser for OpenAI authentication...")
-    print()
-    print("If the browser didn't open, visit this URL manually:")
+    print("[Browser] Opening authentication URL:")
     print(auth_url)
     print()
-    print(f"Waiting for callback on http://127.0.0.1:{REDIRECT_PORT} ...")
     webbrowser.open(auth_url)
 
     try:
-        await asyncio.wait_for(received.wait(), timeout=120)
+        await asyncio.wait_for(received.wait(), timeout=300)
     except asyncio.TimeoutError:
-        server.server_close()
-        raise RuntimeError("OAuth login timed out (120s)")
+        raise RuntimeError("OAuth login timed out (300s)")
     finally:
         server.server_close()
 
-    auth_code: str | None = server.auth_code  # type: ignore[attr-defined]
-    callback_state: str | None = server.callback_state  # type: ignore[attr-defined]
-
-    if callback_state != state:
-        raise RuntimeError("OAuth state mismatch - possible CSRF attack")
+    if server.callback_state != state:  # type: ignore[attr-defined]
+        raise RuntimeError("OAuth state mismatch")
+    auth_code = server.auth_code  # type: ignore[attr-defined]
     if not auth_code:
         raise RuntimeError("No authorization code received")
 
-    # Exchange authorization code for tokens
+    return await _exchange_code(auth_code, code_verifier)
+
+
+# =========================================================================
+# Device Code Flow (headless/SSH)
+# =========================================================================
+
+
+async def _device_code_flow() -> CodexTokens:
+    """OAuth device code flow for headless environments."""
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            DEVICE_CODE_URL,
+            json={
+                "client_id": CLIENT_ID,
+                "scope": SCOPE,
+                "audience": AUDIENCE,
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+    device_code = data["device_code"]
+    user_code = data["user_code"]
+    verification_uri = data.get(
+        "verification_uri_complete",
+        data.get("verification_uri", "https://auth.openai.com/activate"),
+    )
+    interval = data.get("interval", 5)
+    expires_in = data.get("expires_in", 900)
+
+    print("[Device] Or visit this URL on any device:")
+    print(verification_uri)
+    print(f"  Code: {user_code}")
+    print()
+    print("Waiting for authentication (either method)...")
+
+    deadline = time.time() + expires_in
+    async with httpx.AsyncClient(timeout=30) as client:
+        while time.time() < deadline:
+            await asyncio.sleep(interval)
+            resp = await client.post(
+                TOKEN_URL,
+                json={
+                    "client_id": CLIENT_ID,
+                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                    "device_code": device_code,
+                },
+            )
+            if resp.status_code == 200:
+                token_data = resp.json()
+                tokens = CodexTokens(
+                    access_token=token_data["access_token"],
+                    refresh_token=token_data.get("refresh_token", ""),
+                    expires_at=time.time() + token_data.get("expires_in", 3600),
+                )
+                tokens.save()
+                logger.info("Device code login successful")
+                return tokens
+
+            # Handle pending/slow_down responses
+            error_data = resp.json() if resp.status_code == 403 else {}
+            error = error_data.get("error", "")
+            if error == "authorization_pending":
+                continue
+            if error == "slow_down":
+                interval += 5
+                continue
+            if error in ("expired_token", "access_denied"):
+                raise RuntimeError(f"Device code auth failed: {error}")
+
+    raise RuntimeError("Device code auth timed out")
+
+
+# =========================================================================
+# Token Exchange
+# =========================================================================
+
+
+async def _exchange_code(auth_code: str, code_verifier: str) -> CodexTokens:
+    """Exchange authorization code for tokens."""
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             TOKEN_URL,
@@ -241,16 +305,63 @@ async def oauth_login() -> CodexTokens:
     return tokens
 
 
+# =========================================================================
+# Public API
+# =========================================================================
+
+
+async def oauth_login() -> CodexTokens:
+    """
+    Authenticate with OpenAI Codex OAuth.
+
+    Runs BOTH flows simultaneously - browser redirect AND device code.
+    Whichever completes first wins. This handles all environments:
+    - Local machine: browser opens, redirect catches it
+    - SSH/headless: user visits URL on another device, enters code
+    - Remote desktop: either flow may work
+    """
+    # Start both flows as concurrent tasks
+    browser_task = asyncio.create_task(_browser_flow_safe())
+    device_task = asyncio.create_task(_device_code_flow())
+
+    # Wait for EITHER to complete
+    done, pending = await asyncio.wait(
+        [browser_task, device_task],
+        return_when=asyncio.FIRST_COMPLETED,
+    )
+
+    # Cancel the other
+    for task in pending:
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    # Get the result from whichever succeeded
+    for task in done:
+        try:
+            return task.result()
+        except Exception as e:
+            logger.warning("Auth flow failed", error=str(e))
+
+    raise RuntimeError("All authentication flows failed")
+
+
+async def _browser_flow_safe() -> CodexTokens:
+    """Browser flow that doesn't crash if port is busy or browser fails."""
+    try:
+        return await _browser_flow()
+    except OSError as e:
+        # Port already in use or similar
+        logger.debug("Browser flow unavailable", error=str(e))
+        # Wait forever so device code flow can win
+        await asyncio.Event().wait()
+        raise  # unreachable
+
+
 async def refresh_tokens(tokens: CodexTokens) -> CodexTokens:
-    """
-    Refresh an expired access token using the refresh token.
-
-    Args:
-        tokens: Current token set with a valid refresh_token.
-
-    Returns:
-        New CodexTokens with a fresh access_token.
-    """
+    """Refresh an expired access token using the refresh token."""
     if not tokens.refresh_token:
         raise RuntimeError("No refresh token available - please re-authenticate")
 

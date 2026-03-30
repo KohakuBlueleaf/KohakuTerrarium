@@ -140,11 +140,13 @@ class TestPKCE:
         url = _build_auth_url("test-challenge", "test-state")
         assert url.startswith(AUTH_URL)
         assert "client_id=" + CLIENT_ID in url
-        assert "redirect_uri=" + REDIRECT_URI in url
+        assert "redirect_uri=" in url  # URL-encoded
         assert "code_challenge=test-challenge" in url
         assert "state=test-state" in url
         assert "code_challenge_method=S256" in url
         assert "response_type=code" in url
+        # Scope should be URL-encoded (no raw spaces)
+        assert "scope=openid+email+profile" in url or "scope=openid%20email" in url
 
 
 # =========================================================================
