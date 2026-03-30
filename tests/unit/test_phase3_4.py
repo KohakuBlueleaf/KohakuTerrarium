@@ -259,7 +259,7 @@ class TestBashTool:
         tool = BashTool()
         assert tool.tool_name == "bash"
         assert len(tool.description) > 0
-        assert tool.execution_mode == ExecutionMode.BACKGROUND
+        assert tool.execution_mode == ExecutionMode.DIRECT
 
 
 class TestRegistry:

@@ -204,6 +204,16 @@ def build_tool_schemas(registry: Registry) -> list[ToolSchema]:
                 },
             }
 
+        # Add run_in_background option to all tools
+        if "properties" in params:
+            params = dict(params)  # don't mutate builtin schemas
+            props = dict(params.get("properties", {}))
+            props["run_in_background"] = {
+                "type": "boolean",
+                "description": "If true, run in background. Results delivered later, not immediately.",
+            }
+            params["properties"] = props
+
         schemas.append(
             ToolSchema(
                 name=name,

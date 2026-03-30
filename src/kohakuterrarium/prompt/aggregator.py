@@ -129,11 +129,15 @@ def _build_static_hints(
 _NATIVE_HINTS = """## Tool Usage
 
 Tools are called via the API's native function calling mechanism.
-You do not need to format tool calls manually — just decide which tool
-to use and provide the arguments. The system handles the rest.
+You do not need to format tool calls manually.
 
-**Direct tools**: Results return after you finish your response.
-**Sub-agents**: Run in background, results reported back.
+By default, tool results are returned immediately after your response.
+You WILL receive the result before your next turn.
+
+All tools accept an optional `run_in_background` parameter (boolean).
+If set to true, the tool runs asynchronously and results are delivered
+in a later turn instead of immediately. Only use this for long-running
+operations where you want to continue working on other things.
 
 You may ONLY call tools listed in the "Available Functions" section above.
 """

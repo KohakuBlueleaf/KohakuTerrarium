@@ -156,9 +156,31 @@ class AgentHandlersMixin:
             # Controller yields: TextEvent, ToolCallEvent, SubAgentCallEvent, etc.
             # CommandEvents are handled inline by controller (converted to TextEvent)
             # ===================================================================
+            # In native mode, all tools are direct (we wait for results
+            # to add them as proper tool messages to conversation)
+            native_mode = getattr(controller.config, "tool_format", None) == "native"
+            # Track tool_call_ids for native mode tool messages
+            native_tool_call_ids: dict[str, str] = {}  # job_id -> tool_call_id
+
             async for parse_event in controller.run_once():
                 if isinstance(parse_event, ToolCallEvent):
+                    # Extract tool_call_id if present (native mode)
+                    tool_call_id = parse_event.args.pop("_tool_call_id", None)
+
+                    # Check if model explicitly requested background
+                    run_bg = parse_event.args.pop("run_in_background", False)
+
                     job_id, task, is_direct = await self._start_tool_async(parse_event)
+
+                    # Model decides: run_in_background=True -> background
+                    if run_bg:
+                        is_direct = False
+                    else:
+                        is_direct = True  # default: direct (model expects result)
+
+                    if tool_call_id:
+                        native_tool_call_ids[job_id] = tool_call_id
+
                     if is_direct:
                         direct_tasks[job_id] = task
                         direct_job_ids.append(job_id)
@@ -172,7 +194,11 @@ class AgentHandlersMixin:
                     )
                     # Notify output of tool activity with name[id] + arg preview
                     short_id = job_id.rsplit("_", 1)[-1][:6] if "_" in job_id else ""
-                    label = f"{parse_event.name}[{short_id}]" if short_id else parse_event.name
+                    label = (
+                        f"{parse_event.name}[{short_id}]"
+                        if short_id
+                        else parse_event.name
+                    )
                     arg_preview = ""
                     if parse_event.args:
                         arg_parts = []
@@ -189,7 +215,11 @@ class AgentHandlersMixin:
                     new_subagent_ids.append(job_id)
                     # Notify output of sub-agent activity with name[id]
                     sa_short_id = job_id.rsplit("_", 1)[-1][:6] if "_" in job_id else ""
-                    sa_label = f"{parse_event.name}[{sa_short_id}]" if sa_short_id else parse_event.name
+                    sa_label = (
+                        f"{parse_event.name}[{sa_short_id}]"
+                        if sa_short_id
+                        else parse_event.name
+                    )
                     task_preview = parse_event.args.get("task", "")[:60]
                     self.output_router.default_output.on_activity(
                         "subagent_start",
@@ -260,11 +290,23 @@ class AgentHandlersMixin:
                 feedback_parts.append(output_feedback)
 
             # 4b. Direct tool results - we waited for these, now report results
+            native_results_added = False
             if direct_tasks:
                 logger.info("Waiting for %d direct tool(s)", len(direct_tasks))
-                results = await self._collect_tool_results(direct_job_ids, direct_tasks)
-                if results:
-                    feedback_parts.append(results)
+
+                if native_mode and native_tool_call_ids:
+                    # Native mode: add results as role="tool" messages
+                    # directly to conversation (proper API format)
+                    await self._add_native_tool_results(
+                        controller, direct_job_ids, direct_tasks, native_tool_call_ids
+                    )
+                    native_results_added = True
+                else:
+                    results = await self._collect_tool_results(
+                        direct_job_ids, direct_tasks
+                    )
+                    if results:
+                        feedback_parts.append(results)
 
             # 4c. Background job status - report RUNNING or completed results
             # Completed jobs are removed from pending lists after reporting
@@ -286,6 +328,7 @@ class AgentHandlersMixin:
                 and not pending_background_ids
                 and not pending_subagent_ids
                 and not feedback_parts
+                and not native_results_added
             ):
                 logger.debug(
                     "No jobs pending and no feedback, exiting process loop",
@@ -298,7 +341,19 @@ class AgentHandlersMixin:
             # ===================================================================
             # PHASE 6: Push feedback to controller for next LLM turn
             # ===================================================================
-            if feedback_parts:
+            if native_results_added and not feedback_parts:
+                # Native mode: tool results already in conversation as
+                # role="tool" messages. Just trigger next LLM turn with
+                # an empty event so the controller calls the LLM again.
+                logger.debug(
+                    "Native tool results in conversation, continuing loop",
+                    pending_bg=len(pending_background_ids),
+                    pending_sa=len(pending_subagent_ids),
+                )
+                await controller.push_event(
+                    TriggerEvent(type="tool_complete", content="")
+                )
+            elif feedback_parts:
                 combined = "\n\n".join(feedback_parts)
                 feedback_event = create_tool_complete_event(
                     job_id="batch",
@@ -391,6 +446,57 @@ class AgentHandlersMixin:
 
             task = asyncio.create_task(_error_result())
             return error_job_id, task, True  # Direct so it gets reported
+
+    async def _add_native_tool_results(
+        self,
+        controller: Controller,
+        job_ids: list[str],
+        tasks: dict[str, asyncio.Task],
+        tool_call_ids: dict[str, str],
+    ) -> None:
+        """Wait for tools and add results as role='tool' messages.
+
+        For native tool calling mode. Appends proper tool messages
+        to the conversation so the LLM sees structured results.
+        """
+        if not tasks:
+            return
+
+        results_list = await asyncio.gather(
+            *[tasks[jid] for jid in job_ids],
+            return_exceptions=True,
+        )
+
+        for job_id, result in zip(job_ids, results_list):
+            tool_name = job_id.rsplit("_", 1)[0] if "_" in job_id else job_id
+            tool_call_id = tool_call_ids.get(job_id, job_id)
+
+            if isinstance(result, Exception):
+                content = f"Error: {result}"
+                self.output_router.default_output.on_activity(
+                    "tool_error", f"[{tool_name}] FAILED: {result}"
+                )
+            elif result is not None and result.error:
+                content = f"Error: {result.error}"
+                self.output_router.default_output.on_activity(
+                    "tool_error", f"[{tool_name}] ERROR: {result.error}"
+                )
+            elif result is not None:
+                content = result.output[:TOOL_RESULT_MAX_CHARS] if result.output else ""
+                status = "OK" if result.exit_code == 0 else f"exit={result.exit_code}"
+                self.output_router.default_output.on_activity(
+                    "tool_done", f"[{tool_name}] {status}"
+                )
+            else:
+                content = ""
+
+            # Add as proper tool message to conversation
+            controller.conversation.append(
+                "tool",
+                content,
+                tool_call_id=tool_call_id,
+                name=tool_name,
+            )
 
     async def _collect_tool_results(
         self,
@@ -522,7 +628,11 @@ class AgentHandlersMixin:
 
         # Check sub-agents
         for job_id in subagent_job_ids:
-            sa_name = job_id.replace("agent_", "", 1).rsplit("_", 1)[0] if "_" in job_id else job_id
+            sa_name = (
+                job_id.replace("agent_", "", 1).rsplit("_", 1)[0]
+                if "_" in job_id
+                else job_id
+            )
             short_id = job_id.rsplit("_", 1)[-1][:6] if "_" in job_id else ""
             label = f"{sa_name}[{short_id}]" if short_id else sa_name
 

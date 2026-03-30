@@ -67,7 +67,7 @@ class BashTool(BaseTool):
 
     @property
     def execution_mode(self) -> ExecutionMode:
-        return ExecutionMode.BACKGROUND
+        return ExecutionMode.DIRECT
 
     async def _execute(self, args: dict[str, Any]) -> ToolResult:
         """Execute the command."""
@@ -206,7 +206,7 @@ class PythonTool(BaseTool):
 
     @property
     def execution_mode(self) -> ExecutionMode:
-        return ExecutionMode.BACKGROUND
+        return ExecutionMode.DIRECT
 
     async def _execute(self, args: dict[str, Any]) -> ToolResult:
         """Execute Python code."""

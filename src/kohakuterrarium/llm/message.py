@@ -105,6 +105,7 @@ class Message:
     content: str | list[ContentPart]
     name: str | None = None
     tool_call_id: str | None = None
+    tool_calls: list[dict[str, Any]] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -114,6 +115,8 @@ class Message:
         # Handle both string and multimodal content
         if isinstance(self.content, str):
             result["content"] = self.content
+        elif self.content is None:
+            result["content"] = None
         else:
             result["content"] = content_parts_to_dicts(self.content)
 
@@ -121,6 +124,8 @@ class Message:
             result["name"] = self.name
         if self.tool_call_id:
             result["tool_call_id"] = self.tool_call_id
+        if self.tool_calls:
+            result["tool_calls"] = self.tool_calls
         return result
 
     @classmethod
@@ -149,6 +154,7 @@ class Message:
             content=content,
             name=data.get("name"),
             tool_call_id=data.get("tool_call_id"),
+            tool_calls=data.get("tool_calls"),
         )
 
     def get_text_content(self) -> str:
