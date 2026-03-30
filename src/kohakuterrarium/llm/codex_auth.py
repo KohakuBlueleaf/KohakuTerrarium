@@ -31,12 +31,15 @@ from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-AUTH_URL = "https://auth.openai.com/oauth/authorize"
-TOKEN_URL = "https://auth.openai.com/oauth/token"
-DEVICE_CODE_URL = "https://auth.openai.com/oauth/device/code"
+ISSUER = "https://auth.openai.com"
+AUTH_URL = f"{ISSUER}/oauth/authorize"
+TOKEN_URL = f"{ISSUER}/oauth/token"
+DEVICE_USERCODE_URL = f"{ISSUER}/api/accounts/deviceauth/usercode"
+DEVICE_TOKEN_URL = f"{ISSUER}/api/accounts/deviceauth/token"
+DEVICE_VERIFY_URL = f"{ISSUER}/codex/device"
 CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 REDIRECT_PORT = 1455
-REDIRECT_URI = f"http://127.0.0.1:{REDIRECT_PORT}"
+REDIRECT_URI = f"http://localhost:{REDIRECT_PORT}/auth/callback"
 SCOPE = "openid email profile"
 AUDIENCE = "https://api.openai.com/v1"
 
@@ -209,30 +212,29 @@ async def _browser_flow() -> CodexTokens:
 
 
 async def _device_code_flow() -> CodexTokens:
-    """OAuth device code flow for headless environments."""
+    """OAuth device code flow for headless environments.
+
+    Uses OpenAI's Codex-specific device auth endpoints:
+    1. POST /api/accounts/deviceauth/usercode -> get device_auth_id + user_code
+    2. User visits /codex/device and enters user_code
+    3. Poll /api/accounts/deviceauth/token until user completes auth
+    4. Server returns authorization_code + PKCE codes
+    5. Exchange at /oauth/token for access + refresh tokens
+    """
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
-            DEVICE_CODE_URL,
-            json={
-                "client_id": CLIENT_ID,
-                "scope": SCOPE,
-                "audience": AUDIENCE,
-            },
+            DEVICE_USERCODE_URL,
+            json={"client_id": CLIENT_ID},
         )
         resp.raise_for_status()
         data = resp.json()
 
-    device_code = data["device_code"]
+    device_auth_id = data["device_auth_id"]
     user_code = data["user_code"]
-    verification_uri = data.get(
-        "verification_uri_complete",
-        data.get("verification_uri", "https://auth.openai.com/activate"),
-    )
     interval = data.get("interval", 5)
     expires_in = data.get("expires_in", 900)
 
-    print("[Device] Or visit this URL on any device:")
-    print(verification_uri)
+    print(f"[Device] Or visit: {DEVICE_VERIFY_URL}")
     print(f"  Code: {user_code}")
     print()
     print("Waiting for authentication (either method)...")
@@ -242,34 +244,48 @@ async def _device_code_flow() -> CodexTokens:
         while time.time() < deadline:
             await asyncio.sleep(interval)
             resp = await client.post(
-                TOKEN_URL,
+                DEVICE_TOKEN_URL,
                 json={
-                    "client_id": CLIENT_ID,
-                    "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-                    "device_code": device_code,
+                    "device_auth_id": device_auth_id,
+                    "user_code": user_code,
                 },
             )
+
             if resp.status_code == 200:
                 token_data = resp.json()
-                tokens = CodexTokens(
-                    access_token=token_data["access_token"],
-                    refresh_token=token_data.get("refresh_token", ""),
-                    expires_at=time.time() + token_data.get("expires_in", 3600),
-                )
-                tokens.save()
-                logger.info("Device code login successful")
-                return tokens
+                # Server returns authorization_code + PKCE codes
+                auth_code = token_data.get("authorization_code", "")
+                code_verifier = token_data.get("code_verifier", "")
 
-            # Handle pending/slow_down responses
-            error_data = resp.json() if resp.status_code == 403 else {}
-            error = error_data.get("error", "")
-            if error == "authorization_pending":
-                continue
-            if error == "slow_down":
-                interval += 5
-                continue
-            if error in ("expired_token", "access_denied"):
-                raise RuntimeError(f"Device code auth failed: {error}")
+                if auth_code and code_verifier:
+                    # Exchange for real tokens
+                    return await _exchange_code(auth_code, code_verifier)
+
+                # Some responses may return tokens directly
+                if "access_token" in token_data:
+                    tokens = CodexTokens(
+                        access_token=token_data["access_token"],
+                        refresh_token=token_data.get("refresh_token", ""),
+                        expires_at=time.time() + token_data.get("expires_in", 3600),
+                    )
+                    tokens.save()
+                    logger.info("Device code login successful")
+                    return tokens
+
+            # Handle pending/error responses
+            if resp.status_code in (403, 400, 428):
+                try:
+                    error_data = resp.json()
+                    error = error_data.get("error", "")
+                except Exception:
+                    continue
+                if error in ("authorization_pending", "pending"):
+                    continue
+                if error == "slow_down":
+                    interval += 5
+                    continue
+                if error in ("expired_token", "access_denied"):
+                    raise RuntimeError(f"Device code auth failed: {error}")
 
     raise RuntimeError("Device code auth timed out")
 
