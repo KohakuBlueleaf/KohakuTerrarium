@@ -287,30 +287,25 @@ class TUISession:
         self.write_output(text)
 
     def _flush_assistant_block(self) -> None:
-        """Render buffered assistant output as markdown and add separator."""
+        """Render buffered assistant output as markdown."""
         if not self._assistant_buffer:
             return
-        # Join buffer and render as markdown
         full_text = "\n".join(self._assistant_buffer)
         if full_text.strip():
             try:
                 self._safe_write("output-log", RichMarkdown(full_text))
             except Exception:
-                # Fallback to plain text if markdown parsing fails
                 self._safe_write("output-log", Text(full_text))
-        self._safe_write("output-log", Rule(characters="─", style="dim cyan"))
         self._assistant_buffer.clear()
 
     def begin_assistant_turn(self) -> None:
-        """Mark the start of an assistant turn."""
+        """Mark the start of an assistant turn (just a blank line separator)."""
         self._assistant_buffer.clear()
-        self._safe_write(
-            "output-log", Rule(title="Assistant", characters="─", style="green")
-        )
 
     def end_assistant_turn(self) -> None:
-        """Render and close the assistant turn."""
+        """Render the assistant turn (flush buffer, add blank line)."""
         self._flush_assistant_block()
+        self._safe_write("output-log", "")
 
     def write_log(self, text: str) -> None:
         """Write to the Logs tab."""
