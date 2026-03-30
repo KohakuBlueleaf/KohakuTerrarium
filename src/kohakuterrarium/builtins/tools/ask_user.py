@@ -25,7 +25,7 @@ class AskUserTool(BaseTool):
 
     @property
     def execution_mode(self) -> ExecutionMode:
-        return ExecutionMode.BACKGROUND
+        return ExecutionMode.DIRECT
 
     async def _execute(self, args: dict[str, Any]) -> ToolResult:
         """Ask user for input via stdin."""

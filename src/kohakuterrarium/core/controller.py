@@ -389,7 +389,12 @@ class Controller:
         else:
             user_content = combined_text
 
-        self.conversation.append("user", user_content)
+        # In native mode, empty tool_complete events just trigger next turn
+        # (tool results already added as role="tool" messages)
+        if not combined_text.strip() and self._is_native_mode:
+            pass  # Skip empty user message
+        else:
+            self.conversation.append("user", user_content)
 
         # Run LLM
         messages = self.conversation.to_messages()
@@ -404,32 +409,60 @@ class Controller:
                 messages, stream=True, tools=tool_schemas or None
             ):
                 assistant_content += chunk
-                # In native mode, text is still streamed as TextEvents
                 if chunk:
                     yield TextEvent(text=chunk)
 
-            # After streaming, extract native tool calls
-            if hasattr(self.llm, "last_tool_calls"):
+            # Extract native tool calls and build proper assistant message
+            native_calls = (
+                self.llm.last_tool_calls if hasattr(self.llm, "last_tool_calls") else []
+            )
+
+            if native_calls:
+                # Build assistant message WITH tool_calls metadata
+                tool_calls_data = []
                 known_subagents = set(self.registry.list_subagents())
-                for tc in self.llm.last_tool_calls:
+                for tc in native_calls:
+                    tool_calls_data.append(
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.name,
+                                "arguments": tc.arguments,
+                            },
+                        }
+                    )
                     logger.info(
                         "Native tool call",
                         tool_name=tc.name,
                         tool_args=tc.arguments[:100],
                     )
                     if tc.name in known_subagents:
-                        # Sub-agent call — dispatch as SubAgentCallEvent
                         yield SubAgentCallEvent(
                             name=tc.name,
                             args=tc.parsed_arguments(),
                             raw=tc.arguments,
                         )
                     else:
+                        # Include tool_call_id so results can be linked
                         yield ToolCallEvent(
                             name=tc.name,
-                            args=tc.parsed_arguments(),
+                            args={
+                                **tc.parsed_arguments(),
+                                "_tool_call_id": tc.id,
+                            },
                             raw=tc.arguments,
                         )
+
+                # Add assistant message with tool_calls
+                self.conversation.append(
+                    "assistant",
+                    assistant_content or None,
+                    tool_calls=tool_calls_data,
+                )
+            else:
+                # No tool calls - normal assistant message
+                self.conversation.append("assistant", assistant_content)
         else:
             # Custom format mode: parse text stream for tool calls
             self._parser = self._get_parser()
@@ -474,8 +507,10 @@ class Controller:
                 else:
                     yield event
 
-        # Add assistant message to conversation
-        self.conversation.append("assistant", assistant_content)
+        # Add assistant message to conversation (custom format only;
+        # native mode already appended above with tool_calls metadata)
+        if not self._is_native_mode:
+            self.conversation.append("assistant", assistant_content)
 
     async def _handle_command(self, event: CommandEvent) -> CommandResult:
         """Handle a framework command."""
