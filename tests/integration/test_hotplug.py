@@ -22,7 +22,6 @@ from kohakuterrarium.core.channel import ChannelMessage, SubAgentChannel
 from kohakuterrarium.core.config import load_agent_config
 from kohakuterrarium.core.session import (
     Session,
-    get_session,
     remove_session,
     set_session,
 )
@@ -393,12 +392,11 @@ class TestTerrariumHotPlugChannels:
         try:
             await runtime.add_channel("new_channel", "queue", "A hot-plugged channel")
 
-            session = get_session(f"terrarium_{terrarium_config.name}")
-            channel_names = session.channels.list_channels()
+            channel_names = runtime.environment.shared_channels.list_channels()
             assert "new_channel" in channel_names
 
             # Verify the channel has the right type
-            ch = session.channels.get("new_channel")
+            ch = runtime.environment.shared_channels.get("new_channel")
             assert ch is not None
             assert ch.channel_type == "queue"
         finally:
@@ -415,8 +413,7 @@ class TestTerrariumHotPlugChannels:
                 "announcements", "broadcast", "Team announcements"
             )
 
-            session = get_session(f"terrarium_{terrarium_config.name}")
-            ch = session.channels.get("announcements")
+            ch = runtime.environment.shared_channels.get("announcements")
             assert ch is not None
             assert ch.channel_type == "broadcast"
         finally:

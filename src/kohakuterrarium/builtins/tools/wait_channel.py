@@ -49,12 +49,29 @@ class WaitChannelTool(BaseTool):
         if not channel_name:
             return ToolResult(error="Channel name is required")
 
-        registry = (
-            context.session.channels
-            if context and context.session
-            else get_channel_registry()
-        )
-        channel = registry.get_or_create(channel_name)
+        # Resolve channel: private session first, shared environment second
+        channel = None
+
+        # 1. Check creature's private channels (sub-agent channels)
+        if context and context.session:
+            channel = context.session.channels.get(channel_name)
+
+        # 2. Check environment's shared channels (inter-creature channels)
+        if channel is None and context and context.environment:
+            channel = context.environment.shared_channels.get(channel_name)
+
+        # 3. Fallback for no-context usage (standalone / testing)
+        if channel is None and not context:
+            channel = get_channel_registry().get_or_create(channel_name)
+
+        # 4. Auto-create in private session if not found anywhere
+        if channel is None and context and context.session:
+            channel = context.session.channels.get_or_create(channel_name)
+
+        if channel is None:
+            return ToolResult(
+                error=f"Channel '{channel_name}' not found and cannot be created"
+            )
 
         subscription = None
         try:

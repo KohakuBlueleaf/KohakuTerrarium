@@ -7,10 +7,12 @@ Not an agent -- pure wiring.
 
 import asyncio
 from typing import Any
+from uuid import uuid4
 
 from kohakuterrarium.core.agent import Agent
 from kohakuterrarium.core.config import load_agent_config
-from kohakuterrarium.core.session import Session, get_session, set_session
+from kohakuterrarium.core.environment import Environment
+from kohakuterrarium.core.session import Session
 from kohakuterrarium.terrarium.config import CreatureConfig, TerrariumConfig
 from kohakuterrarium.terrarium.creature import CreatureHandle
 from kohakuterrarium.terrarium.hotplug import HotPlugMixin
@@ -105,11 +107,20 @@ class TerrariumRuntime(HotPlugMixin):
     wire_channel) are provided by HotPlugMixin.
     """
 
-    def __init__(self, config: TerrariumConfig):
+    def __init__(
+        self,
+        config: TerrariumConfig,
+        *,
+        environment: Environment | None = None,
+    ):
         self.config = config
+        # Use provided environment or create one
+        self.environment = environment or Environment(
+            env_id=f"terrarium_{config.name}_{uuid4().hex[:8]}"
+        )
         self._creatures: dict[str, CreatureHandle] = {}
-        self._session_key = f"terrarium_{config.name}"
-        self._session: Session | None = None
+        self._session_key = self.environment.env_id  # for backward compat
+        self._session: Session | None = None  # kept for backward compat
         self._running = False
         self._creature_tasks: list[asyncio.Task] = []
 
@@ -145,11 +156,11 @@ class TerrariumRuntime(HotPlugMixin):
         """
         Start the terrarium.
 
-        1. Create shared session with channel registry.
-        2. Pre-create all declared channels.
+        1. Pre-create shared channels in the environment.
+        2. Create backward-compat session pointing at shared channels.
         3. For each creature:
            a. Load agent config.
-           b. Create Agent instance with shared session.
+           b. Create Agent with private session + shared environment.
            c. Inject ChannelTriggers for listen channels.
            d. Inject channel topology into system prompt.
         4. Start all creature agents.
@@ -160,13 +171,9 @@ class TerrariumRuntime(HotPlugMixin):
 
         logger.info("Starting terrarium", terrarium_name=self.config.name)
 
-        # 1. Shared session
-        self._session = get_session(self._session_key)
-        set_session(self._session, key=self._session_key)
-
-        # 2. Pre-create channels
+        # 1. Pre-create shared channels in the environment
         for ch_cfg in self.config.channels:
-            self._session.channels.get_or_create(
+            self.environment.shared_channels.get_or_create(
                 ch_cfg.name,
                 channel_type=ch_cfg.channel_type,
                 description=ch_cfg.description,
@@ -176,6 +183,10 @@ class TerrariumRuntime(HotPlugMixin):
                 channel=ch_cfg.name,
                 channel_type=ch_cfg.channel_type,
             )
+
+        # 2. Backward-compat session - observer and API use _session.channels
+        self._session = Session(key=self._session_key)
+        self._session.channels = self.environment.shared_channels
 
         # 3. Build creatures
         for creature_cfg in self.config.creatures:
@@ -263,8 +274,7 @@ class TerrariumRuntime(HotPlugMixin):
             }
 
         channel_info: list[dict[str, str]] = []
-        if self._session:
-            channel_info = self._session.channels.get_channel_info()
+        channel_info = self.environment.shared_channels.get_channel_info()
 
         return {
             "name": self.config.name,
@@ -290,18 +300,23 @@ class TerrariumRuntime(HotPlugMixin):
         # Load the agent config from the creature's config path
         agent_config = load_agent_config(creature_cfg.config_path)
 
-        # Point the agent at the shared session so all creatures
-        # share the same ChannelRegistry (and therefore the same channels).
-        agent_config.session_key = self._session_key
+        # Each creature gets a PRIVATE session from the environment
+        creature_session = self.environment.get_session(creature_cfg.name)
 
         # For creatures with no interactive user input, override input
         # to NoneInput so the agent loop blocks on triggers instead of stdin.
         input_module = NoneInput()
 
-        # Create the agent (full init: LLM, registry, executor, controller, etc.)
-        agent = Agent(agent_config, input_module=input_module)
+        # Create the agent with explicit session and environment
+        agent = Agent(
+            agent_config,
+            input_module=input_module,
+            session=creature_session,
+            environment=self.environment,
+        )
 
         # -- Inject ChannelTriggers for listen channels --
+        # Triggers listen on SHARED channels (environment.shared_channels)
         # Broadcast channels get a prompt that frames messages as informational
         broadcast_names = {
             ch.name for ch in self.config.channels if ch.channel_type == "broadcast"
@@ -318,7 +333,7 @@ class TerrariumRuntime(HotPlugMixin):
                 channel_name=ch_name,
                 subscriber_id=creature_cfg.name,
                 prompt=prompt,
-                session=self._session,
+                registry=self.environment.shared_channels,
             )
             agent._triggers.append(trigger)
             logger.debug(
