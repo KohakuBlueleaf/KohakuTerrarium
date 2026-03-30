@@ -198,9 +198,106 @@ class KohakuManager:
         content: str,
         sender: str = "human",
     ) -> str:
-        """Send a message to a terrarium channel. Returns message_id."""
+        """Send a message to a shared terrarium channel. Returns message_id."""
         runtime = self.get_terrarium(terrarium_id)
         return await runtime.api.send_to_channel(channel, content, sender)
+
+    async def send_to_creature_channel(
+        self,
+        terrarium_id: str,
+        creature: str,
+        channel: str,
+        content: str,
+        sender: str = "human",
+    ) -> str:
+        """Send a message to a creature's private (sub-agent) channel.
+
+        Returns message_id.
+        """
+        runtime = self.get_terrarium(terrarium_id)
+        session = runtime.environment.get_session(creature)
+        ch = session.channels.get(channel)
+        if ch is None:
+            ch = session.channels.get_or_create(channel)
+
+        from kohakuterrarium.core.channel import ChannelMessage
+
+        msg = ChannelMessage(sender=sender, content=content)
+        await ch.send(msg)
+        return msg.message_id
+
+    # =================================================================
+    # Channel Inspection
+    # =================================================================
+
+    def list_channels(self, terrarium_id: str, creature: str | None = None) -> dict:
+        """List channels with info.
+
+        Returns dict with "shared" (terrarium channels) and optionally
+        "private" (creature's sub-agent channels) if creature is specified.
+        If creature is None, includes all creatures' private channels.
+        """
+        runtime = self.get_terrarium(terrarium_id)
+        result: dict = {
+            "shared": runtime.environment.shared_channels.get_channel_info(),
+        }
+
+        if creature:
+            session = runtime.environment.get_session(creature)
+            result["private"] = {
+                creature: session.channels.get_channel_info(),
+            }
+        else:
+            result["private"] = {}
+            for name in runtime.environment.list_sessions():
+                session = runtime.environment.get_session(name)
+                info = session.channels.get_channel_info()
+                if info:
+                    result["private"][name] = info
+
+        return result
+
+    def get_channel_info(
+        self,
+        terrarium_id: str,
+        channel: str,
+        creature: str | None = None,
+    ) -> dict | None:
+        """Get info about a specific channel.
+
+        Checks shared channels first. If creature is specified, also
+        checks that creature's private channels.
+
+        Returns dict with name, type, description, qsize, scope.
+        """
+        runtime = self.get_terrarium(terrarium_id)
+
+        # Check shared
+        ch = runtime.environment.shared_channels.get(channel)
+        if ch is not None:
+            return {
+                "name": ch.name,
+                "type": ch.channel_type,
+                "description": ch.description,
+                "qsize": ch.qsize,
+                "scope": "shared",
+            }
+
+        # Check creature's private
+        if creature:
+            session = runtime.environment.get_session(creature)
+            ch = session.channels.get(channel)
+            if ch is not None:
+                return {
+                    "name": ch.name,
+                    "type": ch.channel_type,
+                    "description": ch.description,
+                    "qsize": ch.qsize,
+                    "scope": "private",
+                    "creature": creature,
+                }
+
+        return None
 
     # =================================================================
     # Event Streams
