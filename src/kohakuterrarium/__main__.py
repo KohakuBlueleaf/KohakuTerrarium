@@ -62,6 +62,14 @@ def main() -> int:
     # Terrarium command group
     add_terrarium_subparser(subparsers)
 
+    # Login command
+    login_parser = subparsers.add_parser("login", help="Authenticate with a provider")
+    login_parser.add_argument(
+        "provider",
+        choices=["codex"],
+        help="Provider to authenticate with (codex = ChatGPT subscription)",
+    )
+
     args = parser.parse_args()
 
     if args.command == "run":
@@ -72,6 +80,8 @@ def main() -> int:
         return show_agent_info_cli(args.agent_path)
     elif args.command == "terrarium":
         return handle_terrarium_command(args)
+    elif args.command == "login":
+        return login_cli(args.provider)
     else:
         parser.print_help()
         return 0
@@ -211,6 +221,54 @@ def show_agent_info_cli(agent_path: str) -> int:
 
     except Exception as e:
         print(f"Error reading config: {e}")
+        return 1
+
+
+def login_cli(provider: str) -> int:
+    """Authenticate with a provider."""
+    if provider == "codex":
+        return _login_codex()
+    print(f"Unknown provider: {provider}")
+    return 1
+
+
+def _login_codex() -> int:
+    """Authenticate with OpenAI Codex OAuth (ChatGPT subscription)."""
+    from kohakuterrarium.llm.codex_auth import (
+        CodexTokens,
+        oauth_login,
+    )
+
+    # Check for existing tokens
+    existing = CodexTokens.load()
+    if existing and not existing.is_expired():
+        print("Already authenticated (tokens valid).")
+        print(
+            f"Token path: {existing._path if hasattr(existing, '_path') else '~/.kohakuterrarium/codex-auth.json'}"
+        )
+        answer = input("Re-authenticate? [y/N]: ").strip().lower()
+        if answer != "y":
+            return 0
+
+    print("Authenticating with OpenAI (ChatGPT subscription)...")
+    print()
+
+    try:
+        tokens = asyncio.run(oauth_login())
+        print()
+        print("Authentication successful!")
+        print(f"Tokens saved to: ~/.kohakuterrarium/codex-auth.json")
+        print()
+        print("You can now use auth_mode: codex-oauth in agent configs:")
+        print("  controller:")
+        print('    model: "gpt-4o"')
+        print("    auth_mode: codex-oauth")
+        return 0
+    except KeyboardInterrupt:
+        print("\nCancelled")
+        return 0
+    except Exception as e:
+        print(f"Error: {e}")
         return 1
 
 

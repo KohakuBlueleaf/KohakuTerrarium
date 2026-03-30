@@ -105,6 +105,7 @@ class AgentConfig:
 
     # LLM settings
     model: str = "openai/gpt-4o-mini"
+    auth_mode: str = "api-key"  # "api-key" (default) or "codex-oauth"
     api_key_env: str = "OPENROUTER_API_KEY"
     base_url: str = "https://openrouter.ai/api/v1"
     temperature: float = 0.7
@@ -378,6 +379,9 @@ def load_agent_config(agent_path: str | Path) -> AgentConfig:
         version=config_data.get("version", "1.0"),
         model=controller_data.get(
             "model", config_data.get("model", "openai/gpt-4o-mini")
+        ),
+        auth_mode=controller_data.get(
+            "auth_mode", config_data.get("auth_mode", "api-key")
         ),
         api_key_env=controller_data.get(
             "api_key_env", config_data.get("api_key_env", "OPENROUTER_API_KEY")
