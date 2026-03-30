@@ -53,20 +53,32 @@ class AgentInitMixin:
     _loader: ModuleLoader
 
     def _init_llm(self) -> None:
-        """Initialize LLM provider."""
-        api_key = self.config.get_api_key()
-        if not api_key:
-            raise ValueError(
-                f"API key not found. Set {self.config.api_key_env} environment variable."
-            )
+        """Initialize LLM provider based on auth_mode."""
+        if self.config.auth_mode == "codex-oauth":
+            # Codex OAuth: uses ChatGPT subscription, no API key needed
+            from kohakuterrarium.llm.codex_provider import CodexOAuthProvider
 
-        self.llm = OpenAIProvider(
-            api_key=api_key,
-            base_url=self.config.base_url,
-            model=self.config.model,
-            temperature=self.config.temperature,
-            max_tokens=self.config.max_tokens,
-        )
+            self.llm = CodexOAuthProvider(model=self.config.model)
+            logger.info(
+                "Using Codex OAuth provider (ChatGPT subscription)",
+                model=self.config.model,
+            )
+        else:
+            # Standard API key auth (OpenAI, OpenRouter, etc.)
+            api_key = self.config.get_api_key()
+            if not api_key:
+                raise ValueError(
+                    f"API key not found. "
+                    f"Set {self.config.api_key_env} environment variable."
+                )
+
+            self.llm = OpenAIProvider(
+                api_key=api_key,
+                base_url=self.config.base_url,
+                model=self.config.model,
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens,
+            )
 
     def _init_registry(self) -> None:
         """Initialize module registry and register tools."""

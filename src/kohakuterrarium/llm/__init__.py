@@ -4,6 +4,7 @@ LLM module - Language model providers and abstractions.
 Exports:
 - LLMProvider: Protocol for LLM providers
 - OpenAIProvider: OpenAI/OpenRouter compatible provider
+- CodexOAuthProvider: ChatGPT subscription provider (Codex OAuth)
 - Message types: Message, SystemMessage, UserMessage, AssistantMessage
 - Native tool calling: ToolSchema, NativeToolCall, build_tool_schemas
 """
@@ -17,6 +18,7 @@ from kohakuterrarium.llm.base import (
     NativeToolCall,
     ToolSchema,
 )
+from kohakuterrarium.llm.codex_provider import CodexOAuthProvider
 from kohakuterrarium.llm.message import (
     AssistantMessage,
     Message,
@@ -50,6 +52,8 @@ __all__ = [
     "OpenAIProvider",
     "OPENAI_BASE_URL",
     "OPENROUTER_BASE_URL",
+    # Codex OAuth provider
+    "CodexOAuthProvider",
     # Message types
     "Message",
     "MessageList",
