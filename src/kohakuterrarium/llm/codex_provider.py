@@ -263,7 +263,6 @@ class CodexOAuthProvider(BaseLLMProvider):
                     tool_name=name,
                 )
 
-
         logger.debug(
             "Codex API request",
             model=self.model,
@@ -281,7 +280,11 @@ class CodexOAuthProvider(BaseLLMProvider):
                 stream=True,
             )
 
-        stream = await loop.run_in_executor(None, _create_stream)
+        try:
+            stream = await loop.run_in_executor(None, _create_stream)
+        except Exception as e:
+            logger.error("Codex API request failed", error=str(e))
+            raise
 
         # Process events in a thread and push to queue
         text_queue: asyncio.Queue[str | None] = asyncio.Queue()
