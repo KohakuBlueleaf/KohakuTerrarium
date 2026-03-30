@@ -170,7 +170,9 @@ class AgentHandlersMixin:
                         job_id=job_id,
                         direct=is_direct,
                     )
-                    # Notify output of tool activity with brief arg preview
+                    # Notify output of tool activity with name[id] + arg preview
+                    short_id = job_id.rsplit("_", 1)[-1][:6] if "_" in job_id else ""
+                    label = f"{parse_event.name}[{short_id}]" if short_id else parse_event.name
                     arg_preview = ""
                     if parse_event.args:
                         arg_parts = []
@@ -180,16 +182,18 @@ class AgentHandlersMixin:
                         arg_preview = " ".join(arg_parts)[:60]
                     self.output_router.default_output.on_activity(
                         "tool_start",
-                        f"[{parse_event.name}] {arg_preview}",
+                        f"[{label}] {arg_preview}",
                     )
                 elif isinstance(parse_event, SubAgentCallEvent):
                     job_id = await self._start_subagent_async(parse_event)
                     new_subagent_ids.append(job_id)
-                    # Notify output of sub-agent activity
+                    # Notify output of sub-agent activity with name[id]
+                    sa_short_id = job_id.rsplit("_", 1)[-1][:6] if "_" in job_id else ""
+                    sa_label = f"{parse_event.name}[{sa_short_id}]" if sa_short_id else parse_event.name
                     task_preview = parse_event.args.get("task", "")[:60]
                     self.output_router.default_output.on_activity(
                         "subagent_start",
-                        f"[{parse_event.name}] {job_id}: {task_preview}",
+                        f"[{sa_label}] {task_preview}",
                     )
                 elif isinstance(parse_event, CommandResultEvent):
                     # Command results are internal feedback for the LLM,
@@ -489,6 +493,10 @@ class AgentHandlersMixin:
 
         # Check background tools
         for job_id in background_job_ids:
+            tool_name = job_id.rsplit("_", 1)[0] if "_" in job_id else job_id
+            short_id = job_id.rsplit("_", 1)[-1][:6] if "_" in job_id else ""
+            label = f"{tool_name}[{short_id}]" if short_id else tool_name
+
             status = self.executor.get_status(job_id)
             if status:
                 if status.is_complete:
@@ -496,7 +504,7 @@ class AgentHandlersMixin:
                     if result and result.error:
                         status_lines.append(f"- `{job_id}`: ERROR - {result.error}")
                         self.output_router.default_output.on_activity(
-                            "tool_error", f"[{job_id}] ERROR: {result.error}"
+                            "tool_error", f"[{label}] ERROR: {result.error}"
                         )
                     else:
                         output = (
@@ -506,7 +514,7 @@ class AgentHandlersMixin:
                         )
                         status_lines.append(f"- `{job_id}`: DONE\n{output}")
                         self.output_router.default_output.on_activity(
-                            "tool_done", f"[{job_id}] DONE"
+                            "tool_done", f"[{label}] DONE"
                         )
                 else:
                     status_lines.append(f"- `{job_id}`: {status.state.value}")
@@ -514,10 +522,14 @@ class AgentHandlersMixin:
 
         # Check sub-agents
         for job_id in subagent_job_ids:
+            sa_name = job_id.replace("agent_", "", 1).rsplit("_", 1)[0] if "_" in job_id else job_id
+            short_id = job_id.rsplit("_", 1)[-1][:6] if "_" in job_id else ""
+            label = f"{sa_name}[{short_id}]" if short_id else sa_name
+
             if job_id.startswith("error_"):
                 status_lines.append(f"- `{job_id}`: ERROR - Sub-agent not registered")
                 self.output_router.default_output.on_activity(
-                    "subagent_error", f"[{job_id}] Not registered"
+                    "subagent_error", f"[{label}] Not registered"
                 )
                 continue
 
@@ -530,12 +542,12 @@ class AgentHandlersMixin:
                     )
                     self.output_router.default_output.on_activity(
                         "subagent_done",
-                        f"[{job_id}] DONE (turns={result.turns})",
+                        f"[{label}] DONE (turns={result.turns})",
                     )
                 else:
                     status_lines.append(f"- `{job_id}`: ERROR - {result.error}")
                     self.output_router.default_output.on_activity(
-                        "subagent_error", f"[{job_id}] ERROR: {result.error}"
+                        "subagent_error", f"[{label}] ERROR: {result.error}"
                     )
             else:
                 status_lines.append(f"- `{job_id}`: RUNNING")
