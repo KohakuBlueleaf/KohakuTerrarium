@@ -1,176 +1,272 @@
-# Environment System Design
+# Environment-Session System Design
 
-## The Problem
+## The Real Problem
 
-Running multiple independent agent/terrarium sessions in one process requires state isolation. Without it, two users creating agents would share channels, scratchpad, and logging state.
+The terrarium currently forces all creatures to share ONE Session (same session_key). This means:
 
-## Investigation Results
+1. **Shared scratchpad** - Creature A's working notes are visible to Creature B
+2. **Shared sub-agent channels** - If Creature A's sub-agent creates channel "temp", Creature B's sub-agent sees it
+3. **No isolation between user requests** - Two terrariums with same name collide
 
-Comprehensive code analysis found **3 critical globals** and **many safe per-instance components**.
+The correct hierarchy is:
 
-### Critical Global State (Must Fix)
-
-| Global | File | Problem |
-|--------|------|---------|
-| `_sessions` dict | `core/session.py:51` | Two agents with same key share channels/scratchpad |
-| `_global_registry` singleton | `core/registry.py:106` | Shared tool registry (but agents already bypass it - they create per-agent Registry) |
-| `_handler` / `set_level()` | `utils/logging.py:153` | Log level and handler are process-global |
-
-### Already Safe (Per-Instance)
-
-| Component | Why It's Safe |
-|-----------|--------------|
-| Agent.registry | Created fresh per agent in `_init_registry()` |
-| Agent.executor / JobStore | Per-agent instance |
-| Agent.controller / Conversation | Per-agent instance |
-| LLM provider / httpx client | Per-agent instance |
-| Builtin tool registry | Read-only post-import, returns new instances per call |
-| Builtin input/output registries | Read-only post-import |
-| Jinja2 Environment | Stateless, thread-safe |
-| Parsing constants | Never modified |
-| KohakuManager dicts | Per-manager instance |
-
-### The Real Scope
-
-Only `_sessions` is a true blocker. The global registry is bypassed by agents. Logging is a UX issue (mixed output) but not a correctness issue.
-
-## Do We Need a Full Environment System?
-
-**No.** The investigation shows most state is already per-instance. The only real problem is the session registry.
-
-Two options:
-
-### Option A: Fix Session Only (Minimal, Recommended)
-
-Pass session explicitly instead of relying on the global `_sessions` dict:
-
-```python
-# Current (global lookup):
-session = get_session("my_key")  # reads from module-level _sessions dict
-
-# Fixed (explicit):
-agent = Agent(config, session=Session(key="unique_per_user"))
-# Agent passes session to executor, tools, etc.
+```
+Environment (per user request)
+  ├── Shared state (inter-creature channels, env config)
+  │
+  ├── Creature A → Session A (private scratchpad, private channels)
+  ├── Creature B → Session B (private scratchpad, private channels)
+  └── Creature C → Session C (private scratchpad, private channels)
 ```
 
-This is already almost how it works. Agents get their session via `session_key` in config. The terrarium creates a session and shares it. The only issue is that `get_session()` is a global function that two callers with the same key would collide on.
+### Concrete Conflict Examples
 
-Fix: make session an explicit parameter rather than a global lookup. The `_sessions` dict becomes a convenience for simple single-user cases, not the source of truth.
+**Scratchpad collision:**
+```python
+# Creature A (planner) writes to scratchpad
+scratchpad.set("plan", "5 chapters about time travel")
 
-**Changes needed:**
-- `Agent.__init__` accepts optional `session` parameter
-- If provided, use it directly instead of calling `get_session(session_key)`
-- `TerrariumRuntime` creates a `Session()` directly and passes it to agents
-- Tools get session via `ToolContext.session` (already works)
-- Remove `get_channel_registry()` global function (use `context.session.channels`)
+# Creature B (writer) reads scratchpad - sees planner's data!
+plan = scratchpad.get("plan")  # Returns planner's plan, not writer's
+```
 
-~50 lines of changes. No new abstractions.
+**Sub-agent channel collision:**
+```python
+# Creature A's sub-agent creates channel "explore_results"
+send_message(channel="explore_results", message="found auth.py")
 
-### Option B: Full Environment System (Comprehensive)
+# Creature B's sub-agent also uses "explore_results" - same channel!
+# B's sub-agent receives A's results
+```
 
-A new `Environment` class that holds all per-session state:
+## The Design: Environment + Session
+
+### Environment
+
+One Environment per user request (or per terrarium instance). Holds shared resources that all creatures in the terrarium can access.
 
 ```python
+@dataclass
 class Environment:
-    """Isolated execution context for one user session."""
+    """Isolated execution context. One per terrarium/user request."""
 
-    def __init__(self, name: str):
-        self.name = name
-        self.sessions: dict[str, Session] = {}
-        self._context: dict[str, Any] = {}
+    env_id: str
+    shared_channels: ChannelRegistry  # inter-creature channels
+    _sessions: dict[str, Session] = field(default_factory=dict)
+    _context: dict[str, Any] = field(default_factory=dict)
 
-    def get_session(self, key: str | None = None) -> Session:
-        k = key or "__default__"
-        if k not in self.sessions:
-            self.sessions[k] = Session(key=k)
-        return self.sessions[k]
+    def get_session(self, key: str) -> Session:
+        """Get or create a creature-private session."""
+        if key not in self._sessions:
+            self._sessions[key] = Session(key=key)
+        return self._sessions[key]
 
     def register(self, key: str, value: Any) -> None:
-        """Modules register their own context."""
+        """Modules register env-level shared state."""
         self._context[key] = value
 
-    def get(self, key: str) -> Any:
-        return self._context.get(key)
+    def get(self, key: str, default: Any = None) -> Any:
+        """Modules retrieve env-level shared state."""
+        return self._context.get(key, default)
 ```
 
-Usage:
+### Session
+
+One Session per creature/agent. Holds private resources.
+
 ```python
-env = Environment("user_123")
-agent = Agent(config, environment=env)
-terrarium = TerrariumRuntime(config, environment=env)
+@dataclass
+class Session:
+    """Private state for one creature/agent."""
+
+    key: str
+    channels: ChannelRegistry = field(default_factory=ChannelRegistry)  # sub-agent channels
+    scratchpad: Scratchpad = field(default_factory=Scratchpad)
+    extra: dict[str, Any] = field(default_factory=dict)
 ```
 
-**This adds complexity but gains:**
-- Clean isolation boundary
-- Extensible (modules register their own state)
-- Multiple users per process without collision
-- Environment can be serialized/restored for persistence
+Note: Session already exists and has this shape. The change is that it's now explicitly creature-private, not shared across the terrarium.
 
-**The registration pattern** means we don't define what goes in the environment. Modules register what they need:
+### How They Connect
+
+```
+Environment (shared)
+  ├── shared_channels: ChannelRegistry
+  │     ├── "ideas" (queue)
+  │     ├── "outline" (queue)
+  │     └── "team_chat" (broadcast)
+  │
+  ├── Session "brainstorm" (private)
+  │     ├── channels: ChannelRegistry (sub-agent channels only)
+  │     └── scratchpad: Scratchpad
+  │
+  ├── Session "planner" (private)
+  │     ├── channels: ChannelRegistry
+  │     └── scratchpad: Scratchpad
+  │
+  └── Session "writer" (private)
+        ├── channels: ChannelRegistry
+        └── scratchpad: Scratchpad
+```
+
+### Channel Resolution
+
+When a creature calls `send_message(channel="ideas")`:
+1. Check creature's private session channels first (sub-agent channels)
+2. If not found, check environment's shared channels (inter-creature channels)
+3. If not found, error with listing of both
+
+This gives natural namespacing:
+- Private channels (created by sub-agents) stay private
+- Shared channels (declared in terrarium config) are accessible to all
+- No naming collision between private and shared
+
+### How Tools Access Both Levels
+
+The `ToolContext` needs to carry both:
+
 ```python
-# In channel module:
-env.register("channel_registry", ChannelRegistry())
-
-# In scratchpad module:
-env.register("scratchpad", Scratchpad())
-
-# Any module can access:
-channels = env.get("channel_registry")
+@dataclass
+class ToolContext:
+    agent_name: str
+    session: Session         # creature-private (scratchpad, sub-agent channels)
+    environment: Environment | None = None  # shared (inter-creature channels)
+    working_dir: Path
+    memory_path: Path | None = None
 ```
 
-But this is over-engineered for the current problem. Session already IS the per-agent/per-terrarium context container. It has channels, scratchpad, tui, and an extras dict.
+The `send_message` tool resolves channels from both:
+```python
+async def _execute(self, args, context):
+    channel_name = args["channel"]
 
-## Recommendation
+    # Try private channels first
+    channel = context.session.channels.get(channel_name)
 
-**Go with Option A (fix Session) now.** The Session class already IS an environment - it has channels, scratchpad, and extras. The only problem is the global `_sessions` dict.
+    # Fall back to shared environment channels
+    if channel is None and context.environment:
+        channel = context.environment.shared_channels.get(channel_name)
 
-Fix:
-1. Let Agent/TerrariumRuntime accept an explicit `Session` object
-2. Stop relying on the global `get_session()` for multi-user scenarios
-3. Keep `get_session()` as a convenience for single-user/CLI usage
-4. Each KohakuManager user session creates its own Session and passes it through
+    # Auto-create in private (for sub-agent use)
+    if channel is None:
+        channel = context.session.channels.get_or_create(channel_name)
 
-If we later need more isolation (e.g., per-user logging, per-user config), we can wrap Session into an Environment class. But don't build that until we need it.
+    await channel.send(msg)
+```
 
-## Multi-Session in KohakuManager
+### Registration Pattern
 
-The serving layer already handles this correctly IF we use unique session keys:
+Modules register their own context at the appropriate level:
+
+```python
+# At environment level (shared across creatures):
+env.register("terrarium_config", config)
+env.register("budget_tracker", BudgetTracker())
+
+# At session level (per creature):
+session.extra["custom_state"] = MyState()
+```
+
+The Environment doesn't define what's in it. Modules register what they need. This keeps Environment generic and extensible.
+
+## What Changes
+
+### In Agent
+
+```python
+class Agent:
+    def __init__(self, config, *, session=None, environment=None):
+        # If session provided, use it (creature-private)
+        # If not, create one (standalone agent)
+        self.session = session or Session(key=config.name)
+        self.environment = environment  # None for standalone agents
+```
+
+### In TerrariumRuntime
+
+```python
+class TerrariumRuntime:
+    def __init__(self, config):
+        self.environment = Environment(env_id=f"terrarium_{config.name}_{uuid}")
+
+    def _build_creature(self, creature_cfg):
+        # Each creature gets its OWN session (private)
+        session = self.environment.get_session(creature_cfg.name)
+
+        # Shared channels live in environment
+        # Private channels live in session
+
+        agent = Agent(config, session=session, environment=self.environment)
+```
+
+### In Executor / ToolContext
+
+```python
+def _build_tool_context(self):
+    return ToolContext(
+        agent_name=self._agent_name,
+        session=self._session,         # creature-private
+        environment=self._environment, # shared (may be None for standalone)
+        working_dir=self._working_dir,
+    )
+```
+
+### In send_message / wait_channel
+
+Channel resolution: private first, then shared, then auto-create in private.
+
+### In ChannelTrigger
+
+Terrarium-level triggers listen on `environment.shared_channels`. Sub-agent triggers listen on `session.channels`.
+
+## Standalone Agents (No Terrarium)
+
+A standalone agent has a Session but no Environment:
+```python
+agent = Agent.from_path("agents/swe_agent")
+# agent.session = Session(key="swe_agent")
+# agent.environment = None
+# All channels are in session.channels (private to this agent)
+```
+
+Everything works the same. The Environment layer is optional.
+
+## Multi-User in KohakuManager
 
 ```python
 class KohakuManager:
-    async def create_agent(self, config_path, session_id=None):
-        # Generate unique session key per user
-        session_key = session_id or f"session_{uuid4().hex[:8]}"
-        config = load_agent_config(config_path)
-        config.session_key = session_key  # unique per call
-
-        # Now this agent has its own session, channels, scratchpad
-        session = await AgentSession.from_config(config)
+    async def create_terrarium(self, config_path, user_id=None):
+        config = load_terrarium_config(config_path)
+        # Each call gets a unique environment
+        env_id = f"{config.name}_{user_id or uuid4().hex[:8]}"
+        env = Environment(env_id=env_id)
+        runtime = TerrariumRuntime(config, environment=env)
         ...
 ```
 
-Two users calling `create_agent("agents/swe_agent")` get different session keys, so different sessions, so no collision.
+Two users creating the same terrarium get different environments, so no collision.
 
-The terrarium already does this: `self._session_key = f"terrarium_{config.name}"`. Just make the name unique per call (add a UUID suffix).
+## Implementation Scope
 
-## What About Logging?
+| Change | Where | Size |
+|--------|-------|------|
+| `Environment` dataclass | New file: `core/environment.py` | ~50 lines |
+| Agent accepts session + environment | `core/agent.py`, `core/agent_init.py` | ~20 lines |
+| TerrariumRuntime creates Environment | `terrarium/runtime.py` | ~15 lines |
+| ToolContext gets environment field | `modules/tool/base.py` | ~5 lines |
+| Executor passes environment | `core/executor.py` | ~5 lines |
+| send_message resolves from both levels | `builtins/tools/send_message.py` | ~15 lines |
+| wait_channel resolves from both levels | `builtins/tools/wait_channel.py` | ~15 lines |
+| ChannelTrigger uses correct registry | `modules/trigger/channel.py` | ~10 lines |
+| KohakuManager creates unique envs | `serving/manager.py` | ~10 lines |
 
-Logging is process-global by design in Python. Options:
-1. **Accept it** - all agents log to same stderr, differentiated by logger name (module path). This is the Python standard.
-2. **Per-agent log files** - agents can set up their own file handlers. This is an application concern, not a framework concern.
-3. **Structured logging** - already done. Each log message includes agent_name, creature name, etc. A log aggregator can filter by these.
+Total: ~150 lines of changes + 1 new file (~50 lines).
 
-Recommendation: keep logging as-is. It's a presentation concern for the application layer (web app can capture and route logs per session).
+## Key Principles
 
-## Implementation Summary
-
-| Change | Where | Lines |
-|--------|-------|-------|
-| Agent accepts optional `session` param | `core/agent_init.py` | ~10 |
-| TerrariumRuntime creates Session directly | `terrarium/runtime.py` | ~5 |
-| KohakuManager uses unique session keys | `serving/manager.py` | ~10 |
-| Deprecate global `get_session()` for multi-user | `core/session.py` | ~5 |
-
-Total: ~30 lines of changes. No new modules. No new abstractions.
-
-The Session class IS the environment. We just need to pass it explicitly instead of looking it up globally.
+1. **Environment = shared** - inter-creature channels, terrarium config, budget
+2. **Session = private** - scratchpad, sub-agent channels, creature-local state
+3. **Standalone agents** - Session only, no Environment (backward compatible)
+4. **Registration pattern** - modules register their own context, Environment is generic
+5. **Channel resolution** - private first, shared second, auto-create in private
+6. **No global state** - Environment and Session are explicit parameters, not global lookups
