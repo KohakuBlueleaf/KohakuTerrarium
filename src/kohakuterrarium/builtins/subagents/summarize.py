@@ -45,6 +45,6 @@ SUMMARIZE_CONFIG = SubAgentConfig(
     system_prompt=SUMMARIZE_SYSTEM_PROMPT,
     can_modify=False,
     stateless=True,
-    max_turns=3,
-    timeout=30.0,
+    max_turns=50,
+    timeout=600.0,
 )

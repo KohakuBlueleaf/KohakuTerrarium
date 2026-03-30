@@ -61,6 +61,6 @@ EXPLORE_CONFIG = SubAgentConfig(
     system_prompt=EXPLORE_SYSTEM_PROMPT,
     can_modify=False,
     stateless=True,
-    max_turns=8,
-    timeout=120.0,
+    max_turns=50,
+    timeout=600.0,
 )
