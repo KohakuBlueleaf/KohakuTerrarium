@@ -170,10 +170,17 @@ class AgentHandlersMixin:
                         job_id=job_id,
                         direct=is_direct,
                     )
-                    # Notify output of tool activity
+                    # Notify output of tool activity with brief arg preview
+                    arg_preview = ""
+                    if parse_event.args:
+                        arg_parts = []
+                        for k, v in parse_event.args.items():
+                            v_str = str(v)[:40]
+                            arg_parts.append(f"{k}={v_str}")
+                        arg_preview = " ".join(arg_parts)[:60]
                     self.output_router.default_output.on_activity(
                         "tool_start",
-                        f"[{parse_event.name}] {job_id} ({'direct' if is_direct else 'background'})",
+                        f"[{parse_event.name}] {arg_preview}",
                     )
                 elif isinstance(parse_event, SubAgentCallEvent):
                     job_id = await self._start_subagent_async(parse_event)

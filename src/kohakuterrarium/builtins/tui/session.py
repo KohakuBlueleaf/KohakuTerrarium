@@ -5,11 +5,18 @@ Layout:
   ┌─ KohakuTerrarium ──────────────────────────────────────┐
   │                             │ [Status] [Logs]          │
   │  ┌─ You ──────────────┐    │                          │
-  │  │ Fix the auth bug    │    │  [tool_start] bash       │
-  │  └────────────────────┘    │  [tool_done] bash OK     │
-  │                             │  [subagent_start] explore│
-  │  ── Assistant ──────────    │  [subagent_done] explore │
-  │  Found the issue...         │                          │
+  │  │ Fix the auth bug    │    │  (detailed status log)   │
+  │  └────────────────────┘    │                          │
+  │                             │                          │
+  │  ── Assistant ──────────    │                          │
+  │  I'll check the module...   │                          │
+  │                             │                          │
+  │    ⚙ bash: command=ls src/  │                          │
+  │    ✓ bash: OK               │                          │
+  │    ⚙ read: file=auth.py     │                          │
+  │    ✓ read: OK               │                          │
+  │                             │                          │
+  │  Found the issue in ...     │                          │
   │  ──────────────────────    │                          │
   │                             │                          │
   │ KohakUwUing...              │                          │
@@ -41,6 +48,14 @@ from textual.widgets import (
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+THINKING_FRAMES = [
+    "KohakUwUing.",
+    "KohakUwUing..",
+    "KohakUwUing...",
+    "KohakUwUing   ",
+]
 
 
 class AgentTUI(App):
@@ -97,6 +112,8 @@ class AgentTUI(App):
         self._input_ready = asyncio.Event()
         self._input_value: str = ""
         self._stop_event = asyncio.Event()
+        self._thinking_timer: Any = None
+        self._thinking_frame_index: int = 0
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -141,6 +158,38 @@ class AgentTUI(App):
         self._input_value = text
         self._input_ready.set()
 
+    def start_thinking_animation(self) -> None:
+        """Start the KohakUwUing animation cycle."""
+        self._thinking_frame_index = 0
+        self._update_thinking_frame()
+        self._thinking_timer = self.set_interval(0.4, self._animate_thinking)
+
+    def stop_thinking_animation(self) -> None:
+        """Stop animation and clear the status line."""
+        if self._thinking_timer is not None:
+            self._thinking_timer.stop()
+            self._thinking_timer = None
+        try:
+            status = self.query_one("#quick-status", Static)
+            status.update("")
+        except Exception:
+            pass
+
+    def _animate_thinking(self) -> None:
+        """Advance to the next animation frame."""
+        self._thinking_frame_index = (self._thinking_frame_index + 1) % len(
+            THINKING_FRAMES
+        )
+        self._update_thinking_frame()
+
+    def _update_thinking_frame(self) -> None:
+        """Write current frame to the status widget."""
+        try:
+            status = self.query_one("#quick-status", Static)
+            status.update(THINKING_FRAMES[self._thinking_frame_index])
+        except Exception:
+            pass
+
     def action_clear_output(self) -> None:
         """Clear the output log."""
         self.query_one("#output-log", RichLog).clear()
@@ -183,6 +232,16 @@ class TUISession:
                     logs.write(f"[TUI Error] {widget_id}: {e}")
                 except Exception:
                     pass
+
+    def write_to_output(self, content: Any) -> None:
+        """
+        Write directly to the main output RichLog (unbuffered).
+
+        Unlike write_output() which buffers text for markdown rendering,
+        this writes Rich Text objects immediately - used for inline tool
+        activity display.
+        """
+        self._safe_write("output-log", content)
 
     async def start(self, prompt: str = "You: ") -> None:
         """Create the Textual app."""
@@ -264,6 +323,24 @@ class TUISession:
     def set_status(self, text: str) -> None:
         """Alias for update_status."""
         self.update_status(text)
+
+    def start_thinking(self) -> None:
+        """Start the KohakUwUing processing animation."""
+        if not self._app or not self._app.is_running:
+            return
+        try:
+            self._app.start_thinking_animation()
+        except Exception:
+            pass
+
+    def stop_thinking(self) -> None:
+        """Stop the KohakUwUing processing animation."""
+        if not self._app or not self._app.is_running:
+            return
+        try:
+            self._app.stop_thinking_animation()
+        except Exception:
+            pass
 
     def set_subtitle(self, text: str) -> None:
         """Update the quick status line above input box."""
