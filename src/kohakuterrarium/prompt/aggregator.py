@@ -136,8 +136,11 @@ You WILL receive the result before your next turn.
 
 All tools accept an optional `run_in_background` parameter (boolean).
 If set to true, the tool runs asynchronously and results are delivered
-in a later turn instead of immediately. Only use this for long-running
-operations where you want to continue working on other things.
+in a later turn instead of immediately. When you have background jobs
+running, you can continue with other work - the results will be
+delivered to you automatically when ready. You do NOT need to poll
+or wait for them. Just finish your current response and the system
+will notify you when background tasks complete.
 
 You may ONLY call tools listed in the "Available Functions" section above.
 """

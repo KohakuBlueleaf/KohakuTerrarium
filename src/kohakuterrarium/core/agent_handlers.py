@@ -206,9 +206,10 @@ class AgentHandlersMixin:
                             v_str = str(v)[:40]
                             arg_parts.append(f"{k}={v_str}")
                         arg_preview = " ".join(arg_parts)[:60]
+                    bg_tag = " (bg)" if not is_direct else ""
                     self.output_router.default_output.on_activity(
                         "tool_start",
-                        f"[{label}] {arg_preview}",
+                        f"[{label}]{bg_tag} {arg_preview}",
                     )
                 elif isinstance(parse_event, SubAgentCallEvent):
                     job_id = await self._start_subagent_async(parse_event)
