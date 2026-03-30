@@ -62,9 +62,10 @@ class TUIOutput(BaseOutputModule):
             self._tui.start_thinking()
 
     async def on_processing_end(self) -> None:
-        """Stop animated processing indicator."""
+        """Stop animated processing indicator, show idle status."""
         if self._tui:
             self._tui.stop_thinking()
+            self._tui.set_idle()
 
     async def write(self, content: str) -> None:
         """Write complete content to the output pane."""
