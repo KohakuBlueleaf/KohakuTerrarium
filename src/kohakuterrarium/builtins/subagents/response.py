@@ -70,8 +70,8 @@ RESPONSE_CONFIG = SubAgentConfig(
     stateless=True,
     interactive=False,  # Can be set to True for persistent output agent
     output_to=OutputTarget.EXTERNAL,  # Streams to user
-    max_turns=3,  # Usually single turn
-    timeout=30.0,
+    max_turns=50,  # Usually single turn
+    timeout=600.0,
 )
 
 

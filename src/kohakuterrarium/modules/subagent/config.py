@@ -68,8 +68,8 @@ class SubAgentConfig:
     output_to: OutputTarget = OutputTarget.CONTROLLER
     output_module: str | None = None
     return_as_context: bool = False  # Return output text to parent as context
-    max_turns: int = 10
-    timeout: float = 300.0
+    max_turns: int = 50  # safety net, not restrictive
+    timeout: float = 600.0  # 10 min safety net
     model: str | None = None
     temperature: float | None = None
     memory_path: str | None = None

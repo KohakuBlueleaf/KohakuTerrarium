@@ -40,7 +40,7 @@ MEMORY_WRITE_CONFIG = SubAgentConfig(
     system_prompt=MEMORY_WRITE_SYSTEM_PROMPT,
     can_modify=True,
     stateless=True,
-    max_turns=5,
-    timeout=60.0,
+    max_turns=50,
+    timeout=600.0,
     memory_path="./memory",
 )

@@ -83,6 +83,6 @@ PLAN_CONFIG = SubAgentConfig(
     system_prompt=PLAN_SYSTEM_PROMPT,
     can_modify=False,
     stateless=True,
-    max_turns=10,
-    timeout=180.0,
+    max_turns=50,
+    timeout=600.0,
 )
