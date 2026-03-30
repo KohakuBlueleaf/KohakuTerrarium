@@ -232,7 +232,7 @@ class CodexOAuthProvider(BaseLLMProvider):
         # Call SDK in a thread (SDK is sync, we're async)
         loop = asyncio.get_running_loop()
 
-        # Validate: every function_call must have a function_call_output
+        # Validate: function_calls and function_call_outputs must be paired
         call_ids = {
             item["call_id"] for item in api_input if item.get("type") == "function_call"
         }
@@ -241,31 +241,41 @@ class CodexOAuthProvider(BaseLLMProvider):
             for item in api_input
             if item.get("type") == "function_call_output"
         }
-        missing = call_ids - output_ids
-        if missing:
-            # Add placeholder outputs for any missing tool results
-            for call_id in missing:
-                # Find the function name
-                name = ""
-                for item in api_input:
-                    if (
-                        item.get("type") == "function_call"
-                        and item.get("call_id") == call_id
-                    ):
-                        name = item.get("name", "")
-                        break
-                api_input.append(
-                    {
-                        "type": "function_call_output",
-                        "call_id": call_id,
-                        "output": f"[{name}] Execution pending.",
-                    }
+
+        # Add missing outputs (call without result)
+        for call_id in call_ids - output_ids:
+            name = ""
+            for item in api_input:
+                if (
+                    item.get("type") == "function_call"
+                    and item.get("call_id") == call_id
+                ):
+                    name = item.get("name", "")
+                    break
+            api_input.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": f"[{name}] Execution pending.",
+                }
+            )
+            logger.warning("Added missing function_call_output", call_id=call_id)
+
+        # Remove orphan outputs (result without call)
+        orphan_ids = output_ids - call_ids
+        if orphan_ids:
+            api_input = [
+                item
+                for item in api_input
+                if not (
+                    item.get("type") == "function_call_output"
+                    and item.get("call_id") in orphan_ids
                 )
-                logger.warning(
-                    "Added missing function_call_output",
-                    call_id=call_id,
-                    tool_name=name,
-                )
+            ]
+            logger.warning(
+                "Removed orphan function_call_outputs",
+                orphan_count=len(orphan_ids),
+            )
 
         logger.debug(
             "Codex API request",
