@@ -8,19 +8,25 @@ Component initialization is in agent_init.py (AgentInitMixin).
 Event handling and tool execution is in agent_handlers.py (AgentHandlersMixin).
 """
 
+from __future__ import annotations
+
 import asyncio
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from kohakuterrarium.core.agent_handlers import AgentHandlersMixin
 from kohakuterrarium.core.agent_init import AgentInitMixin
 from kohakuterrarium.core.config import AgentConfig, load_agent_config
 from kohakuterrarium.core.events import TriggerEvent
 from kohakuterrarium.core.loader import ModuleLoader
+from kohakuterrarium.core.session import Session
 from kohakuterrarium.core.termination import TerminationChecker, TerminationConfig
 from kohakuterrarium.modules.input.base import InputModule
 from kohakuterrarium.modules.output.base import OutputModule
 from kohakuterrarium.modules.trigger.base import BaseTrigger
 from kohakuterrarium.utils.logging import get_logger
+
+if TYPE_CHECKING:
+    from kohakuterrarium.core.environment import Environment
 
 logger = get_logger(__name__)
 
@@ -65,7 +71,9 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         *,
         input_module: InputModule | None = None,
         output_module: OutputModule | None = None,
-    ) -> "Agent":
+        session: Session | None = None,
+        environment: Environment | None = None,
+    ) -> Agent:
         """
         Create agent from config directory path.
 
@@ -73,12 +81,20 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             config_path: Path to agent config folder (e.g., "agents/my_agent")
             input_module: Custom input module (overrides config)
             output_module: Custom output module (overrides config)
+            session: Explicit session (creature-private state)
+            environment: Shared environment (inter-creature state)
 
         Returns:
             Configured Agent instance
         """
         config = load_agent_config(config_path)
-        return cls(config, input_module=input_module, output_module=output_module)
+        return cls(
+            config,
+            input_module=input_module,
+            output_module=output_module,
+            session=session,
+            environment=environment,
+        )
 
     def __init__(
         self,
@@ -86,6 +102,8 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         *,
         input_module: InputModule | None = None,
         output_module: OutputModule | None = None,
+        session: Session | None = None,
+        environment: Environment | None = None,
     ):
         """
         Initialize agent from config.
@@ -94,11 +112,19 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             config: Agent configuration
             input_module: Custom input module (uses config if None)
             output_module: Custom output module (uses config if None)
+            session: Explicit session (creature-private state). Created from
+                     session_key if not provided.
+            environment: Shared environment (inter-creature state). None for
+                         standalone agents.
         """
         self.config = config
         self._running = False
         self._shutdown_event = asyncio.Event()
         self._processing_lock = asyncio.Lock()
+
+        # Environment and session (explicit or auto-created in _init_executor)
+        self.environment: Environment | None = environment
+        self._explicit_session: Session | None = session
 
         # Module loader for custom components
         self._loader = ModuleLoader(agent_path=config.agent_path)

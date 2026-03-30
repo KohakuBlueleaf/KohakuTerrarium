@@ -55,6 +55,7 @@ class ToolContext:
     session: Any  # Session object - carries channels, scratchpad, extras
     working_dir: Path
     memory_path: Path | None = None
+    environment: Any = None  # Environment - shared state (None for standalone agents)
 
     @property
     def channels(self) -> Any:

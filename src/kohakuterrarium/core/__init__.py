@@ -28,6 +28,7 @@ from kohakuterrarium.core.controller import (
     ControllerConfig,
     ControllerContext,
 )
+from kohakuterrarium.core.environment import Environment
 from kohakuterrarium.core.events import (
     EventType,
     TriggerEvent,
@@ -55,6 +56,8 @@ __all__ = [
     # Agent
     "Agent",
     "run_agent",
+    # Environment
+    "Environment",
     # Config
     "AgentConfig",
     "InputConfig",

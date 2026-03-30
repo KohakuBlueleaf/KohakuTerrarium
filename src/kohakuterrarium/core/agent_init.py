@@ -120,8 +120,13 @@ class AgentInitMixin:
                 self.executor.register_tool(tool)
 
         # Wire session for ToolContext building
-        session_key = self.config.session_key or self.config.name
-        self.session = get_session(session_key)
+        # Use explicit session if provided, else create from session_key
+        explicit = getattr(self, "_explicit_session", None)
+        if explicit is not None:
+            self.session = explicit
+        else:
+            session_key = self.config.session_key or self.config.name
+            self.session = get_session(session_key)
 
         # Backward-compatible accessors
         self.channel_registry = self.session.channels
@@ -130,6 +135,7 @@ class AgentInitMixin:
         # Set executor context
         self.executor._agent_name = self.config.name
         self.executor._session = self.session
+        self.executor._environment = getattr(self, "environment", None)
         if self.config.agent_path:
             self.executor._working_dir = self.config.agent_path
         if hasattr(self.config, "agent_path") and self.config.agent_path:
