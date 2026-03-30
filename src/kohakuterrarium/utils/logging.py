@@ -153,7 +153,7 @@ logging.setLoggerClass(KTLogger)
 _handler: logging.Handler | None = None
 
 
-def get_logger(name: str, level: int | str = logging.DEBUG) -> logging.Logger:
+def get_logger(name: str, level: int | str = logging.INFO) -> logging.Logger:
     """
     Get a configured logger for a module.
 
@@ -187,12 +187,12 @@ def get_logger(name: str, level: int | str = logging.DEBUG) -> logging.Logger:
         # Use flushing handler for immediate log output
         _handler = FlushingStreamHandler(sys.stderr)
         _handler.setFormatter(ColoredFormatter(use_color=True))
-        _handler.setLevel(logging.DEBUG)
+        _handler.setLevel(logging.DEBUG)  # Handler passes all; level controlled per-logger
 
         # Add to root logger for kohakuterrarium
         root_logger = logging.getLogger("kohakuterrarium")
         root_logger.addHandler(_handler)
-        root_logger.setLevel(logging.DEBUG)
+        root_logger.setLevel(logging.INFO)
         # Prevent propagation to root logger (avoid duplicate logs)
         root_logger.propagate = False
 

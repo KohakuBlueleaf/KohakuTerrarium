@@ -30,10 +30,8 @@ from kohakuterrarium.utils.logging import set_level
 
 def main() -> int:
     """Main CLI entry point."""
-    set_level("INFO")
-
     parser = argparse.ArgumentParser(
-        prog="kohakuterrarium",
+        prog="kt",
         description="KohakuTerrarium - Universal Agent Framework",
     )
     subparsers = parser.add_subparsers(dest="command", help="Commands")

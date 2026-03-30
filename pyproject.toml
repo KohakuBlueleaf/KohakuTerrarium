@@ -14,16 +14,28 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "httpx>=0.27.0",
+    "openai>=2.0.0",
     "pydantic>=2.0.0",
     "rich>=14.0.0",
     "pyyaml>=6.0.0",
     "jinja2>=3.1.0",
     "aiofiles>=24.0.0",
+    "python-dotenv>=1.0.0",
     "tomli>=2.0.0; python_version<'3.11'",
 ]
 urls = { "Homepage" = "https://github.com/KohakuBlueLeaf/KohakuTerrarium" }
 
+[project.scripts]
+kt = "kohakuterrarium.__main__:main"
+
 [project.optional-dependencies]
+tui = [
+    "textual>=3.0.0",
+]
+web = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+]
 dev = [
     "pytest>=9.0.0",
     "pytest-asyncio>=1.3.0",
