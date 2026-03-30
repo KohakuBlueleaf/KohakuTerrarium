@@ -186,6 +186,17 @@ class AgentHandlersMixin:
                         direct_job_ids.append(job_id)
                     else:
                         new_background_ids.append(job_id)
+                        # Background tools: add immediate placeholder result
+                        # so the API always sees a response for every tool call
+                        if tool_call_id:
+                            controller.conversation.append(
+                                "tool",
+                                f"Running in background (job: {job_id}). "
+                                "Results will be delivered automatically. "
+                                "Continue with your current work.",
+                                tool_call_id=tool_call_id,
+                                name=parse_event.name,
+                            )
                     logger.debug(
                         "Tool started",
                         tool_name=parse_event.name,
