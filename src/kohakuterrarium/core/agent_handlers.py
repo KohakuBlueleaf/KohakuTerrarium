@@ -608,7 +608,9 @@ class AgentHandlersMixin:
                 if status.is_complete:
                     result = self.executor.get_result(job_id)
                     if result and result.error:
-                        status_lines.append(f"- `{job_id}`: ERROR - {result.error}")
+                        status_lines.append(
+                            f"- `{label}`: COMPLETED with ERROR - {result.error}"
+                        )
                         self.output_router.default_output.on_activity(
                             "tool_error", f"[{label}] ERROR: {result.error}"
                         )
@@ -618,12 +620,16 @@ class AgentHandlersMixin:
                             if result and result.output
                             else ""
                         )
-                        status_lines.append(f"- `{job_id}`: DONE\n{output}")
+                        status_lines.append(
+                            f"- `{label}`: COMPLETED successfully\n{output}"
+                        )
                         self.output_router.default_output.on_activity(
                             "tool_done", f"[{label}] DONE"
                         )
                 else:
-                    status_lines.append(f"- `{job_id}`: {status.state.value}")
+                    status_lines.append(
+                        f"- `{label}`: STILL RUNNING ({status.state.value})"
+                    )
                     remaining_bg.append(job_id)
 
         # Check sub-agents
@@ -666,8 +672,16 @@ class AgentHandlersMixin:
         if not status_lines:
             return "", remaining_bg, remaining_sa
 
+        # Clear header indicating which jobs finished vs still running
+        header = "## Background Jobs Status"
+        if not remaining_bg and not remaining_sa:
+            header += " (all completed)"
+        else:
+            running = len(remaining_bg) + len(remaining_sa)
+            header += f" ({running} still running)"
+
         return (
-            "## Background Jobs\n\n" + "\n".join(status_lines),
+            header + "\n\n" + "\n".join(status_lines),
             remaining_bg,
             remaining_sa,
         )

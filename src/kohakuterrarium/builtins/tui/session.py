@@ -51,6 +51,8 @@ from kohakuterrarium.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
+IDLE_STATUS = "● KohakUwU"
+
 THINKING_FRAMES = [
     "◐ KohakUwUing",
     "◓ KohakUwUing.",
@@ -145,6 +147,7 @@ class AgentTUI(App):
                 border_style="dim",
             )
         )
+        self._set_status_text(IDLE_STATUS)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         """Handle Enter in input box."""
@@ -369,6 +372,10 @@ class TUISession:
             status.update(text)
         except Exception:
             pass
+
+    def set_idle(self) -> None:
+        """Show idle status indicator."""
+        self.set_subtitle(IDLE_STATUS)
 
     def stop(self) -> None:
         """Stop the TUI."""
