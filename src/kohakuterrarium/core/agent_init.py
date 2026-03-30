@@ -58,7 +58,11 @@ class AgentInitMixin:
             # Codex OAuth: uses ChatGPT subscription, no API key needed
             from kohakuterrarium.llm.codex_provider import CodexOAuthProvider
 
-            self.llm = CodexOAuthProvider(model=self.config.model)
+            self.llm = CodexOAuthProvider(
+                model=self.config.model,
+                reasoning_effort=self.config.reasoning_effort,
+                service_tier=self.config.service_tier,
+            )
             logger.info(
                 "Using Codex OAuth provider (ChatGPT subscription)",
                 model=self.config.model,
