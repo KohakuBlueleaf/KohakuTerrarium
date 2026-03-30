@@ -49,6 +49,50 @@ KohakuTerrarium is a Python framework that enables building any kind of agent sy
 - **Avoid reserved LogRecord attributes** in extra kwargs: `name`, `msg`, `args`, `levelname`, `levelno`, `pathname`, `filename`, `module`, `lineno`, `funcName`, `created`, `msecs`, `relativeCreated`, `thread`, `threadName`, `process`, `processName`, `message`
 - Exception: Test suites (`tests/`) can use simpler output
 
+## Core Architecture Concepts (CRITICAL)
+
+### Creature vs Terrarium vs Root Agent
+
+**Creature**: A self-contained agent. Has its own LLM, tools, sub-agents, memory, I/O.
+Works standalone. Does NOT know it is in a terrarium. Sub-agents inside a creature
+are VERTICAL hierarchy (internal delegation, invisible to outside).
+
+**Terrarium**: Pure wiring layer. NO LLM, NO intelligence, NO decision-making.
+Loads standalone creature configs (unchanged), creates channels between them,
+injects ChannelTriggers, manages lifecycle. That's ALL it does.
+
+**Root Agent**: A creature that sits OUTSIDE the terrarium. Has terrarium management
+tools (create, stop, send, observe, hot-plug). The user talks to root; root orchestrates
+the terrarium from above. Root is NEVER a peer of terrarium creatures.
+
+```
+User <-> Root Agent (creature with terrarium tools)
+              |
+              v  (creates, manages, observes via tools)
+         +-----------+
+         | Terrarium |  <-- pure wiring, no intelligence
+         +-----------+
+         | swe | reviewer | ... |  <-- opaque creatures
+```
+
+**Two composition levels -- never mix them:**
+- VERTICAL (inside creature): controller -> sub-agents (private, hierarchical)
+- HORIZONTAL (terrarium): creature <-> creature via channels (peer, opaque)
+
+### Terrarium Config: Optional Root
+
+```yaml
+terrarium:
+  root:                    # Optional: root agent sits OUTSIDE
+    config: creatures/root
+    interface: tui
+  creatures: [...]         # These run INSIDE the terrarium
+  channels: [...]
+```
+
+When root is present, it is force-given all terrarium tools and bound to this
+terrarium's runtime. It is the user-facing interface.
+
 ## Architecture Overview
 
 ### Key Design Principle: Controller as Orchestrator

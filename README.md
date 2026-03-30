@@ -59,8 +59,8 @@ Tools extend, prompts concatenate, scalars override. See [Creatures Guide](docs/
 | Terrarium | Creatures | Topology |
 |-----------|-----------|----------|
 | **swe_team** | swe + reviewer | Task -> implement -> review -> feedback loop |
-| **swe_team_managed** | root + swe + reviewer | Root agent orchestrates the team |
-| **swe_team_managed_tui** | Root agent (TUI) | TUI interface, creates teams on demand |
+
+Terrariums support an optional `root:` field. When set, a root agent sits OUTSIDE the terrarium and manages it via tools. The user talks to root; root orchestrates the team.
 
 ## Quick Start
 
@@ -74,18 +74,18 @@ export OPENROUTER_API_KEY=your_key_here
 ### Run a Single Agent
 
 ```bash
-python -m kohakuterrarium run examples/agent-apps/swe_agent
-python -m kohakuterrarium run examples/agent-apps/swe_agent_tui  # TUI mode
+kt run examples/agent-apps/swe_agent
+kt run examples/agent-apps/swe_agent_tui  # TUI mode
 ```
 
 ### Run a Terrarium
 
 ```bash
-python -m kohakuterrarium terrarium run terrariums/swe_team/
-python -m kohakuterrarium terrarium run terrariums/swe_team/ --observe tasks review results
+kt terrarium run terrariums/swe_team/
+kt terrarium run terrariums/swe_team/ --observe tasks review results
 
-# Root agent manages the team via TUI
-python -m kohakuterrarium run terrariums/swe_team_managed_tui/
+# TUI variant (example)
+kt terrarium run examples/terrariums/swe_team_managed_tui/
 ```
 
 ### Programmatic Usage

@@ -6,7 +6,7 @@ Single-agent configurations demonstrating different architecture patterns.
 
 ```bash
 uv pip install -e .
-python -m kohakuterrarium examples/agent-apps/<agent_name>
+kt examples/agent-apps/<agent_name>
 ```
 
 | Agent | Pattern | Key Feature |
@@ -24,13 +24,13 @@ python -m kohakuterrarium examples/agent-apps/<agent_name>
 Multi-agent configurations demonstrating creature coordination.
 
 ```bash
-python -m kohakuterrarium --terrarium examples/terrariums/<terrarium_name>
+kt --terrarium examples/terrariums/<terrarium_name>
 ```
 
-| Terrarium | Creatures | Topology |
-|-----------|-----------|----------|
-| novel_terrarium | brainstorm, planner, writer | Pipeline with feedback loop |
-| multi_agent | Single agent with channel sub-agents | Hub-and-spoke |
+| Terrarium | Creatures | Root | Topology |
+|-----------|-----------|------|----------|
+| novel_terrarium | brainstorm, planner, writer | No | Pipeline with feedback loop |
+| swe_team_managed_tui | swe, reviewer | Yes (TUI) | Root agent manages team via TUI |
 
 ## Code (`code/`)
 

@@ -44,7 +44,9 @@ src/kohakuterrarium/
   prompt/      # Prompt aggregation and templating
   llm/         # LLM provider abstraction (OpenAI/OpenRouter)
   utils/       # Shared utilities (logging)
-agents/        # Example agent configurations
+creatures/     # Pre-built creature templates (general, swe, reviewer, ops, researcher, root)
+terrariums/    # Pre-built terrarium templates
+examples/      # Example agent apps, terrariums, and code samples
 docs/          # Documentation
 ```
 
@@ -106,9 +108,19 @@ MY_AGENT_CONFIG = SubAgentConfig(
 
 ## Adding an Example Agent
 
-1. Create `agents/my_agent/config.yaml` with tool and sub-agent configuration
-2. Create `agents/my_agent/prompts/system.md` with system prompt
-3. Update `agents/README.md`
+1. Create `examples/agent-apps/my_agent/config.yaml` with tool and sub-agent configuration
+2. Create `examples/agent-apps/my_agent/prompts/system.md` with system prompt
+3. Update `examples/README.md`
+
+## Key Architecture Rules
+
+Read CLAUDE.md "Core Architecture Concepts" section. The critical rules:
+
+- **Creature**: self-contained agent. Works standalone. Does NOT know it is in a terrarium.
+- **Terrarium**: pure wiring. NO intelligence. Loads creatures, creates channels, manages lifecycle.
+- **Root Agent**: sits OUTSIDE the terrarium, manages it via tools. NEVER a peer of creatures inside.
+- **Sub-agents** are INSIDE a creature (vertical). Terrarium wires BETWEEN creatures (horizontal). Never mix these.
+- Root agent is ALWAYS force-given all terrarium tools when bound to a terrarium.
 
 ## Reporting Issues
 
