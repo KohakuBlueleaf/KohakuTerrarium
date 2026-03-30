@@ -27,7 +27,9 @@ logger = get_logger(__name__)
 
 
 def _get_content_text_length(content: MessageContent) -> int:
-    """Get text length of message content (text or multimodal)."""
+    """Get text length of message content (text, multimodal, or None)."""
+    if content is None:
+        return 0
     if isinstance(content, str):
         return len(content)
     return sum(len(part.text) for part in content if isinstance(part, TextPart))
