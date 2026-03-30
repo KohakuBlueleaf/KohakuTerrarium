@@ -17,14 +17,21 @@ import asyncio
 import sys
 from pathlib import Path
 
+import yaml
+
+from kohakuterrarium.core.agent import Agent
+from kohakuterrarium.llm.codex_auth import CodexTokens, oauth_login
 from kohakuterrarium.terrarium.cli import (
     add_terrarium_subparser,
     handle_terrarium_command,
 )
+from kohakuterrarium.utils.logging import set_level
 
 
 def main() -> int:
     """Main CLI entry point."""
+    set_level("INFO")
+
     parser = argparse.ArgumentParser(
         prog="kohakuterrarium",
         description="KohakuTerrarium - Universal Agent Framework",
@@ -89,8 +96,6 @@ def main() -> int:
 
 def run_agent_cli(agent_path: str, log_level: str) -> int:
     """Run an agent from CLI."""
-    from kohakuterrarium.core.agent import Agent
-    from kohakuterrarium.utils.logging import set_level
 
     # Setup logging
     set_level(log_level)
@@ -144,7 +149,6 @@ def list_agents_cli(agents_path: str) -> int:
             found = True
             # Try to read name from config
             try:
-                import yaml
 
                 with open(config_file) as f:
                     config = yaml.safe_load(f)
@@ -177,7 +181,6 @@ def show_agent_info_cli(agent_path: str) -> int:
             return 1
 
     try:
-        import yaml
 
         with open(config_file) as f:
             config = yaml.safe_load(f)
@@ -234,10 +237,6 @@ def login_cli(provider: str) -> int:
 
 def _login_codex() -> int:
     """Authenticate with OpenAI Codex OAuth (ChatGPT subscription)."""
-    from kohakuterrarium.llm.codex_auth import (
-        CodexTokens,
-        oauth_login,
-    )
 
     # Check for existing tokens
     existing = CodexTokens.load()

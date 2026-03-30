@@ -40,6 +40,7 @@ DEVICE_VERIFY_URL = f"{ISSUER}/codex/device"
 CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 REDIRECT_PORT = 1455
 REDIRECT_URI = f"http://localhost:{REDIRECT_PORT}/auth/callback"
+DEVICE_REDIRECT_URI = f"{ISSUER}/deviceauth/callback"
 SCOPE = "openid email profile"
 AUDIENCE = "https://api.openai.com/v1"
 
@@ -231,8 +232,8 @@ async def _device_code_flow() -> CodexTokens:
 
     device_auth_id = data["device_auth_id"]
     user_code = data["user_code"]
-    interval = data.get("interval", 5)
-    expires_in = data.get("expires_in", 900)
+    interval = int(data.get("interval", 5))
+    expires_in = int(data.get("expires_in", 900))
 
     print(f"[Device] Or visit: {DEVICE_VERIFY_URL}")
     print(f"  Code: {user_code}")
@@ -258,8 +259,10 @@ async def _device_code_flow() -> CodexTokens:
                 code_verifier = token_data.get("code_verifier", "")
 
                 if auth_code and code_verifier:
-                    # Exchange for real tokens
-                    return await _exchange_code(auth_code, code_verifier)
+                    # Exchange using device-specific redirect_uri
+                    return await _exchange_code(
+                        auth_code, code_verifier, DEVICE_REDIRECT_URI
+                    )
 
                 # Some responses may return tokens directly
                 if "access_token" in token_data:
@@ -282,7 +285,7 @@ async def _device_code_flow() -> CodexTokens:
                 if error in ("authorization_pending", "pending"):
                     continue
                 if error == "slow_down":
-                    interval += 5
+                    interval += 5  # slow down
                     continue
                 if error in ("expired_token", "access_denied"):
                     raise RuntimeError(f"Device code auth failed: {error}")
@@ -295,26 +298,38 @@ async def _device_code_flow() -> CodexTokens:
 # =========================================================================
 
 
-async def _exchange_code(auth_code: str, code_verifier: str) -> CodexTokens:
-    """Exchange authorization code for tokens."""
+async def _exchange_code(
+    auth_code: str, code_verifier: str, redirect_uri: str = REDIRECT_URI
+) -> CodexTokens:
+    """Exchange authorization code for tokens.
+
+    Uses application/x-www-form-urlencoded (matching Codex CLI).
+    """
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             TOKEN_URL,
-            json={
-                "client_id": CLIENT_ID,
+            data={
                 "grant_type": "authorization_code",
                 "code": auth_code,
-                "redirect_uri": REDIRECT_URI,
+                "redirect_uri": redirect_uri,
+                "client_id": CLIENT_ID,
                 "code_verifier": code_verifier,
             },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
-        resp.raise_for_status()
+        if resp.status_code != 200:
+            logger.error(
+                "Token exchange failed",
+                status=resp.status_code,
+                body=resp.text[:200],
+            )
+            resp.raise_for_status()
         data = resp.json()
 
     tokens = CodexTokens(
         access_token=data["access_token"],
         refresh_token=data.get("refresh_token", ""),
-        expires_at=time.time() + data.get("expires_in", 3600),
+        expires_at=time.time() + int(data.get("expires_in", 3600)),
     )
     tokens.save()
     logger.info("OAuth login successful")
@@ -384,11 +399,12 @@ async def refresh_tokens(tokens: CodexTokens) -> CodexTokens:
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.post(
             TOKEN_URL,
-            json={
+            data={
                 "client_id": CLIENT_ID,
                 "grant_type": "refresh_token",
                 "refresh_token": tokens.refresh_token,
             },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         resp.raise_for_status()
         data = resp.json()
@@ -396,7 +412,7 @@ async def refresh_tokens(tokens: CodexTokens) -> CodexTokens:
     new_tokens = CodexTokens(
         access_token=data["access_token"],
         refresh_token=data.get("refresh_token", tokens.refresh_token),
-        expires_at=time.time() + data.get("expires_in", 3600),
+        expires_at=time.time() + int(data.get("expires_in", 3600)),
     )
     new_tokens.save()
     logger.info("Tokens refreshed")
