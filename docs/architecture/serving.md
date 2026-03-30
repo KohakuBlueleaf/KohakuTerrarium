@@ -1,13 +1,13 @@
 # Serving Layer
 
-The serving layer (`src/kohakuterrarium/serving/`) provides a transport-agnostic Python API for hosting and managing agents and terrariums. It sits between the core framework and any interface layer (HTTP API, CLI, Web UI, Gradio).
+The serving layer (`src/kohakuterrarium/serving/`) provides a transport-agnostic Python API for hosting and managing agents and terrariums. It sits between the core framework and any interface layer (HTTP API, CLI, Web UI).
 
 ## Key Difference: Serving vs HTTP API
 
 | Layer | Location | Purpose |
 |-------|----------|---------|
 | **Serving** | `src/kohakuterrarium/serving/` | Python API for runtime management. Part of the core package. |
-| **HTTP API** | `apps/api/` | FastAPI application that exposes the serving layer over REST + WebSocket. An application, not part of the library. |
+| **HTTP API** | `apps/api/` | FastAPI application exposing the serving layer over REST + WebSocket. Not part of the library. |
 
 The serving layer is the single source of truth for all runtime operations. The HTTP API (and any future interface) delegates to it.
 
@@ -29,7 +29,7 @@ agent_id = await manager.create_agent(config_path="agents/swe_agent")
 
 # Get status
 status = manager.get_agent_status(agent_id)
-# {"agent_id": "agent_abc123", "name": "swe_agent", "running": True, "tools": [...], ...}
+# {"agent_id": "agent_abc123", "name": "swe_agent", "running": True, "tools": [...]}
 
 # Stream a chat response
 async for chunk in manager.chat(agent_id, "Fix the bug in main.py"):
@@ -115,7 +115,7 @@ When `chat(message)` is called:
 
 The serving layer defines two transport-agnostic event dataclasses:
 
-### `ChannelEvent`
+### ChannelEvent
 
 Represents a channel message observed in a terrarium.
 
@@ -129,7 +129,7 @@ Represents a channel message observed in a terrarium.
 | `timestamp` | `datetime` | When created |
 | `metadata` | `dict` | Extra data |
 
-### `OutputEvent`
+### OutputEvent
 
 Represents an agent output event (text chunk, tool activity).
 

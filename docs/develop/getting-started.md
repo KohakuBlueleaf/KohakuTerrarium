@@ -13,8 +13,8 @@ This guide walks you through setting up KohakuTerrarium and creating your first 
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/kohakuterrarium.git
-cd kohakuterrarium
+git clone https://github.com/KohakuBlueLeaf/KohakuTerrarium.git
+cd KohakuTerrarium
 
 # Install in editable mode (recommended for development)
 uv pip install -e .
@@ -38,10 +38,10 @@ The fastest way to get started is running one of the included example agents:
 
 ```bash
 # Run the SWE agent (coding assistant, CLI input)
-python -m kohakuterrarium.run agents/swe_agent
+python -m kohakuterrarium run agents/swe_agent
 
 # Or with TUI input/output for a richer terminal experience
-python -m kohakuterrarium.run agents/swe_agent_tui
+python -m kohakuterrarium run agents/swe_agent_tui
 ```
 
 You'll see output like:
@@ -133,12 +133,12 @@ You are a helpful coding assistant. You help users with:
 ### 4. Run Your Agent
 
 ```bash
-python -m kohakuterrarium.run agents/my_agent
+python -m kohakuterrarium run agents/my_agent
 ```
 
 ## Understanding Tool Calls
 
-When the agent needs to use a tool, it outputs a special format:
+When the agent needs to use a tool, it outputs a special format. See [Tool Formats](../concept/tool-formats.md) for all supported formats. The default bracket format:
 
 ```
 [/tool_name]
@@ -216,13 +216,6 @@ memory:
     - notes.md        # Read-write
 ```
 
-Create `agents/my_agent/memory/context.md`:
-```markdown
-# Current Context
-
-No context saved yet.
-```
-
 Use builtin memory sub-agents:
 ```yaml
 subagents:
@@ -259,8 +252,6 @@ triggers:
     prompt: "Run health check."
 ```
 
-See [monitor_agent](../../agents/monitor_agent/) for a complete example.
-
 ## Named Outputs
 
 Route output to specific destinations:
@@ -282,15 +273,6 @@ The model uses explicit output blocks:
 ```
 
 Without the wrapper, text goes to stdout (internal thinking).
-
-## Ephemeral Mode
-
-For group chats where each interaction should be independent:
-
-```yaml
-controller:
-  ephemeral: true    # Clear conversation after each interaction
-```
 
 ## Custom Tools
 
@@ -314,7 +296,6 @@ class MyTool(BaseTool):
 
     async def _execute(self, args: dict) -> ToolResult:
         content = args.get("content", "")
-        # Do something with content
         return ToolResult(output=f"Processed: {content}")
 ```
 
@@ -327,57 +308,43 @@ tools:
     class: MyTool
 ```
 
-## Custom Input Module
-
-Create `agents/my_agent/custom/my_input.py`:
-
-```python
-from kohakuterrarium.modules.input.base import BaseInputModule
-from kohakuterrarium.core.events import TriggerEvent, EventType
-
-class MyInput(BaseInputModule):
-    async def get_input(self) -> TriggerEvent | None:
-        # Get input from your source
-        text = await get_from_somewhere()
-
-        return TriggerEvent(
-            type=EventType.USER_INPUT,
-            content=text,
-            context={"source": "my_source"},
-        )
-```
-
 ## Programmatic Usage
-
-You can also use the framework programmatically:
 
 ```python
 import asyncio
 from kohakuterrarium.core.agent import Agent
 
 async def main():
-    # Load agent
     agent = Agent.from_path("agents/my_agent")
-
-    # Start all modules
     await agent.start()
 
     try:
-        # Inject an input event
         await agent.inject_input("Hello, what can you do?")
-
         # Or run the full event loop
         await agent.run()
-
     finally:
         await agent.stop()
 
 asyncio.run(main())
 ```
 
+## Running a Terrarium
+
+To run a multi-agent terrarium:
+
+```bash
+# Run the novel writer terrarium
+python -m kohakuterrarium terrarium run agents/novel_terrarium/
+
+# With channel observation
+python -m kohakuterrarium terrarium run agents/novel_terrarium/ --observe ideas outline
+```
+
+See [Terrarium](../concept/terrarium.md) for the concepts and [Configuration Reference](configuration.md) for the terrarium YAML format.
+
 ## Next Steps
 
 1. Explore the [Example Agents](example-agents.md) for more patterns
 2. Read the [Configuration Reference](configuration.md) for all options
-3. Check the [Architecture Overview](../architecture.md) to understand the system
-4. See the [API Reference](../api/core.md) for detailed APIs
+3. Check the [Architecture Overview](../architecture/README.md) to understand the system
+4. See the [Python API Reference](../api-reference/python.md) for detailed APIs
