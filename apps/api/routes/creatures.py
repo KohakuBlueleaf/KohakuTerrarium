@@ -12,7 +12,7 @@ router = APIRouter()
 def list_creatures(terrarium_id: str, manager=Depends(get_manager)):
     """List all creatures in a terrarium."""
     try:
-        status = manager.get_terrarium_status(terrarium_id)
+        status = manager.terrarium_status(terrarium_id)
         return status.get("creatures", {})
     except ValueError as e:
         raise HTTPException(404, str(e))
@@ -32,7 +32,7 @@ async def add_creature(
         send_channels=req.send_channels,
     )
     try:
-        name = await manager.add_creature(terrarium_id, config)
+        name = await manager.creature_add(terrarium_id, config)
         return {"creature": name, "status": "running"}
     except Exception as e:
         raise HTTPException(400, str(e))
@@ -42,7 +42,7 @@ async def add_creature(
 async def remove_creature(terrarium_id: str, name: str, manager=Depends(get_manager)):
     """Remove a creature from a running terrarium."""
     try:
-        removed = await manager.remove_creature(terrarium_id, name)
+        removed = await manager.creature_remove(terrarium_id, name)
         if not removed:
             raise HTTPException(404, f"Creature not found: {name}")
         return {"status": "removed"}
@@ -56,7 +56,7 @@ async def wire_channel(
 ):
     """Wire a creature to a channel (listen or send)."""
     try:
-        await manager.wire_channel(terrarium_id, name, req.channel, req.direction)
+        await manager.creature_wire(terrarium_id, name, req.channel, req.direction)
         return {"status": "wired"}
     except Exception as e:
         raise HTTPException(400, str(e))

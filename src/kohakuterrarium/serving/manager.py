@@ -1,16 +1,25 @@
 """Unified service manager for agents and terrariums.
 
 All runtime operations go through KohakuManager.
-Transport-agnostic -- used by any interface (CLI, TUI, Web, Gradio).
+Transport-agnostic - used by any interface (CLI, TUI, Web, Gradio).
+
+Method hierarchy:
+  agent_*              Standalone agent lifecycle + interaction
+  agent_channel_*      Standalone agent channel ops
+  terrarium_*          Terrarium lifecycle
+  terrarium_channel_*  Terrarium shared channel ops
+  creature_*           Creature lifecycle + hot-plug
+  creature_channel_*   Creature private channel ops
 """
 
 import asyncio
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 from uuid import uuid4
 
-from kohakuterrarium.serving.agent_session import AgentSession
-from kohakuterrarium.serving.events import ChannelEvent, OutputEvent
+from kohakuterrarium.core.channel import ChannelMessage
 from kohakuterrarium.core.config import AgentConfig
+from kohakuterrarium.serving.agent_session import AgentSession
+from kohakuterrarium.serving.events import ChannelEvent
 from kohakuterrarium.terrarium.config import (
     CreatureConfig,
     TerrariumConfig,
@@ -24,7 +33,16 @@ logger = get_logger(__name__)
 
 
 class KohakuManager:
-    """Unified service manager. All runtime operations go through here."""
+    """Unified service manager for agents and terrariums.
+
+    Method naming convention:
+      agent_*              standalone agent ops
+      agent_channel_*      standalone agent channel ops
+      terrarium_*          terrarium ops
+      terrarium_channel_*  terrarium shared channel ops
+      creature_*           creature ops (within a terrarium)
+      creature_channel_*   creature private channel ops
+    """
 
     def __init__(self) -> None:
         self._terrariums: dict[str, TerrariumRuntime] = {}
@@ -33,10 +51,10 @@ class KohakuManager:
         self._observers: dict[str, ChannelObserver] = {}
 
     # =================================================================
-    # Standalone Agent Serving
+    # Agent Lifecycle
     # =================================================================
 
-    async def create_agent(
+    async def agent_create(
         self,
         config_path: str | None = None,
         config: AgentConfig | None = None,
@@ -48,18 +66,17 @@ class KohakuManager:
             session = await AgentSession.from_config(config)
         else:
             raise ValueError("Must provide config_path or config")
-
         self._agents[session.agent_id] = session
         logger.info("Agent created", agent_id=session.agent_id)
         return session.agent_id
 
-    async def stop_agent(self, agent_id: str) -> None:
+    async def agent_stop(self, agent_id: str) -> None:
         """Stop and cleanup an agent."""
         session = self._agents.pop(agent_id, None)
         if session:
             await session.stop()
 
-    async def chat(self, agent_id: str, message: str) -> AsyncIterator[str]:
+    async def agent_chat(self, agent_id: str, message: str) -> AsyncIterator[str]:
         """Send a message and stream the response."""
         session = self._agents.get(agent_id)
         if not session:
@@ -67,22 +84,76 @@ class KohakuManager:
         async for chunk in session.chat(message):
             yield chunk
 
-    def get_agent_status(self, agent_id: str) -> dict:
+    def agent_status(self, agent_id: str) -> dict:
         """Get agent status (running, tools, subagents)."""
         session = self._agents.get(agent_id)
         if not session:
             raise ValueError(f"Agent not found: {agent_id}")
         return session.get_status()
 
-    def list_agents(self) -> list[dict]:
-        """List all running agents with basic status."""
+    def agent_list(self) -> list[dict]:
+        """List all running agents."""
         return [s.get_status() for s in self._agents.values()]
 
     # =================================================================
-    # Terrarium Serving
+    # Agent Channel Ops
     # =================================================================
 
-    async def create_terrarium(
+    def agent_channel_list(self, agent_id: str) -> list[dict[str, str]]:
+        """List channels for a standalone agent."""
+        session = self._agents.get(agent_id)
+        if not session:
+            raise ValueError(f"Agent not found: {agent_id}")
+        return session.agent.session.channels.get_channel_info()
+
+    def agent_channel_info(self, agent_id: str, channel: str) -> dict | None:
+        """Get info about a specific agent channel."""
+        session = self._agents.get(agent_id)
+        if not session:
+            raise ValueError(f"Agent not found: {agent_id}")
+        ch = session.agent.session.channels.get(channel)
+        if ch is None:
+            return None
+        return {
+            "name": ch.name,
+            "type": ch.channel_type,
+            "description": ch.description,
+            "qsize": ch.qsize,
+        }
+
+    async def agent_channel_send(
+        self, agent_id: str, channel: str, content: str, sender: str = "human"
+    ) -> str:
+        """Send a message to a standalone agent's channel. Returns message_id."""
+        session = self._agents.get(agent_id)
+        if not session:
+            raise ValueError(f"Agent not found: {agent_id}")
+        ch = session.agent.session.channels.get_or_create(channel)
+        msg = ChannelMessage(sender=sender, content=content)
+        await ch.send(msg)
+        return msg.message_id
+
+    async def agent_channel_stream(
+        self, agent_id: str, channels: list[str] | None = None
+    ) -> AsyncIterator[ChannelEvent]:
+        """Stream channel events for a standalone agent."""
+        session = self._agents.get(agent_id)
+        if not session:
+            raise ValueError(f"Agent not found: {agent_id}")
+        async for event in self._stream_from_registry(
+            session.agent.session.channels,
+            source_id=agent_id,
+            source_type="agent",
+            filter_channels=channels,
+            running_check=lambda: session.agent.is_running,
+        ):
+            yield event
+
+    # =================================================================
+    # Terrarium Lifecycle
+    # =================================================================
+
+    async def terrarium_create(
         self,
         config_path: str | None = None,
         config: TerrariumConfig | None = None,
@@ -102,29 +173,21 @@ class KohakuManager:
         runtime = TerrariumRuntime(cfg, environment=env)
         self._terrariums[terrarium_id] = runtime
 
-        # Start in background task so create returns quickly
         task = asyncio.create_task(runtime.run())
         self._terrarium_tasks[terrarium_id] = task
-
-        # Brief yield so the runtime.start() coroutine can run
         await asyncio.sleep(0.1)
 
         logger.info("Terrarium created", terrarium_id=terrarium_id)
         return terrarium_id
 
-    async def stop_terrarium(self, terrarium_id: str) -> None:
+    async def terrarium_stop(self, terrarium_id: str) -> None:
         """Stop all creatures and cleanup."""
-        # Stop observer if any
         observer = self._observers.pop(terrarium_id, None)
         if observer:
             await observer.stop()
-
-        # Stop runtime
         runtime = self._terrariums.pop(terrarium_id, None)
         if runtime:
             await runtime.stop()
-
-        # Cancel background task
         task = self._terrarium_tasks.pop(terrarium_id, None)
         if task:
             task.cancel()
@@ -133,21 +196,14 @@ class KohakuManager:
             except asyncio.CancelledError:
                 pass
 
-    def get_terrarium(self, terrarium_id: str) -> TerrariumRuntime:
-        """Get the runtime instance for direct API access."""
-        runtime = self._terrariums.get(terrarium_id)
-        if not runtime:
-            raise ValueError(f"Terrarium not found: {terrarium_id}")
-        return runtime
-
-    def get_terrarium_status(self, terrarium_id: str) -> dict:
+    def terrarium_status(self, terrarium_id: str) -> dict:
         """Get terrarium status (creatures, channels, running state)."""
-        runtime = self.get_terrarium(terrarium_id)
+        runtime = self._get_runtime(terrarium_id)
         status = runtime.get_status()
         status["terrarium_id"] = terrarium_id
         return status
 
-    def list_terrariums(self) -> list[dict]:
+    def terrarium_list(self) -> list[dict]:
         """List all running terrariums."""
         return [
             {**rt.get_status(), "terrarium_id": tid}
@@ -155,54 +211,127 @@ class KohakuManager:
         ]
 
     # =================================================================
-    # Terrarium Hot-Plug
+    # Terrarium Channel Ops (shared channels)
     # =================================================================
 
-    async def add_creature(self, terrarium_id: str, config: CreatureConfig) -> str:
-        """Add a creature to a running terrarium. Returns creature name."""
-        runtime = self.get_terrarium(terrarium_id)
-        handle = await runtime.add_creature(config)
-        return handle.name
+    def terrarium_channel_list(self, terrarium_id: str) -> list[dict[str, str]]:
+        """List shared (inter-creature) channels."""
+        runtime = self._get_runtime(terrarium_id)
+        return runtime.environment.shared_channels.get_channel_info()
 
-    async def remove_creature(self, terrarium_id: str, name: str) -> bool:
-        """Remove a creature from a running terrarium."""
-        runtime = self.get_terrarium(terrarium_id)
-        return await runtime.remove_creature(name)
+    def terrarium_channel_info(self, terrarium_id: str, channel: str) -> dict | None:
+        """Get info about a shared channel."""
+        runtime = self._get_runtime(terrarium_id)
+        ch = runtime.environment.shared_channels.get(channel)
+        if ch is None:
+            return None
+        return {
+            "name": ch.name,
+            "type": ch.channel_type,
+            "description": ch.description,
+            "qsize": ch.qsize,
+            "scope": "shared",
+        }
 
-    async def add_channel(
+    async def terrarium_channel_send(
+        self, terrarium_id: str, channel: str, content: str, sender: str = "human"
+    ) -> str:
+        """Send a message to a shared terrarium channel. Returns message_id."""
+        runtime = self._get_runtime(terrarium_id)
+        ch = runtime.environment.shared_channels.get(channel)
+        if ch is None:
+            available = runtime.environment.shared_channels.list_channels()
+            raise ValueError(f"Channel '{channel}' not found. Available: {available}")
+        msg = ChannelMessage(sender=sender, content=content)
+        await ch.send(msg)
+        return msg.message_id
+
+    async def terrarium_channel_add(
         self,
         terrarium_id: str,
         name: str,
         channel_type: str = "queue",
         description: str = "",
     ) -> None:
-        """Add a channel to a running terrarium."""
-        runtime = self.get_terrarium(terrarium_id)
+        """Add a shared channel to a running terrarium (hot-plug)."""
+        runtime = self._get_runtime(terrarium_id)
         await runtime.add_channel(name, channel_type, description)
 
-    async def wire_channel(
-        self,
-        terrarium_id: str,
-        creature: str,
-        channel: str,
-        direction: str,
+    async def terrarium_channel_stream(
+        self, terrarium_id: str, channels: list[str] | None = None
+    ) -> AsyncIterator[ChannelEvent]:
+        """Stream shared channel events from a terrarium."""
+        runtime = self._get_runtime(terrarium_id)
+        async for event in self._stream_from_registry(
+            runtime.environment.shared_channels,
+            source_id=terrarium_id,
+            source_type="terrarium",
+            filter_channels=channels,
+            running_check=lambda: runtime._running,
+        ):
+            yield event
+
+    # =================================================================
+    # Creature Ops (within a terrarium)
+    # =================================================================
+
+    def creature_list(self, terrarium_id: str) -> list[dict]:
+        """List creatures in a terrarium."""
+        runtime = self._get_runtime(terrarium_id)
+        status = runtime.get_status()
+        return [
+            {"name": name, **info} for name, info in status.get("creatures", {}).items()
+        ]
+
+    async def creature_add(self, terrarium_id: str, config: CreatureConfig) -> str:
+        """Add a creature to a running terrarium (hot-plug). Returns name."""
+        runtime = self._get_runtime(terrarium_id)
+        handle = await runtime.add_creature(config)
+        return handle.name
+
+    async def creature_remove(self, terrarium_id: str, name: str) -> bool:
+        """Remove a creature from a running terrarium."""
+        runtime = self._get_runtime(terrarium_id)
+        return await runtime.remove_creature(name)
+
+    async def creature_wire(
+        self, terrarium_id: str, creature: str, channel: str, direction: str
     ) -> None:
         """Wire a creature to a channel (listen or send)."""
-        runtime = self.get_terrarium(terrarium_id)
+        runtime = self._get_runtime(terrarium_id)
         await runtime.wire_channel(creature, channel, direction)
 
-    async def send_to_channel(
-        self,
-        terrarium_id: str,
-        channel: str,
-        content: str,
-        sender: str = "human",
-    ) -> str:
-        """Send a message to a shared terrarium channel. Returns message_id."""
-        runtime = self.get_terrarium(terrarium_id)
-        return await runtime.api.send_to_channel(channel, content, sender)
+    # =================================================================
+    # Creature Channel Ops (private/sub-agent channels)
+    # =================================================================
 
-    async def send_to_creature_channel(
+    def creature_channel_list(
+        self, terrarium_id: str, creature: str
+    ) -> list[dict[str, str]]:
+        """List a creature's private (sub-agent) channels."""
+        runtime = self._get_runtime(terrarium_id)
+        session = runtime.environment.get_session(creature)
+        return session.channels.get_channel_info()
+
+    def creature_channel_info(
+        self, terrarium_id: str, creature: str, channel: str
+    ) -> dict | None:
+        """Get info about a creature's private channel."""
+        runtime = self._get_runtime(terrarium_id)
+        session = runtime.environment.get_session(creature)
+        ch = session.channels.get(channel)
+        if ch is None:
+            return None
+        return {
+            "name": ch.name,
+            "type": ch.channel_type,
+            "description": ch.description,
+            "qsize": ch.qsize,
+            "scope": "private",
+            "creature": creature,
+        }
+
+    async def creature_channel_send(
         self,
         terrarium_id: str,
         creature: str,
@@ -210,126 +339,56 @@ class KohakuManager:
         content: str,
         sender: str = "human",
     ) -> str:
-        """Send a message to a creature's private (sub-agent) channel.
-
-        Returns message_id.
-        """
-        runtime = self.get_terrarium(terrarium_id)
+        """Send a message to a creature's private channel. Returns message_id."""
+        runtime = self._get_runtime(terrarium_id)
         session = runtime.environment.get_session(creature)
         ch = session.channels.get(channel)
         if ch is None:
             ch = session.channels.get_or_create(channel)
-
-        from kohakuterrarium.core.channel import ChannelMessage
-
         msg = ChannelMessage(sender=sender, content=content)
         await ch.send(msg)
         return msg.message_id
 
     # =================================================================
-    # Channel Inspection
+    # Shared Helpers
     # =================================================================
 
-    def list_channels(self, terrarium_id: str, creature: str | None = None) -> dict:
-        """List channels with info.
+    def _get_runtime(self, terrarium_id: str) -> TerrariumRuntime:
+        """Get runtime, raising ValueError if not found."""
+        runtime = self._terrariums.get(terrarium_id)
+        if not runtime:
+            raise ValueError(f"Terrarium not found: {terrarium_id}")
+        return runtime
 
-        Returns dict with "shared" (terrarium channels) and optionally
-        "private" (creature's sub-agent channels) if creature is specified.
-        If creature is None, includes all creatures' private channels.
-        """
-        runtime = self.get_terrarium(terrarium_id)
-        result: dict = {
-            "shared": runtime.environment.shared_channels.get_channel_info(),
-        }
-
-        if creature:
-            session = runtime.environment.get_session(creature)
-            result["private"] = {
-                creature: session.channels.get_channel_info(),
-            }
-        else:
-            result["private"] = {}
-            for name in runtime.environment.list_sessions():
-                session = runtime.environment.get_session(name)
-                info = session.channels.get_channel_info()
-                if info:
-                    result["private"][name] = info
-
-        return result
-
-    def get_channel_info(
+    async def _stream_from_registry(
         self,
-        terrarium_id: str,
-        channel: str,
-        creature: str | None = None,
-    ) -> dict | None:
-        """Get info about a specific channel.
-
-        Checks shared channels first. If creature is specified, also
-        checks that creature's private channels.
-
-        Returns dict with name, type, description, qsize, scope.
-        """
-        runtime = self.get_terrarium(terrarium_id)
-
-        # Check shared
-        ch = runtime.environment.shared_channels.get(channel)
-        if ch is not None:
-            return {
-                "name": ch.name,
-                "type": ch.channel_type,
-                "description": ch.description,
-                "qsize": ch.qsize,
-                "scope": "shared",
-            }
-
-        # Check creature's private
-        if creature:
-            session = runtime.environment.get_session(creature)
-            ch = session.channels.get(channel)
-            if ch is not None:
-                return {
-                    "name": ch.name,
-                    "type": ch.channel_type,
-                    "description": ch.description,
-                    "qsize": ch.qsize,
-                    "scope": "private",
-                    "creature": creature,
-                }
-
-        return None
-
-    # =================================================================
-    # Event Streams
-    # =================================================================
-
-    async def stream_channel_events(
-        self,
-        terrarium_id: str,
-        channels: list[str] | None = None,
+        registry: Any,
+        source_id: str,
+        source_type: str,
+        filter_channels: list[str] | None = None,
+        running_check: Any = None,
     ) -> AsyncIterator[ChannelEvent]:
-        """Stream channel messages. Async iterator, transport-agnostic.
+        """Stream channel events from any ChannelRegistry.
 
-        If channels is None, stream all channels.
+        Works for both shared (terrarium) and private (agent) channels.
         """
-        runtime = self.get_terrarium(terrarium_id)
+        observer = ChannelObserver(None)
+        # Manually set the registry instead of session
+        observer._session = None
 
-        # Use or create observer
-        if terrarium_id not in self._observers:
-            observer = ChannelObserver(runtime._session)
-            self._observers[terrarium_id] = observer
-        observer = self._observers[terrarium_id]
-
-        # Setup queue to bridge callback -> async iterator
         event_queue: asyncio.Queue[ChannelEvent] = asyncio.Queue()
 
-        def on_message(msg):
+        def on_message(msg: Any) -> None:
             event_queue.put_nowait(
                 ChannelEvent(
-                    terrarium_id=terrarium_id,
+                    terrarium_id=source_id,
                     channel=msg.channel,
                     sender=msg.sender,
-                    content=msg.content,
+                    content=(
+                        msg.content
+                        if isinstance(msg.content, str)
+                        else str(msg.content)
+                    ),
                     message_id=msg.message_id,
                     timestamp=msg.timestamp,
                 )
@@ -337,15 +396,21 @@ class KohakuManager:
 
         observer.on_message(on_message)
 
-        # Observe requested channels (or all)
-        all_channels = [c["name"] for c in runtime._session.channels.get_channel_info()]
-        observe_channels = channels or all_channels
+        all_channels = registry.list_channels()
+        observe_channels = filter_channels or all_channels
         for ch_name in observe_channels:
-            await observer.observe(ch_name)
+            ch = registry.get(ch_name)
+            if ch is not None:
+                from kohakuterrarium.core.channel import AgentChannel
 
-        # Yield events until runtime stops
+                if isinstance(ch, AgentChannel):
+                    sub = ch.subscribe(f"_stream_{source_id}_{ch_name}")
+                    observer._subscriptions[ch_name] = sub
+                    task = asyncio.create_task(observer._observe_loop(ch_name, sub))
+                    observer._observe_tasks.append(task)
+
         try:
-            while runtime._running:
+            while running_check is None or running_check():
                 try:
                     event = await asyncio.wait_for(event_queue.get(), timeout=1.0)
                     yield event
@@ -353,15 +418,15 @@ class KohakuManager:
                     continue
         finally:
             await observer.stop()
-            self._observers.pop(terrarium_id, None)
 
     # =================================================================
-    # Cleanup
+    # Lifecycle
     # =================================================================
 
     async def shutdown(self) -> None:
         """Stop everything."""
         for agent_id in list(self._agents.keys()):
-            await self.stop_agent(agent_id)
+            await self.agent_stop(agent_id)
         for tid in list(self._terrariums.keys()):
-            await self.stop_terrarium(tid)
+            await self.terrarium_stop(tid)
+

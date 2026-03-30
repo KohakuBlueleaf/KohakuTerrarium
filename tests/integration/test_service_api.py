@@ -185,35 +185,35 @@ class TestKohakuManagerAgents:
 
     async def test_create_agent(self, manager):
         """Create a standalone agent and verify it is listed."""
-        agent_id = await manager.create_agent(config_path=SWE_AGENT_DIR)
+        agent_id = await manager.agent_create(config_path=SWE_AGENT_DIR)
         assert agent_id is not None
 
-        agents = manager.list_agents()
+        agents = manager.agent_list()
         ids = [a["agent_id"] for a in agents]
         assert agent_id in ids
 
     async def test_stop_agent(self, manager):
         """Stop an agent and verify it is removed."""
-        agent_id = await manager.create_agent(config_path=SWE_AGENT_DIR)
-        await manager.stop_agent(agent_id)
+        agent_id = await manager.agent_create(config_path=SWE_AGENT_DIR)
+        await manager.agent_stop(agent_id)
 
-        agents = manager.list_agents()
+        agents = manager.agent_list()
         ids = [a["agent_id"] for a in agents]
         assert agent_id not in ids
 
     async def test_list_agents(self, manager):
         """List returns all running agents."""
-        id1 = await manager.create_agent(config_path=SWE_AGENT_DIR)
-        id2 = await manager.create_agent(config_path=SWE_AGENT_DIR)
+        id1 = await manager.agent_create(config_path=SWE_AGENT_DIR)
+        id2 = await manager.agent_create(config_path=SWE_AGENT_DIR)
 
-        agents = manager.list_agents()
+        agents = manager.agent_list()
         ids = {a["agent_id"] for a in agents}
         assert {id1, id2} <= ids
 
     async def test_get_agent_status(self, manager):
         """Get status of a specific agent."""
-        agent_id = await manager.create_agent(config_path=SWE_AGENT_DIR)
-        status = manager.get_agent_status(agent_id)
+        agent_id = await manager.agent_create(config_path=SWE_AGENT_DIR)
+        status = manager.agent_status(agent_id)
 
         assert status is not None
         assert status["agent_id"] == agent_id
@@ -224,7 +224,7 @@ class TestKohakuManagerAgents:
     async def test_stop_nonexistent_agent(self, manager):
         """Stopping a nonexistent agent does not raise."""
         # Should complete without error
-        await manager.stop_agent("nonexistent_agent_id_12345")
+        await manager.agent_stop("nonexistent_agent_id_12345")
 
 
 # ---------------------------------------------------------------------------
@@ -251,34 +251,34 @@ class TestKohakuManagerTerrariums:
 
     async def test_create_terrarium(self, manager):
         """Create terrarium from config path."""
-        tid = await manager.create_terrarium(config_path=NOVEL_TERRARIUM_DIR)
+        tid = await manager.terrarium_create(config_path=NOVEL_TERRARIUM_DIR)
         assert tid is not None
 
-        terrariums = manager.list_terrariums()
+        terrariums = manager.terrarium_list()
         ids = [t["terrarium_id"] for t in terrariums]
         assert tid in ids
 
     async def test_stop_terrarium(self, manager):
         """Stop terrarium and verify removed."""
-        tid = await manager.create_terrarium(config_path=NOVEL_TERRARIUM_DIR)
-        await manager.stop_terrarium(tid)
+        tid = await manager.terrarium_create(config_path=NOVEL_TERRARIUM_DIR)
+        await manager.terrarium_stop(tid)
 
-        terrariums = manager.list_terrariums()
+        terrariums = manager.terrarium_list()
         ids = [t["terrarium_id"] for t in terrariums]
         assert tid not in ids
 
     async def test_list_terrariums(self, manager):
         """List returns running terrariums."""
-        tid = await manager.create_terrarium(config_path=NOVEL_TERRARIUM_DIR)
+        tid = await manager.terrarium_create(config_path=NOVEL_TERRARIUM_DIR)
 
-        listing = manager.list_terrariums()
+        listing = manager.terrarium_list()
         assert len(listing) >= 1
         assert any(t["terrarium_id"] == tid for t in listing)
 
     async def test_get_terrarium_status(self, manager):
         """Status includes creatures and channels."""
-        tid = await manager.create_terrarium(config_path=NOVEL_TERRARIUM_DIR)
-        status = manager.get_terrarium_status(tid)
+        tid = await manager.terrarium_create(config_path=NOVEL_TERRARIUM_DIR)
+        status = manager.terrarium_status(tid)
 
         assert status is not None
         assert "creatures" in status
@@ -289,14 +289,14 @@ class TestKohakuManagerTerrariums:
         """Add creature/channel through manager."""
         from kohakuterrarium.terrarium.config import CreatureConfig
 
-        tid = await manager.create_terrarium(config_path=NOVEL_TERRARIUM_DIR)
+        tid = await manager.terrarium_create(config_path=NOVEL_TERRARIUM_DIR)
 
         # Add a new channel
-        await manager.add_channel(
+        await manager.terrarium_channel_add(
             tid, name="review", channel_type="queue", description="Review notes"
         )
 
-        status = manager.get_terrarium_status(tid)
+        status = manager.terrarium_status(tid)
         channel_names = [ch["name"] for ch in status["channels"]]
         assert "review" in channel_names
 
@@ -307,18 +307,18 @@ class TestKohakuManagerTerrariums:
             listen_channels=["review"],
             send_channels=[],
         )
-        creature_name = await manager.add_creature(tid, config=creature_cfg)
+        creature_name = await manager.creature_add(tid, config=creature_cfg)
         assert creature_name is not None
 
-        status = manager.get_terrarium_status(tid)
+        status = manager.terrarium_status(tid)
         assert "reviewer" in status["creatures"]
 
     async def test_send_to_channel(self, manager):
         """Send message to channel via manager."""
-        tid = await manager.create_terrarium(config_path=NOVEL_TERRARIUM_DIR)
+        tid = await manager.terrarium_create(config_path=NOVEL_TERRARIUM_DIR)
 
         # "seed" channel exists in novel_terrarium config
-        msg_id = await manager.send_to_channel(
+        msg_id = await manager.terrarium_channel_send(
             tid, channel="seed", content="Write about space.", sender="human"
         )
         assert msg_id is not None
@@ -345,14 +345,14 @@ class TestKohakuManagerShutdown:
 
         mgr = KohakuManager()
 
-        agent_id = await mgr.create_agent(config_path=SWE_AGENT_DIR)
-        tid = await mgr.create_terrarium(config_path=NOVEL_TERRARIUM_DIR)
+        agent_id = await mgr.agent_create(config_path=SWE_AGENT_DIR)
+        tid = await mgr.terrarium_create(config_path=NOVEL_TERRARIUM_DIR)
 
         # Verify they exist
-        assert len(mgr.list_agents()) >= 1
-        assert len(mgr.list_terrariums()) >= 1
+        assert len(mgr.agent_list()) >= 1
+        assert len(mgr.terrarium_list()) >= 1
 
         await mgr.shutdown()
 
-        assert mgr.list_agents() == []
-        assert mgr.list_terrariums() == []
+        assert mgr.agent_list() == []
+        assert mgr.terrarium_list() == []

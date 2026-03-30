@@ -23,7 +23,7 @@ async def agent_chat(websocket: WebSocket, agent_id: str):
                 continue
 
             # Stream response back
-            async for chunk in manager.chat(agent_id, message):
+            async for chunk in manager.agent_chat(agent_id, message):
                 await websocket.send_json(
                     {
                         "type": "text",
