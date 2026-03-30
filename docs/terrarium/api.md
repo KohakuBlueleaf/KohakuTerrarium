@@ -469,3 +469,92 @@ await runtime.wire_channel("reviewer", "review_results", "send")
 ```
 
 Raises `ValueError` (or `KeyError`) if the creature does not exist.
+
+## HTTP API (`apps/api/`)
+
+The HTTP API is a FastAPI application that exposes the `KohakuManager` (from `serving/`) over REST and WebSocket. It is an application layer, not part of the core library. It lives in `apps/api/` and depends on `kohakuterrarium.serving`.
+
+### Starting the Server
+
+```bash
+python apps/api/main.py
+# Server runs on http://localhost:8000
+# Interactive docs at http://localhost:8000/docs
+```
+
+The server uses uvicorn with auto-reload enabled by default. On shutdown, the lifespan handler calls `manager.shutdown()` to stop all running agents and terrariums.
+
+### REST Endpoints
+
+#### Terrariums
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/terrariums` | Create and start a terrarium from a config path |
+| `GET` | `/api/terrariums` | List all running terrariums |
+| `GET` | `/api/terrariums/{id}` | Get status of a specific terrarium |
+| `DELETE` | `/api/terrariums/{id}` | Stop and cleanup a terrarium |
+| `POST` | `/api/terrariums/{id}/channels` | Add a channel to a running terrarium |
+
+#### Creatures
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/terrariums/{id}/creatures` | List creatures in a terrarium |
+| `POST` | `/api/terrariums/{id}/creatures` | Add a creature (hot-plug) |
+| `DELETE` | `/api/terrariums/{id}/creatures/{name}` | Remove a creature |
+| `POST` | `/api/terrariums/{id}/creatures/{name}/wire` | Wire creature to a channel |
+
+#### Channels
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/terrariums/{id}/channels` | List all channels |
+| `POST` | `/api/terrariums/{id}/channels/{name}/send` | Send a message to a channel |
+
+#### Standalone Agents
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/agents` | Create and start a standalone agent |
+| `GET` | `/api/agents` | List all running agents |
+| `GET` | `/api/agents/{id}` | Get agent status |
+| `DELETE` | `/api/agents/{id}` | Stop an agent |
+| `POST` | `/api/agents/{id}/chat` | Non-streaming chat (returns full response) |
+
+### WebSocket Streams
+
+#### `ws://host/ws/terrariums/{id}/channels`
+
+Streams all channel messages from a terrarium in real-time. Each message is a JSON object:
+
+```json
+{
+    "type": "channel_message",
+    "channel": "ideas",
+    "sender": "brainstorm",
+    "content": "Here is a new idea...",
+    "message_id": "msg_a1b2c3d4e5f6",
+    "timestamp": "2026-03-30T14:22:01.123456"
+}
+```
+
+#### `ws://host/ws/agents/{id}/chat`
+
+Bidirectional streaming chat with a standalone agent. Send a JSON message:
+
+```json
+{"message": "Create a hello world script"}
+```
+
+Receive streaming chunks:
+
+```json
+{"type": "text", "content": "I'll create"}
+{"type": "text", "content": " the script..."}
+{"type": "done"}
+```
+
+### Architecture Note
+
+The HTTP API is a thin transport layer over the `serving` module. All business logic lives in `KohakuManager` and `AgentSession`, which are transport-agnostic. See [Serving Layer](serving.md) for the Python API that the HTTP layer delegates to.

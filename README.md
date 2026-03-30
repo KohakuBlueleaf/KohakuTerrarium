@@ -125,6 +125,14 @@ python -m kohakuterrarium terrarium run agents/novel_terrarium/ --observe ideas 
 python -m kohakuterrarium terrarium info agents/novel_terrarium/
 ```
 
+### Start the HTTP API
+
+```bash
+# Start the API server
+python apps/api/main.py
+# Open http://localhost:8000/docs for API documentation
+```
+
 ### Programmatic Usage
 
 ```python
@@ -286,7 +294,7 @@ terrarium:
 
 ```
 src/kohakuterrarium/
-  core/        # Agent, controller, executor, events, channels, session
+  core/        # Agent, controller, executor, events, channels, environment, session
   modules/     # Protocols: input, trigger, tool, output, subagent
   terrarium/   # Multi-agent runtime: config, lifecycle, hot-plug, observer
   serving/     # Service layer: KohakuManager, AgentSession, event streaming
@@ -299,7 +307,8 @@ src/kohakuterrarium/
 
 agents/        # Example agents and terrariums
 docs/          # Architecture, guides, terrarium docs
-apps/          # Applications: HTTP API, Web UI, Gradio (separate from core)
+apps/
+  api/         # FastAPI HTTP API (REST + WebSocket)
 ```
 
 ## Documentation
@@ -308,6 +317,8 @@ apps/          # Applications: HTTP API, Web UI, Gradio (separate from core)
 - [Terrarium Guide](docs/terrarium/index.md)
 - [Terrarium Architecture](docs/terrarium/architecture.md)
 - [Terrarium Channels](docs/terrarium/channels.md)
+- [Terrarium API Reference](docs/terrarium/api.md)
+- [Serving Layer](docs/terrarium/serving.md)
 - [Configuration Reference](docs/guides/configuration.md)
 - [Testing Infrastructure](docs/testing.md)
 - [Code Conventions](CLAUDE.md)

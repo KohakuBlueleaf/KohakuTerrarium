@@ -335,6 +335,68 @@ Terrarium-level methods (`add_creature`, `remove_creature`, `add_channel`, `wire
 
 See [API Reference](api.md#hot-plug-api) for method signatures and code examples.
 
+## Environment-Session System
+
+The Environment-Session model provides two-level isolation for multi-session support.
+
+### Hierarchy
+
+```
+Environment (env_id)
+├── shared_channels: ChannelRegistry    (inter-creature channels)
+├── _context: dict[str, Any]            (module-registered shared state)
+│
+├── Session "agent_a"
+│   ├── channels: ChannelRegistry       (private channels)
+│   ├── scratchpad: Scratchpad          (private working memory)
+│   └── extra: dict                     (custom state)
+│
+├── Session "agent_b"
+│   ├── channels: ChannelRegistry       (private channels)
+│   ├── scratchpad: Scratchpad          (private working memory)
+│   └── extra: dict                     (custom state)
+│
+└── ... more sessions
+```
+
+### Two-Level Isolation
+
+**Environment** holds resources shared across all creatures in a terrarium (or all agents in a user request). This includes the shared channel registry (for inter-creature communication) and module-registered state (database connections, API clients, etc.). One Environment corresponds to one terrarium instance.
+
+**Session** holds private state for a single creature. Each creature gets its own Session with an independent `ChannelRegistry`, `Scratchpad`, and extensible `extra` dict. Sessions are created lazily via `environment.get_session(key)`.
+
+The separation ensures that:
+
+- Creatures cannot accidentally read each other's scratchpads
+- Private channels (sub-agent communication within a creature) are invisible to other creatures
+- Shared channels (inter-creature communication) are managed at the environment level
+- Module state can be scoped to either environment or session as appropriate
+
+### Channel Resolution
+
+When the terrarium runtime resolves channels, it follows a **private first, shared second** order:
+
+1. Check the creature's session-private `ChannelRegistry`
+2. Check the environment's `shared_channels` registry
+3. If neither has the channel, create it in the appropriate registry
+
+This means a creature's internal sub-agent channels (private) take precedence over terrarium-level channels (shared). If a creature and the terrarium both declare a channel named `"inbox"`, they are distinct objects and do not conflict.
+
+### Shared State Registration
+
+Modules can store and retrieve environment-level shared state without coupling to specific data structures:
+
+```python
+# Register shared state (e.g., in a custom tool's setup)
+environment.register("db_pool", connection_pool)
+environment.register("rate_limiter", limiter)
+
+# Retrieve from anywhere with environment access
+pool = environment.get("db_pool")
+```
+
+This avoids passing extra constructor arguments through the entire stack.
+
 ## What the Terrarium Does NOT Do
 
 - It does **not** replace creature I/O modules. Creatures keep their original input/output.

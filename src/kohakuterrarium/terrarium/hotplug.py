@@ -118,10 +118,10 @@ class HotPlugMixin:
         Raises:
             RuntimeError: If terrarium not started
         """
-        if not self._session:
+        if not self._running:
             raise RuntimeError("Terrarium not started")
 
-        channel = self._session.channels.get_or_create(
+        channel = self.environment.shared_channels.get_or_create(
             name, channel_type=channel_type, description=description
         )
 
@@ -174,7 +174,7 @@ class HotPlugMixin:
                 channel_name=channel_name,
                 subscriber_id=creature_name,
                 prompt=prompt,
-                session=self._session,
+                registry=self.environment.shared_channels,
             )
 
             # Use the Agent.add_trigger() method
