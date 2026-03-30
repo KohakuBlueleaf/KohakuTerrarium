@@ -5,11 +5,10 @@ name: brainstorm
 version: "1.0"
 
 controller:
-  model: "${OPENROUTER_MODEL:google/gemini-3-flash-preview}"
+  model: gpt-5.4-mini
   temperature: 0.5
   max_tokens: 65536
-  api_key_env: OPENROUTER_API_KEY
-  base_url: https://openrouter.ai/api/v1
+  auth_mode: codex-oauth
   tool_format: native
 
 system_prompt_file: prompts/system.md
