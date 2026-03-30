@@ -457,7 +457,7 @@ class Controller:
                 # Add assistant message with tool_calls
                 self.conversation.append(
                     "assistant",
-                    assistant_content or None,
+                    assistant_content or "",
                     tool_calls=tool_calls_data,
                 )
             else:
