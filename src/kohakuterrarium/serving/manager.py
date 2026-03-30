@@ -8,8 +8,8 @@ import asyncio
 from typing import AsyncIterator
 from uuid import uuid4
 
-from kohakuterrarium.api.agent_session import AgentSession
-from kohakuterrarium.api.events import ChannelEvent, OutputEvent
+from kohakuterrarium.serving.agent_session import AgentSession
+from kohakuterrarium.serving.events import ChannelEvent, OutputEvent
 from kohakuterrarium.core.config import AgentConfig
 from kohakuterrarium.terrarium.config import (
     CreatureConfig,

@@ -4,9 +4,9 @@ All runtime operations go through KohakuManager. Event types are
 transport-agnostic dataclasses usable by any interface layer.
 """
 
-from kohakuterrarium.api.agent_session import AgentSession
-from kohakuterrarium.api.events import ChannelEvent, OutputEvent
-from kohakuterrarium.api.manager import KohakuManager
+from kohakuterrarium.serving.agent_session import AgentSession
+from kohakuterrarium.serving.events import ChannelEvent, OutputEvent
+from kohakuterrarium.serving.manager import KohakuManager
 
 __all__ = [
     "AgentSession",

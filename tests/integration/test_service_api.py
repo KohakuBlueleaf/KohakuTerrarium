@@ -1,7 +1,7 @@
 """Integration tests for the core service API (events, AgentSession, KohakuManager).
 
 These tests exercise the API surface defined in ideas/api-design.md.
-The implementation files live in src/kohakuterrarium/api/:
+The implementation files live in src/kohakuterrarium/serving/:
   - events.py       (ChannelEvent, OutputEvent)
   - agent_session.py (AgentSession)
   - manager.py       (KohakuManager)
@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 import pytest
 
-from kohakuterrarium.api.events import ChannelEvent, OutputEvent
+from kohakuterrarium.serving.events import ChannelEvent, OutputEvent
 
 # Paths reused across test classes
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -116,7 +116,7 @@ class TestAgentSession:
 
     async def test_create_from_path(self):
         """Create session from config path, verify agent_id, and stop."""
-        from kohakuterrarium.api.agent_session import AgentSession
+        from kohakuterrarium.serving.agent_session import AgentSession
 
         session = await AgentSession.from_path(SWE_AGENT_DIR)
         try:
@@ -128,7 +128,7 @@ class TestAgentSession:
 
     async def test_get_status(self):
         """Status includes agent_id, name, running, and tools."""
-        from kohakuterrarium.api.agent_session import AgentSession
+        from kohakuterrarium.serving.agent_session import AgentSession
 
         session = await AgentSession.from_path(SWE_AGENT_DIR)
         try:
@@ -143,7 +143,7 @@ class TestAgentSession:
 
     async def test_session_lifecycle(self):
         """Start and stop lifecycle transitions correctly."""
-        from kohakuterrarium.api.agent_session import AgentSession
+        from kohakuterrarium.serving.agent_session import AgentSession
 
         agent = __import__(
             "kohakuterrarium.core.agent", fromlist=["Agent"]
@@ -177,7 +177,7 @@ class TestKohakuManagerAgents:
     @pytest.fixture()
     async def manager(self):
         """Create a KohakuManager and shut it down after the test."""
-        from kohakuterrarium.api.manager import KohakuManager
+        from kohakuterrarium.serving.manager import KohakuManager
 
         mgr = KohakuManager()
         yield mgr
@@ -243,7 +243,7 @@ class TestKohakuManagerTerrariums:
     @pytest.fixture()
     async def manager(self):
         """Create a KohakuManager and shut it down after the test."""
-        from kohakuterrarium.api.manager import KohakuManager
+        from kohakuterrarium.serving.manager import KohakuManager
 
         mgr = KohakuManager()
         yield mgr
@@ -341,7 +341,7 @@ class TestKohakuManagerShutdown:
 
     async def test_shutdown_stops_everything(self):
         """Shutdown stops all agents and terrariums."""
-        from kohakuterrarium.api.manager import KohakuManager
+        from kohakuterrarium.serving.manager import KohakuManager
 
         mgr = KohakuManager()
 

@@ -178,7 +178,7 @@ class OutputEvent:
 ## Module Structure
 
 ```
-src/kohakuterrarium/api/
+src/kohakuterrarium/serving/
   __init__.py           # Exports KohakuManager, AgentSession, event types
   manager.py            # KohakuManager (~200 lines)
   agent_session.py      # AgentSession (~100 lines)

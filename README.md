@@ -286,18 +286,20 @@ terrarium:
 
 ```
 src/kohakuterrarium/
-  core/        # Runtime: agent, controller, executor, events, channels, session
+  core/        # Agent, controller, executor, events, channels, session
   modules/     # Protocols: input, trigger, tool, output, subagent
+  terrarium/   # Multi-agent runtime: config, lifecycle, hot-plug, observer
+  serving/     # Service layer: KohakuManager, AgentSession, event streaming
   builtins/    # 16 tools, 10 sub-agents, CLI/TUI/Whisper/None, stdout/TUI/TTS
-  terrarium/   # Multi-agent runtime: config, lifecycle, API, observer, output log
-  parsing/     # Stream parser with configurable format (bracket, XML, native)
+  parsing/     # Stream parser (bracket, XML, native tool calling)
   prompt/      # System prompt aggregation + Jinja2 templating
-  llm/         # LLM abstraction (OpenAI/OpenRouter) + native tool calling
+  llm/         # LLM providers (OpenAI/OpenRouter) + native tool calling
   testing/     # ScriptedLLM, OutputRecorder, TestAgentBuilder
   utils/       # Structured colored logging
 
 agents/        # Example agents and terrariums
 docs/          # Architecture, guides, terrarium docs
+apps/          # Applications: HTTP API, Web UI, Gradio (separate from core)
 ```
 
 ## Documentation
