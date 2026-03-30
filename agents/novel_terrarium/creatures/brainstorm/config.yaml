@@ -5,7 +5,7 @@ name: brainstorm
 version: "1.0"
 
 controller:
-  model: gpt-5.4-mini
+  model: gpt-5.4
   temperature: 0.5
   max_tokens: 65536
   auth_mode: codex-oauth

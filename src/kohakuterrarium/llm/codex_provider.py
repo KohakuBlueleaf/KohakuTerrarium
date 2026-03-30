@@ -43,7 +43,7 @@ class CodexOAuthProvider(BaseLLMProvider):
     ChatGPT Plus/Pro subscription quota, not API credits.
 
     Usage:
-        provider = CodexOAuthProvider(model="gpt-5.4-mini")
+        provider = CodexOAuthProvider(model="gpt-5.4")
         await provider.ensure_authenticated()
 
         async for chunk in provider.chat(messages, stream=True):
