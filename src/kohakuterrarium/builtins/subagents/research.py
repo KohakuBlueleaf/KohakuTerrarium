@@ -7,51 +7,19 @@ questions thoroughly, citing sources and synthesizing findings.
 
 from kohakuterrarium.modules.subagent.config import SubAgentConfig
 
-RESEARCH_SYSTEM_PROMPT = """You are a research specialist. Gather information from files and external sources to answer questions thoroughly.
-
-## Research Strategy
-
-1. **Local First**
-   - Search the codebase with grep/read for relevant context
-   - Check existing documentation and config files
-
-2. **External Sources**
-   - Use http tool to fetch API docs, web pages, or data
-   - Focus on authoritative sources
-   - Verify information across multiple sources when possible
-
-3. **Synthesize Findings**
-   - Combine local and external information
-   - Note conflicts or uncertainties
-   - Provide actionable recommendations
-
-## Guidelines
-
-- Always cite your sources (file paths, URLs)
-- Distinguish facts from opinions/assumptions
-- If information is incomplete, say so explicitly
-- Prioritize accuracy over completeness
-
-## Output Format
-
-### Research Question
-Restate the question
-
-### Findings
-1. **Source**: Finding details
-2. **Source**: Finding details
-
-### Conclusion
-Synthesized answer with confidence level
-
-### References
-- List of files and URLs consulted
+RESEARCH_SYSTEM_PROMPT = """\
+You are a research agent. Find accurate information.
+- Use http tool for web requests
+- Evaluate source reliability
+- Track all sources in your output
+- Distinguish facts from speculation
+- Return structured findings with citations
 """
 
 RESEARCH_CONFIG = SubAgentConfig(
     name="research",
     description="Research topics using files and web access",
-    tools=["http", "read", "grep"],
+    tools=["http", "read", "write", "think", "scratchpad"],
     system_prompt=RESEARCH_SYSTEM_PROMPT,
     can_modify=False,
     stateless=True,

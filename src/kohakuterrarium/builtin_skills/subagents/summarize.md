@@ -25,9 +25,9 @@ Sub-agent for condensing long content into concise, actionable summaries.
 ## HOW TO USE
 
 ```
-[/summarize]
+tool call: summarize(
 content or task description
-[summarize/]
+)
 ```
 
 ## Arguments
@@ -39,29 +39,29 @@ content or task description
 ## Examples
 
 ```
-[/summarize]
+tool call: summarize(
 Summarize the following build output:
 <long build log here>
-[summarize/]
+)
 ```
 
 ```
-[/summarize]
+tool call: summarize(
 Read and summarize src/kohakuterrarium/core/controller.py
-[summarize/]
+)
 ```
 
 ```
-[/summarize]
+tool call: summarize(
 Condense these search results into key findings:
 <grep/glob output>
-[summarize/]
+)
 ```
 
 ```
-[/summarize]
+tool call: summarize(
 What are the main points in docs/architecture.md?
-[summarize/]
+)
 ```
 
 ## CAPABILITIES

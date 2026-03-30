@@ -1,0 +1,43 @@
+name: general
+version: "1.0"
+
+controller:
+  model: "${OPENROUTER_MODEL:google/gemini-3-flash-preview}"
+  temperature: 0.5
+  max_tokens: 512000
+  api_key_env: OPENROUTER_API_KEY
+  base_url: https://openrouter.ai/api/v1
+  tool_format: native
+
+system_prompt_file: prompts/system.md
+skill_mode: dynamic  # on-demand tool docs via ##info##
+
+tools:
+  - { name: bash, type: builtin }
+  - { name: read, type: builtin }
+  - { name: write, type: builtin }
+  - { name: edit, type: builtin }
+  - { name: glob, type: builtin }
+  - { name: grep, type: builtin }
+  - { name: tree, type: builtin }
+  - { name: think, type: builtin }
+  - { name: scratchpad, type: builtin }
+  - { name: ask_user, type: builtin }
+  - { name: http, type: builtin }
+  - { name: json_read, type: builtin }
+  - { name: json_write, type: builtin }
+  - { name: send_message, type: builtin }
+  - { name: wait_channel, type: builtin }
+  - { name: python, type: builtin }
+
+subagents:
+  - { name: explore, type: builtin }
+  - { name: plan, type: builtin }
+  - { name: worker, type: builtin }
+  - { name: critic, type: builtin }
+  - { name: summarize, type: builtin }
+  - { name: research, type: builtin }
+
+output:
+  type: stdout
+  controller_direct: true

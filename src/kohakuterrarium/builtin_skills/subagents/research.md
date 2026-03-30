@@ -27,9 +27,9 @@ Autonomous sub-agent for deep research combining local codebase analysis with ex
 ## HOW TO USE
 
 ```
-[/research]
+tool call: research(
 task description
-[research/]
+)
 ```
 
 ## Arguments
@@ -41,27 +41,27 @@ task description
 ## Examples
 
 ```
-[/research]
+tool call: research(
 What authentication methods does the GitHub API v4 support?
-[research/]
+)
 ```
 
 ```
-[/research]
+tool call: research(
 How does our config loader compare to standard TOML/YAML loading practices?
-[research/]
+)
 ```
 
 ```
-[/research]
+tool call: research(
 Find the correct endpoint and payload format for the Slack Web API chat.postMessage method
-[research/]
+)
 ```
 
 ```
-[/research]
+tool call: research(
 What are the best practices for async Python error handling in long-running event loops?
-[research/]
+)
 ```
 
 ## CAPABILITIES

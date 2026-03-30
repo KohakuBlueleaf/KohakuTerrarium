@@ -19,21 +19,21 @@ Search file contents for a pattern using regex.
 ## HOW TO USE
 
 ```
-[/grep]
+tool call: grep(
 pattern
-[grep/]
+)
 ```
 
 With optional parameters:
 
 ```
-[/grep]
-@@path=src/
-@@glob=**/*.py
-@@limit=50
-@@ignore_case=true
+tool call: grep(
+  path: src/
+  glob: **/*.py
+  limit: 50
+  ignore_case: true
 pattern
-[grep/]
+)
 ```
 
 ## Arguments
@@ -49,32 +49,32 @@ pattern
 ## Examples
 
 ```
-[/grep]
-@@glob=**/*.py
+tool call: grep(
+  glob: **/*.py
 def \w+\(
-[grep/]
+)
 ```
 
 ```
-[/grep]
-@@ignore_case=true
+tool call: grep(
+  ignore_case: true
 todo|fixme
-[grep/]
+)
 ```
 
 ```
-[/grep]
-@@path=src/components
-@@glob=*.tsx
+tool call: grep(
+  path: src/components
+  glob: *.tsx
 import.*react
-[grep/]
+)
 ```
 
 ```
-[/grep]
-@@path=src/main.py
+tool call: grep(
+  path: src/main.py
 import
-[grep/]
+)
 ```
 
 ## Output Format

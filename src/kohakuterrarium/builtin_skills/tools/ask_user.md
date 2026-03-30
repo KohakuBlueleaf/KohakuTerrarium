@@ -21,9 +21,9 @@ patterns where the agent needs clarification, approval, or additional input.
 ## HOW TO USE
 
 ```
-[/ask_user]
+tool call: ask_user(
 Your question here
-[ask_user/]
+)
 ```
 
 The question text is passed as the content body.
@@ -39,28 +39,28 @@ The question text is passed as the content body.
 Ask for clarification:
 
 ```
-[/ask_user]
+tool call: ask_user(
 I found 3 potential approaches. Which should I use?
 1. Refactor the existing module
 2. Create a new module
 3. Use a third-party library
-[ask_user/]
+)
 ```
 
 Ask for approval:
 
 ```
-[/ask_user]
+tool call: ask_user(
 Should I proceed with deleting the deprecated files? (yes/no)
-[ask_user/]
+)
 ```
 
 Gather missing information:
 
 ```
-[/ask_user]
+tool call: ask_user(
 What database host should I use for the staging environment?
-[ask_user/]
+)
 ```
 
 ## Output Format

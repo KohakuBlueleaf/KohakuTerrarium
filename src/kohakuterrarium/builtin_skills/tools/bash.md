@@ -19,9 +19,9 @@ Execute shell commands and return output.
 ## HOW TO USE
 
 ```
-[/bash]
+tool call: bash(
 command here
-[bash/]
+)
 ```
 
 ## Arguments
@@ -33,29 +33,29 @@ command here
 ## Examples
 
 ```
-[/bash]
+tool call: bash(
 ls -la
-[bash/]
+)
 ```
 
 ```
-[/bash]
+tool call: bash(
 git status
-[bash/]
+)
 ```
 
 ```
-[/bash]
+tool call: bash(
 pytest tests/ -v
-[bash/]
+)
 ```
 
 ```
-[/bash]
+tool call: bash(
 cd /tmp
 ls -la
 pwd
-[bash/]
+)
 ```
 
 ## Output Format

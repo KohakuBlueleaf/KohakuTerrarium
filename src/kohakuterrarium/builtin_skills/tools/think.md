@@ -20,9 +20,9 @@ your thought is preserved in context and won't be lost to compaction.
 ## HOW TO USE
 
 ```
-[/think]
+tool call: think(
 your reasoning here
-[think/]
+)
 ```
 
 ## Arguments
@@ -34,14 +34,14 @@ your reasoning here
 ## Examples
 
 ```
-[/think]
+tool call: think(
 The user wants to refactor the auth module.
 Steps:
 1. Find all auth-related files
 2. Identify the current pattern
 3. Design the new pattern
 4. Implement changes
-[think/]
+)
 ```
 
 ## Output Format

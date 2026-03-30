@@ -12,9 +12,9 @@ Sub-agent for storing information in the memory folder.
 ## Syntax
 
 ```
-[/memory_write]
+tool call: memory_write(
 description of what to store
-[memory_write/]
+)
 ```
 
 ## What It Does
@@ -32,21 +32,21 @@ description of what to store
 ## Content Examples
 
 ```
-[/memory_write]
+tool call: memory_write(
 User1 mentioned they're learning piano in #general
-[memory_write/]
+)
 ```
 
 ```
-[/memory_write]
+tool call: memory_write(
 User prefers concise responses
-[memory_write/]
+)
 ```
 
 ```
-[/memory_write]
+tool call: memory_write(
 Current project context: working on agent framework
-[memory_write/]
+)
 ```
 
 ## Notes

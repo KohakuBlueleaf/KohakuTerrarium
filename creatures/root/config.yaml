@@ -1,0 +1,14 @@
+name: root
+version: "1.0"
+base_config: ../general
+
+system_prompt_file: prompts/system.md
+
+# Add terrarium management tools on top of general tools
+tools:
+  - { name: terrarium_status, type: builtin }
+  - { name: terrarium_create, type: builtin }
+  - { name: terrarium_send, type: builtin }
+  - { name: terrarium_observe, type: builtin }
+  - { name: creature_start, type: builtin }
+  - { name: creature_stop, type: builtin }

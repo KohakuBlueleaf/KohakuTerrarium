@@ -19,11 +19,11 @@ Modify JSON files by setting values at specific dot-path locations.
 ## HOW TO USE
 
 ```
-[/json_write]
-@@path=file_path
-@@query=.key.nested
+tool call: json_write(
+  path: file_path
+  query: .key.nested
 "value"
-[json_write/]
+)
 ```
 
 The value (content body) is parsed as JSON. If it is not valid JSON, it is treated as a plain string.
@@ -48,37 +48,37 @@ The value (content body) is parsed as JSON. If it is not valid JSON, it is treat
 
 Set a string field:
 ```
-[/json_write]
-@@path=config.json
-@@query=.database.host
+tool call: json_write(
+  path: config.json
+  query: .database.host
 "localhost"
-[json_write/]
+)
 ```
 
 Set a number:
 ```
-[/json_write]
-@@path=config.json
-@@query=.database.port
+tool call: json_write(
+  path: config.json
+  query: .database.port
 5432
-[json_write/]
+)
 ```
 
 Set an object:
 ```
-[/json_write]
-@@path=config.json
-@@query=.settings
+tool call: json_write(
+  path: config.json
+  query: .settings
 {"debug": true, "verbose": false}
-[json_write/]
+)
 ```
 
 Replace entire file:
 ```
-[/json_write]
-@@path=data.json
+tool call: json_write(
+  path: data.json
 {"users": [], "version": 1}
-[json_write/]
+)
 ```
 
 ## Output Format

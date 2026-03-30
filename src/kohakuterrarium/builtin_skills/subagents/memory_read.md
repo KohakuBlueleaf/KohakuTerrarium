@@ -12,9 +12,9 @@ Sub-agent for searching the memory folder using natural language queries.
 ## Syntax
 
 ```
-[/memory_read]
+tool call: memory_read(
 natural language query
-[memory_read/]
+)
 ```
 
 ## What It Does
@@ -32,21 +32,21 @@ natural language query
 ## Query Examples
 
 ```
-[/memory_read]
+tool call: memory_read(
 what do I know about User1
-[memory_read/]
+)
 ```
 
 ```
-[/memory_read]
+tool call: memory_read(
 user preferences
-[memory_read/]
+)
 ```
 
 ```
-[/memory_read]
+tool call: memory_read(
 recent conversation topics
-[memory_read/]
+)
 ```
 
 ## Notes
