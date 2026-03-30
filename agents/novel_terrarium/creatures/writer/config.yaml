@@ -27,6 +27,3 @@ tools:
   - name: write
     type: builtin
 
-termination:
-  max_turns: 20
-  keywords: ["WRITING_COMPLETE"]

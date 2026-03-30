@@ -48,8 +48,6 @@ subagents:
   - name: summarize
     type: builtin
 
-termination:
-  max_duration: 86400
 
 output:
   type: stdout

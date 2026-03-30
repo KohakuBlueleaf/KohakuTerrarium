@@ -176,7 +176,8 @@ class TestCodexOAuthProvider:
         body = provider._build_request_body(messages)
 
         assert body["model"] == "gpt-4o"
-        assert body["messages"] == messages
+        assert body["instructions"] == "You are helpful."
+        assert body["input"] == [m for m in messages if m.get("role") != "system"]
         assert body["stream"] is True
         assert "tools" not in body
 

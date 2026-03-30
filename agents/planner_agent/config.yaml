@@ -50,9 +50,6 @@ subagents:
   - name: summarize
     type: builtin
 
-termination:
-  max_turns: 50
-  keywords: ["ALL_STEPS_COMPLETE"]
 
 output:
   type: stdout

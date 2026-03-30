@@ -58,9 +58,6 @@ subagents:
   - name: critic
     type: builtin
 
-termination:
-  max_turns: 30
-  keywords: ["ALL_TASKS_COMPLETE"]
 
 output:
   type: stdout

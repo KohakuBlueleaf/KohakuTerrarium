@@ -135,9 +135,19 @@ class CodexOAuthProvider(BaseLLMProvider):
         The Codex backend accepts this format directly, same as OpenCode
         which sends standard OpenAI SDK requests and just rewrites the URL.
         """
+        # Extract system message as "instructions" (required by Codex backend)
+        instructions = ""
+        chat_messages = []
+        for msg in messages:
+            if msg.get("role") == "system":
+                instructions = msg.get("content", "")
+            else:
+                chat_messages.append(msg)
+
         body: dict[str, Any] = {
             "model": self.model,
-            "messages": messages,
+            "instructions": instructions or "You are a helpful assistant.",
+            "input": chat_messages,
             "stream": True,
         }
         if tools:

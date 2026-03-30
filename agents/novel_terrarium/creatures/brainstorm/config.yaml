@@ -25,6 +25,3 @@ tools:
   - name: think
     type: builtin
 
-termination:
-  max_turns: 10
-  keywords: ["BRAINSTORM_COMPLETE"]

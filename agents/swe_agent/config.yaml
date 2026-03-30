@@ -60,9 +60,6 @@ subagents:
     type: builtin
 
 # Termination conditions
-termination:
-  max_turns: 100
-  keywords: ["TASK_COMPLETE"]
 
 # Output configuration
 output:

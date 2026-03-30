@@ -62,6 +62,3 @@ subagents:
   - name: summarize
     type: builtin
 
-termination:
-  max_turns: 100
-  keywords: ["TASK_COMPLETE"]

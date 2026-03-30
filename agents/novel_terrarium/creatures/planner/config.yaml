@@ -25,6 +25,3 @@ tools:
   - name: think
     type: builtin
 
-termination:
-  max_turns: 15
-  keywords: ["PLANNING_COMPLETE"]
