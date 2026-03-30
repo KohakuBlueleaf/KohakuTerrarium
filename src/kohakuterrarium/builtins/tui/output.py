@@ -1,6 +1,9 @@
 """TUI output module - writes to Textual app with visual turn separation."""
 
+import re
 from typing import Any
+
+from rich.text import Text
 
 from kohakuterrarium.builtins.tui.session import TUISession
 from kohakuterrarium.core.session import get_session
@@ -54,14 +57,14 @@ class TUIOutput(BaseOutputModule):
             self._turn_started = True
 
     async def on_processing_start(self) -> None:
-        """Show processing indicator when agent starts thinking."""
+        """Show animated processing indicator when agent starts thinking."""
         if self._tui:
-            self._tui.set_subtitle("KohakUwUing...")
+            self._tui.start_thinking()
 
     async def on_processing_end(self) -> None:
-        """Clear processing indicator."""
+        """Stop animated processing indicator."""
         if self._tui:
-            self._tui.set_subtitle("")
+            self._tui.stop_thinking()
 
     async def write(self, content: str) -> None:
         """Write complete content to the output pane."""
@@ -100,7 +103,93 @@ class TUIOutput(BaseOutputModule):
         self._stream_buffer = ""
 
     def on_activity(self, activity_type: str, detail: str) -> None:
-        """Route tool/subagent activity to the Status tab."""
+        """Show tool/subagent activity inline in main output and in Status tab."""
         if not self._tui:
             return
+
+        # Always log to Status tab for detailed history
         self._tui.update_status(f"[{activity_type}] {detail}")
+
+        # Build inline Rich Text for main output
+        inline = self._format_activity_inline(activity_type, detail)
+        if inline:
+            self._ensure_turn_started()
+            self._tui.write_to_output(inline)
+
+    @staticmethod
+    def _parse_detail_bracket(detail: str) -> tuple[str, str]:
+        """
+        Extract name and remainder from '[name] rest' format.
+
+        Returns:
+            (name, rest) or ("", detail) if no bracket found.
+        """
+        m = re.match(r"^\[([^\]]+)\]\s*(.*)", detail)
+        if m:
+            return m.group(1), m.group(2)
+        return "", detail
+
+    @staticmethod
+    def _format_activity_inline(activity_type: str, detail: str) -> Text | None:
+        """
+        Build a Rich Text line for inline display in the main output.
+
+        Returns None for activity types that shouldn't be shown inline.
+        """
+        name, rest = TUIOutput._parse_detail_bracket(detail)
+
+        match activity_type:
+            case "tool_start":
+                text = Text()
+                text.append("  \u2699 ", style="dim")
+                text.append(name or "tool", style="bold cyan")
+                if rest:
+                    text.append(f": {rest}", style="dim")
+                return text
+
+            case "tool_done":
+                text = Text()
+                text.append("  \u2713 ", style="green")
+                text.append(name or "tool", style="bold cyan")
+                if rest:
+                    text.append(f": {rest}", style="green")
+                return text
+
+            case "tool_error":
+                text = Text()
+                text.append("  \u2717 ", style="red")
+                text.append(name or "tool", style="bold red")
+                if rest:
+                    text.append(f": {rest}", style="red")
+                return text
+
+            case "subagent_start":
+                text = Text()
+                text.append("  \u2699 ", style="dim")
+                text.append("[sub] ", style="dim italic")
+                text.append(name or "subagent", style="bold magenta")
+                if rest:
+                    text.append(f": {rest}", style="dim")
+                return text
+
+            case "subagent_done":
+                text = Text()
+                text.append("  \u2713 ", style="green")
+                text.append("[sub] ", style="dim italic")
+                text.append(name or "subagent", style="bold magenta")
+                if rest:
+                    text.append(f": {rest}", style="green")
+                return text
+
+            case "subagent_error":
+                text = Text()
+                text.append("  \u2717 ", style="red")
+                text.append("[sub] ", style="dim italic")
+                text.append(name or "subagent", style="bold red")
+                if rest:
+                    text.append(f": {rest}", style="red")
+                return text
+
+            case _:
+                # command_done, command_error, etc. - status tab only
+                return None
