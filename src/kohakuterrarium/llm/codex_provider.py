@@ -149,6 +149,7 @@ class CodexOAuthProvider(BaseLLMProvider):
             "instructions": instructions or "You are a helpful assistant.",
             "input": chat_messages,
             "stream": True,
+            "store": False,
         }
         if tools:
             body["tools"] = [t.to_api_format() for t in tools]
