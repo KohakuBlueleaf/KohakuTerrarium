@@ -371,11 +371,15 @@ class AgentHandlersMixin:
             logger.error("Failed to start tool", tool_name=tool_call.name, error=str(e))
 
             # Create a dummy completed task that returns error
+            # Capture error string before exception variable goes out of scope
+            error_msg = str(e)
+            error_job_id = f"error_{tool_call.name}"
+
             async def _error_result():
-                return JobResult(job_id=f"error_{tool_call.name}", error=str(e))
+                return JobResult(job_id=error_job_id, error=error_msg)
 
             task = asyncio.create_task(_error_result())
-            return f"error_{tool_call.name}", task, True  # Direct so it gets reported
+            return error_job_id, task, True  # Direct so it gets reported
 
     async def _collect_tool_results(
         self,
