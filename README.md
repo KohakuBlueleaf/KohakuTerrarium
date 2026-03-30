@@ -311,13 +311,24 @@ apps/
   api/         # FastAPI HTTP API (REST + WebSocket)
 ```
 
+## Multi-Session Isolation
+
+KohakuTerrarium uses a two-level isolation system for safe multi-user operation:
+
+- **Environment** - shared state per terrarium (inter-creature channels, config)
+- **Session** - private state per creature (scratchpad, sub-agent channels)
+
+Multiple users in one process get separate environments. Creatures in the same terrarium share channels but have private scratchpads. See [Environment docs](docs/terrarium/environment.md).
+
 ## Documentation
 
 - [Architecture Overview](docs/architecture.md)
 - [Terrarium Guide](docs/terrarium/index.md)
 - [Terrarium Architecture](docs/terrarium/architecture.md)
 - [Terrarium Channels](docs/terrarium/channels.md)
-- [Terrarium API Reference](docs/terrarium/api.md)
+- [Environment-Session System](docs/terrarium/environment.md)
+- [Programmatic API](docs/terrarium/api.md)
+- [HTTP API Reference](docs/http-api.md)
 - [Serving Layer](docs/terrarium/serving.md)
 - [Configuration Reference](docs/guides/configuration.md)
 - [Testing Infrastructure](docs/testing.md)
