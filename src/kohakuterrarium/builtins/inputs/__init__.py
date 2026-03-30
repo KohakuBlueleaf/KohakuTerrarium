@@ -82,10 +82,13 @@ def create_builtin_input(name: str, options: dict[str, Any] | None = None) -> An
     raise ValueError(f"Unknown builtin input type: {name}")
 
 
-# Register TUI input
-from kohakuterrarium.builtins.tui.input import TUIInput
+# Register TUI input (optional dependency: textual)
+try:
+    from kohakuterrarium.builtins.tui.input import TUIInput
 
-register_builtin_input("tui", TUIInput)
+    register_builtin_input("tui", TUIInput)
+except ImportError:
+    TUIInput = None  # type: ignore[assignment,misc]
 
 # Try to register whisper (optional dependency)
 try:

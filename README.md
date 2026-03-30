@@ -101,6 +101,14 @@ Pipeline:                        Hub-and-spoke:
 ```bash
 git clone https://github.com/KohakuBlueLeaf/KohakuTerrarium.git
 cd KohakuTerrarium
+
+# Create and activate virtual environment
+uv venv
+# Linux/macOS:
+source .venv/bin/activate
+# Windows PowerShell:
+# .venv\Scripts\Activate.ps1
+
 uv pip install -e .
 
 export OPENROUTER_API_KEY=your_key_here

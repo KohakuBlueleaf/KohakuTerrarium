@@ -87,10 +87,13 @@ def create_builtin_output(name: str, options: dict[str, Any] | None = None) -> A
     raise ValueError(f"Unknown builtin output type: {name}")
 
 
-# Register TUI output
-from kohakuterrarium.builtins.tui.output import TUIOutput
+# Register TUI output (optional dependency: textual)
+try:
+    from kohakuterrarium.builtins.tui.output import TUIOutput
 
-register_builtin_output("tui", TUIOutput)
+    register_builtin_output("tui", TUIOutput)
+except ImportError:
+    TUIOutput = None  # type: ignore[assignment,misc]
 
 
 __all__ = [

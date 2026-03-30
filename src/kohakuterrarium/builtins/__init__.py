@@ -12,12 +12,12 @@ Contains:
 from kohakuterrarium.builtins.inputs import (
     CLIInput,
     NonBlockingCLIInput,
-    TUIInput,
     create_builtin_input,
     get_builtin_input,
     is_builtin_input,
     list_builtin_inputs,
 )
+from kohakuterrarium.builtins.inputs import TUIInput  # may be None if textual not installed
 from kohakuterrarium.builtins.outputs import (
     ConsoleTTS,
     DummyTTS,
@@ -25,12 +25,12 @@ from kohakuterrarium.builtins.outputs import (
     StdoutOutput,
     TTSConfig,
     TTSModule,
-    TUIOutput,
     create_builtin_output,
     get_builtin_output,
     is_builtin_output,
     list_builtin_outputs,
 )
+from kohakuterrarium.builtins.outputs import TUIOutput  # may be None if textual not installed
 from kohakuterrarium.builtins.subagents import (
     BUILTIN_SUBAGENTS,
     get_builtin_subagent_config,

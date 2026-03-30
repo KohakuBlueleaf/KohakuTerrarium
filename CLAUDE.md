@@ -35,6 +35,7 @@ KohakuTerrarium is a Python framework that enables building any kind of agent sy
 - Practical dependencies allowed (pydantic, httpx, rich, etc.)
 
 ### Development Setup
+- Create virtual environment first: `uv venv` then activate (`.venv/bin/activate` or `.venv\Scripts\Activate.ps1`)
 - Use `uv pip install -e .` for editable install
 - **Never use `sys.path.insert` hacks** in examples or tests - always rely on proper package install
 - Examples and tests should import from `kohakuterrarium.*` directly
