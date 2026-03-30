@@ -159,20 +159,29 @@ class CodexOAuthProvider(BaseLLMProvider):
         collected_tool_calls: list[NativeToolCall] = []
 
         def _consume_stream() -> None:
+            # Track tool call names from output_item events
+            # (arguments.done has name=None, output_item.done has full info)
+            pending_names: dict[str, str] = {}  # item_id -> name
             try:
                 for event in stream:
                     match event.type:
                         case "response.output_text.delta":
                             text_queue.put_nowait(event.delta)
-                        case "response.function_call_arguments.done":
-                            collected_tool_calls.append(
-                                NativeToolCall(
-                                    id=getattr(event, "call_id", "")
-                                    or getattr(event, "item_id", ""),
-                                    name=getattr(event, "name", "") or "",
-                                    arguments=event.arguments,
+                        case "response.output_item.added":
+                            item = event.item
+                            if hasattr(item, "name") and item.name:
+                                item_id = getattr(item, "id", "")
+                                pending_names[item_id] = item.name
+                        case "response.output_item.done":
+                            item = event.item
+                            if getattr(item, "type", "") == "function_call":
+                                collected_tool_calls.append(
+                                    NativeToolCall(
+                                        id=getattr(item, "call_id", ""),
+                                        name=getattr(item, "name", "") or "",
+                                        arguments=getattr(item, "arguments", ""),
+                                    )
                                 )
-                            )
                         case "response.completed":
                             pass
             except Exception as e:
