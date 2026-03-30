@@ -369,24 +369,14 @@ class AgentHandlersMixin:
                 )
                 await controller.push_event(feedback_event)
             else:
-                # No feedback but have pending jobs - push a status message
-                # so the model knows jobs are still running and can use wait
-                pending_count = len(pending_background_ids) + len(pending_subagent_ids)
-                status_msg = (
-                    f"{pending_count} background job(s) still running. "
-                    "Use [/wait]job_id[wait/] to get results, or continue with other work."
-                )
+                # No feedback but pending jobs. Wait and re-check.
+                # No status hint needed - completion events notify naturally.
                 logger.debug(
-                    "No feedback but pending jobs, sending status hint",
+                    "Waiting for background jobs",
                     pending_bg=len(pending_background_ids),
                     pending_sa=len(pending_subagent_ids),
                 )
-                status_event = create_tool_complete_event(
-                    job_id="status",
-                    content=status_msg,
-                    exit_code=0,
-                )
-                await controller.push_event(status_event)
+                await asyncio.sleep(0.5)
 
         # Notify output modules that processing has ended
         await self.output_router.on_processing_end()

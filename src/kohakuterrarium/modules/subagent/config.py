@@ -74,6 +74,7 @@ class SubAgentConfig:
     temperature: float | None = None
     memory_path: str | None = None
     modifying_tools: set[str] | None = None
+    tool_format: str | None = None  # None = inherit from parent
     extra: dict[str, Any] = field(default_factory=dict)
 
     def load_prompt(self, agent_path: Path | None = None) -> str:
@@ -157,6 +158,7 @@ class SubAgentConfig:
             "temperature",
             "memory_path",
             "modifying_tools",
+            "tool_format",
             "extra",
         }
 

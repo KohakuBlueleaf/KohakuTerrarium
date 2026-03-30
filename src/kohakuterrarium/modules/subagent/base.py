@@ -23,13 +23,14 @@ from kohakuterrarium.llm.base import LLMProvider
 from kohakuterrarium.modules.subagent.config import OutputTarget, SubAgentConfig
 from kohakuterrarium.modules.tool.base import Tool
 from kohakuterrarium.parsing import ParserConfig, StreamParser, TextEvent, ToolCallEvent
+from kohakuterrarium.parsing.format import BRACKET_FORMAT, XML_FORMAT, ToolCallFormat
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 
-# Framework hints for sub-agents (simplified version)
-SUBAGENT_FRAMEWORK_HINTS = """
+# Framework hints for sub-agents (bracket format)
+SUBAGENT_FRAMEWORK_HINTS_BRACKET = """
 ## Tool Calling Format
 
 Format: `[/name]` opens, `[name/]` closes
@@ -62,6 +63,23 @@ Examples:
 - Do NOT just describe what you would do - actually DO it
 - Continue calling tools until task is complete
 """.strip()
+
+# Framework hints for sub-agents (native tool calling)
+SUBAGENT_FRAMEWORK_HINTS_NATIVE = """
+## Tool Calling
+
+Use the provided tool functions directly. The LLM provider handles tool call formatting.
+
+## CRITICAL: You MUST use tools to complete your task
+
+- Call tools using the native function calling interface
+- After calling a tool, STOP and wait for results
+- Do NOT just describe what you would do - actually DO it
+- Continue calling tools until task is complete
+""".strip()
+
+# Backward-compatible alias
+SUBAGENT_FRAMEWORK_HINTS = SUBAGENT_FRAMEWORK_HINTS_BRACKET
 
 
 @dataclass
@@ -111,6 +129,7 @@ class SubAgent:
         parent_registry: Registry,
         llm: LLMProvider,
         agent_path: Any = None,
+        tool_format: str | None = None,
     ):
         """
         Initialize sub-agent.
@@ -120,11 +139,15 @@ class SubAgent:
             parent_registry: Parent's registry for tool access
             llm: LLM provider (can be same as parent or different)
             agent_path: Path to agent folder for loading prompts
+            tool_format: Tool format to use (None = bracket default).
+                "native" means the LLM uses native tool calling.
+                "bracket"/"xml"/custom are text-based formats.
         """
         self.config = config
         self.parent_registry = parent_registry
         self.llm = llm
         self.agent_path = agent_path
+        self.tool_format = tool_format
 
         # Create limited registry with only allowed tools
         self.registry = self._create_limited_registry()
@@ -139,9 +162,14 @@ class SubAgent:
         # Conversation for this sub-agent
         self.conversation = Conversation()
 
+        # Resolve tool call format for the parser
+        self._is_native = tool_format == "native"
+        parser_tool_format = self._resolve_parser_format(tool_format)
+
         # Stream parser with known tools from registry
         self._parser_config = ParserConfig(
             known_tools=set(self.registry.list_tools()),
+            tool_format=parser_tool_format,
         )
         self._parser = StreamParser(self._parser_config)
 
@@ -154,7 +182,23 @@ class SubAgent:
             "SubAgent created",
             subagent_name=config.name,
             tools=config.tools,
+            tool_format=tool_format or "bracket",
         )
+
+    @staticmethod
+    def _resolve_parser_format(tool_format: str | None) -> ToolCallFormat:
+        """Resolve a tool_format string to a ToolCallFormat instance.
+
+        For native mode, we still return BRACKET_FORMAT as fallback
+        (the parser won't be used much in native mode, but needs a valid format).
+        """
+        match tool_format:
+            case "xml":
+                return XML_FORMAT
+            case "native" | None | "bracket":
+                return BRACKET_FORMAT
+            case _:
+                return BRACKET_FORMAT
 
     def _create_limited_registry(self) -> Registry:
         """
@@ -229,8 +273,11 @@ class SubAgent:
             )
             parts.append(missing_note)
 
-        # Framework hints
-        parts.append(SUBAGENT_FRAMEWORK_HINTS)
+        # Framework hints (use native hints when in native mode)
+        if self._is_native:
+            parts.append(SUBAGENT_FRAMEWORK_HINTS_NATIVE)
+        else:
+            parts.append(SUBAGENT_FRAMEWORK_HINTS_BRACKET)
 
         result = "\n\n".join(parts)
         logger.info(

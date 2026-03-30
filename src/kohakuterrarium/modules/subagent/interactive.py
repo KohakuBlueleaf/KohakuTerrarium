@@ -83,8 +83,9 @@ class InteractiveSubAgent(SubAgent):
         parent_registry: Registry,
         llm: LLMProvider,
         agent_path: Any = None,
+        tool_format: str | None = None,
     ):
-        super().__init__(config, parent_registry, llm, agent_path)
+        super().__init__(config, parent_registry, llm, agent_path, tool_format)
 
         # Interactive state
         self._active = False

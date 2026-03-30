@@ -163,12 +163,20 @@ class AgentInitMixin:
         from kohakuterrarium.builtins.subagents import get_builtin_subagent_config
         from kohakuterrarium.modules.subagent import SubAgentManager
 
+        # Pass parent's tool_format so sub-agents inherit it
+        parent_tool_format = (
+            self.config.tool_format
+            if isinstance(self.config.tool_format, str)
+            else "bracket"
+        )
+
         self.subagent_manager = SubAgentManager(
             parent_registry=self.registry,
             llm=self.llm,
             agent_path=self.config.agent_path,
             job_store=self.executor.job_store,  # Share job store so wait command works
             max_depth=self.config.max_subagent_depth,
+            tool_format=parent_tool_format,
         )
 
         # Register sub-agents from config

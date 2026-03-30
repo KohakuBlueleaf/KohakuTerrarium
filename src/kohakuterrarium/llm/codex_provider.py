@@ -7,7 +7,6 @@ ChatGPT Plus/Pro subscription, not API credits.
 """
 
 import asyncio
-import json
 from typing import Any, AsyncIterator
 
 from kohakuterrarium.llm.base import (
@@ -99,6 +98,89 @@ class CodexOAuthProvider(BaseLLMProvider):
         return self._last_tool_calls
 
     # ------------------------------------------------------------------
+    # Chat Completions -> Responses API message conversion
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _to_responses_input(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Convert Chat Completions messages to Responses API flat array.
+
+        The Responses API uses a flat list of typed items instead of the
+        nested ``role / tool_calls`` structure used by Chat Completions.
+        System messages are skipped here because they are extracted
+        separately as ``instructions``.
+        """
+        items: list[dict[str, Any]] = []
+        for msg in messages:
+            role = msg.get("role")
+            content = msg.get("content", "")
+
+            if role == "user":
+                if isinstance(content, str):
+                    items.append(
+                        {
+                            "role": "user",
+                            "content": [{"type": "input_text", "text": content}],
+                        }
+                    )
+                elif isinstance(content, list):
+                    # Multimodal content parts
+                    input_content: list[dict[str, Any]] = []
+                    for part in content:
+                        if isinstance(part, dict):
+                            if part.get("type") == "text":
+                                input_content.append(
+                                    {
+                                        "type": "input_text",
+                                        "text": part.get("text", ""),
+                                    }
+                                )
+                            elif part.get("type") == "image_url":
+                                input_content.append(
+                                    {
+                                        "type": "input_image",
+                                        "image_url": part["image_url"]["url"],
+                                    }
+                                )
+                    items.append({"role": "user", "content": input_content})
+
+            elif role == "assistant":
+                # Text part (if any)
+                if content:
+                    text = content if isinstance(content, str) else str(content)
+                    items.append(
+                        {
+                            "role": "assistant",
+                            "content": [{"type": "output_text", "text": text}],
+                        }
+                    )
+
+                # Tool calls become separate top-level function_call items
+                for tc in msg.get("tool_calls", []):
+                    func = tc.get("function", {})
+                    items.append(
+                        {
+                            "type": "function_call",
+                            "call_id": tc.get("id", ""),
+                            "name": func.get("name", ""),
+                            "arguments": func.get("arguments", "{}"),
+                        }
+                    )
+
+            elif role == "tool":
+                items.append(
+                    {
+                        "type": "function_call_output",
+                        "call_id": msg.get("tool_call_id", ""),
+                        "output": content if isinstance(content, str) else str(content),
+                    }
+                )
+
+            # Skip system messages (already extracted as instructions)
+
+        return items
+
+    # ------------------------------------------------------------------
     # Streaming (called by BaseLLMProvider.chat)
     # ------------------------------------------------------------------
 
@@ -125,6 +207,9 @@ class CodexOAuthProvider(BaseLLMProvider):
             else:
                 input_messages.append(msg)
 
+        # Convert Chat Completions format to Responses API flat array
+        api_input = self._to_responses_input(input_messages)
+
         # Build tools in Responses API format
         api_tools = None
         if tools:
@@ -146,7 +231,7 @@ class CodexOAuthProvider(BaseLLMProvider):
             return self._client.responses.create(
                 model=self.model,
                 instructions=instructions or "You are a helpful assistant.",
-                input=input_messages,
+                input=api_input,
                 tools=api_tools,
                 store=False,
                 stream=True,
