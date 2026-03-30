@@ -61,6 +61,7 @@ class SubAgentManager:
         agent_path: Path | None = None,
         current_depth: int = 0,
         max_depth: int = 3,
+        tool_format: str | None = None,
     ):
         """
         Initialize sub-agent manager.
@@ -72,6 +73,7 @@ class SubAgentManager:
             agent_path: Path to agent folder for prompt loading
             current_depth: Current nesting depth of this agent
             max_depth: Maximum allowed sub-agent depth (0 = unlimited)
+            tool_format: Parent's tool_format (inherited by sub-agents)
         """
         self.parent_registry = parent_registry
         self.llm = llm
@@ -79,6 +81,7 @@ class SubAgentManager:
         self.agent_path = agent_path
         self._current_depth: int = current_depth
         self._max_depth: int = max_depth
+        self._tool_format: str | None = tool_format
 
         # Registered sub-agent configs
         self._configs: dict[str, SubAgentConfig] = {}
@@ -211,12 +214,16 @@ class SubAgentManager:
         if job_id is None:
             job_id = generate_job_id(f"agent_{name}")
 
+        # Resolve tool_format: config override > parent inherited
+        effective_tool_format = config.tool_format or self._tool_format
+
         # Create sub-agent
         subagent = SubAgent(
             config=config,
             parent_registry=self.parent_registry,
             llm=self.llm,
             agent_path=self.agent_path,
+            tool_format=effective_tool_format,
         )
 
         # Create job wrapper
@@ -472,12 +479,16 @@ class SubAgentManager:
             )
             return self._interactive[name]
 
+        # Resolve tool_format: config override > parent inherited
+        effective_tool_format = config.tool_format or self._tool_format
+
         # Create interactive sub-agent
         agent = InteractiveSubAgent(
             config=config,
             parent_registry=self.parent_registry,
             llm=self.llm,
             agent_path=self.agent_path,
+            tool_format=effective_tool_format,
         )
 
         # Set output callback
