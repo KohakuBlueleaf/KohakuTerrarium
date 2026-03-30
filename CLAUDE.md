@@ -10,7 +10,9 @@ KohakuTerrarium is a Python framework that enables building any kind of agent sy
 
 ### File Organization
 - Source code: `src/kohakuterrarium/`
-- Example agents: `agents/`
+- Creature templates: `creatures/`
+- Terrarium templates: `terrariums/`
+- Examples: `examples/` (agent-apps, terrariums, code)
 - Documentation: `docs/`
 - Ideas/discussions: `ideas/`
 - Max lines per file: 600 (hard max: 1000)

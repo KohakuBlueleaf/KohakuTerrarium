@@ -1,5 +1,12 @@
 # KohakuTerrarium Documentation
 
+## Guide
+Build agents and terrariums with the framework.
+- [Getting Started](guide/getting-started.md)
+- [Configuration Reference](guide/configuration.md)
+- [Creatures](guide/creatures.md)
+- [Example Agents](guide/example-agents.md)
+
 ## Concepts
 Learn what the key abstractions are and how they relate.
 - [Overview](concept/README.md)
@@ -22,9 +29,6 @@ Look up specific methods, endpoints, and commands.
 - [HTTP API](api-reference/http.md)
 - [CLI Reference](api-reference/cli.md)
 
-## Developer Guide
-Get started building with KohakuTerrarium.
-- [Getting Started](develop/getting-started.md)
-- [Configuration Reference](develop/configuration.md)
-- [Example Agents](develop/example-agents.md)
+## Contributing
+Work on the framework itself.
 - [Testing](develop/testing.md)

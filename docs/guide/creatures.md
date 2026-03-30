@@ -18,6 +18,8 @@ creatures/
   general/          <-- Base: 16 tools, 6 sub-agents, core personality
     |
     +-- swe/        <-- Software engineering workflow, git safety
+    +-- reviewer/   <-- Code review, severity levels, structured feedback
+    +-- ops/        <-- Infrastructure, CI/CD, deployment, monitoring
     +-- researcher/ <-- Research methodology, source evaluation
     +-- root/       <-- Terrarium management, task delegation
 ```
@@ -69,6 +71,21 @@ Software engineering specialist. Inherits everything from general and adds codin
 - **Controller**: `reasoning_effort: high` (overrides general's medium)
 - **Tool set**: Inherited from general (no additions needed)
 
+### Reviewer
+
+Code review specialist. Inherits everything from general and adds structured review methodology.
+
+- **Additional prompt sections**: Philosophy (catch bugs not style nits), Severity Levels (critical/bug/warning/suggestion), What to Check (logic, security, concurrency, resources), Output (structured findings with verdict)
+- **Controller**: `reasoning_effort: high` (overrides general's medium)
+- **Tool set**: Inherited from general
+
+### Ops
+
+Infrastructure and operations specialist. Inherits everything from general and adds deployment/monitoring methodology.
+
+- **Additional prompt sections**: Philosophy (stability first, boring over clever), Before Any Change (check state, plan rollback), Infrastructure (Docker, CI, config management), Monitoring & Debugging (logs before hypotheses), Cloud & Networking (least privilege, tagging)
+- **Tool set**: Inherited from general
+
 ### Researcher
 
 Research and analysis specialist. Inherits everything from general and adds research methodology.
@@ -80,8 +97,8 @@ Research and analysis specialist. Inherits everything from general and adds rese
 
 Terrarium manager. Inherits from general and adds multi-agent management tools.
 
-- **Additional prompt sections**: Terrarium Management (when to delegate, how to manage)
-- **Additional tools (6)**: terrarium_status, terrarium_create, terrarium_send, terrarium_observe, creature_start, creature_stop
+- **Additional prompt sections**: Terrarium Management (workflow, when to delegate, how to manage)
+- **Additional tools (7)**: terrarium_create, terrarium_status, terrarium_stop, terrarium_send, terrarium_observe, creature_start, creature_stop
 
 ## Creating Your Own Agent
 

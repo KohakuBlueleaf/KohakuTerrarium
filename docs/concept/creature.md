@@ -106,4 +106,4 @@ subagents:
 
 The system prompt defines personality and workflow. The tool list and call syntax are auto-generated - never write them in the prompt manually.
 
-See [Configuration Reference](../develop/configuration.md) for all fields. See [Example Agents](../develop/example-agents.md) for walkthroughs.
+See [Configuration Reference](../guide/configuration.md) for all fields. See [Example Agents](../guide/example-agents.md) for walkthroughs.

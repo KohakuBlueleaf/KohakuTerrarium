@@ -10,6 +10,7 @@ controller:
   temperature: 1
   api_key_env: OPENROUTER_API_KEY
   base_url: https://openrouter.ai/api/v1
+  tool_format: native
 
   # Ephemeral mode - clear conversation after each interaction
   ephemeral: true
@@ -59,26 +60,18 @@ input:
   gif_sample_frames: ["first", "middle", "last"]
 
 # Output Configuration
-# - Default output (stdout): for model "thinking" / internal reasoning
-# - Named outputs: explicit [/output_<name>] blocks in model response
+# - Default output (stdout): for model reasoning/debug
+# - Named outputs: kept for typing indicator lifecycle (on_processing_start/end)
+#   Actual message sending is handled by the send_discord tool in native mode
 output:
-  type: stdout  # Default output for thinking goes to stdout
+  type: stdout
 
-  # Named outputs - model uses [/output_discord]content[output_discord/] to send
   named_outputs:
     discord:
       type: custom
       module: ./custom/discord_io.py
       class: DiscordOutputModule
-      # Note: output module receives client from input module via shared state
-      # Keyword filter - replaces sensitive words with [filtered]
       keywords_file: ./filtered_keywords.txt
-      # Or inline: filtered_keywords: [word1, word2, word3]
-      # Drop response chance when new messages pending (to avoid outdated responses)
-      # Formula: min(drop_max_chance, drop_base_chance + (pending-1) * drop_increment)
-      drop_base_chance: 0.25   # 1 pending = 25%
-      drop_increment: 0.15     # +15% per additional pending
-      drop_max_chance: 0.7     # cap at 70%
 
 # Triggers - autonomous events
 # triggers:
@@ -107,25 +100,34 @@ tools:
     type: builtin
   - name: grep
     type: builtin
+  - name: think
+    type: builtin
+
+  # Discord output - sends messages to the channel
+  - name: send_discord
+    type: custom
+    module: ./custom/send_discord.py
+    class: SendDiscordTool
+    keywords_file: ./filtered_keywords.txt
+    drop_base_chance: 0.25
+    drop_increment: 0.15
+    drop_max_chance: 0.7
 
   # Emoji tools - search guild emojis
   - name: emoji_search
     type: custom
     module: ./custom/emoji_search.py
     class: EmojiSearchTool
-    # db_path: /Iolite/KohakuTerrarium/agents/discord_bot/memory/emoji_db.json
 
   - name: emoji_list
     type: custom
     module: ./custom/emoji_search.py
     class: EmojiListTool
-    # db_path: /Iolite/KohakuTerrarium/agents/discord_bot/memory/emoji_db.json
 
   - name: emoji_get
     type: custom
     module: ./custom/emoji_search.py
     class: EmojiGetTool
-    # db_path: /Iolite/KohakuTerrarium/agents/discord_bot/memory/emoji_db.json
 
 # Sub-agents
 subagents:

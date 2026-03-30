@@ -117,4 +117,4 @@ terrarium:
 
 Creatures point to standalone agent configs. The terrarium adds the wiring. The creature configs do not change.
 
-See [Configuration Reference](../develop/configuration.md) for all fields. See [Channels](channels.md) for channel types and semantics.
+See [Configuration Reference](../guide/configuration.md) for all fields. See [Channels](channels.md) for channel types and semantics.
