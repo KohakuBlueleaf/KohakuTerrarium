@@ -12,7 +12,7 @@ router = APIRouter()
 async def create_terrarium(req: TerrariumCreate, manager=Depends(get_manager)):
     """Create and start a terrarium from a config path."""
     try:
-        tid = await manager.create_terrarium(config_path=req.config_path)
+        tid = await manager.terrarium_create(config_path=req.config_path)
         return {"terrarium_id": tid, "status": "running"}
     except Exception as e:
         raise HTTPException(400, str(e))
@@ -21,14 +21,14 @@ async def create_terrarium(req: TerrariumCreate, manager=Depends(get_manager)):
 @router.get("")
 def list_terrariums(manager=Depends(get_manager)):
     """List all running terrariums."""
-    return manager.list_terrariums()
+    return manager.terrarium_list()
 
 
 @router.get("/{terrarium_id}")
 def get_terrarium(terrarium_id: str, manager=Depends(get_manager)):
     """Get status of a specific terrarium."""
     try:
-        return manager.get_terrarium_status(terrarium_id)
+        return manager.terrarium_status(terrarium_id)
     except ValueError as e:
         raise HTTPException(404, str(e))
 
@@ -37,7 +37,7 @@ def get_terrarium(terrarium_id: str, manager=Depends(get_manager)):
 async def stop_terrarium(terrarium_id: str, manager=Depends(get_manager)):
     """Stop and cleanup a terrarium."""
     try:
-        await manager.stop_terrarium(terrarium_id)
+        await manager.terrarium_stop(terrarium_id)
         return {"status": "stopped"}
     except ValueError as e:
         raise HTTPException(404, str(e))
@@ -47,7 +47,7 @@ async def stop_terrarium(terrarium_id: str, manager=Depends(get_manager)):
 async def add_channel(terrarium_id: str, req: ChannelAdd, manager=Depends(get_manager)):
     """Add a channel to a running terrarium."""
     try:
-        await manager.add_channel(
+        await manager.terrarium_channel_add(
             terrarium_id, req.name, req.channel_type, req.description
         )
         return {"status": "created", "channel": req.name}

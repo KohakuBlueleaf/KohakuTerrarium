@@ -14,7 +14,7 @@ async def channel_stream(websocket: WebSocket, terrarium_id: str):
     manager = get_manager()
 
     try:
-        async for event in manager.stream_channel_events(terrarium_id):
+        async for event in manager.terrarium_channel_stream(terrarium_id):
             await websocket.send_json(
                 {
                     "type": "channel_message",

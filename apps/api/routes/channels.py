@@ -12,10 +12,7 @@ router = APIRouter()
 def list_channels(terrarium_id: str, manager=Depends(get_manager)):
     """List all channels in a terrarium."""
     try:
-        runtime = manager.get_terrarium(terrarium_id)
-        if runtime._session:
-            return runtime._session.channels.get_channel_info()
-        return []
+        return manager.terrarium_channel_list(terrarium_id)
     except ValueError as e:
         raise HTTPException(404, str(e))
 
@@ -29,7 +26,7 @@ async def send_message(
 ):
     """Send a message to a channel."""
     try:
-        msg_id = await manager.send_to_channel(
+        msg_id = await manager.terrarium_channel_send(
             terrarium_id, channel_name, req.content, req.sender
         )
         return {"message_id": msg_id, "status": "sent"}
