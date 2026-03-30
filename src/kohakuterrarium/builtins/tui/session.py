@@ -26,11 +26,12 @@ Layout:
 """
 
 import asyncio
+import threading
+import time
 from typing import Any
 
 from rich.markdown import Markdown as RichMarkdown
 from rich.panel import Panel
-from rich.rule import Rule
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -51,10 +52,10 @@ logger = get_logger(__name__)
 
 
 THINKING_FRAMES = [
-    "KohakUwUing.",
-    "KohakUwUing..",
-    "KohakUwUing...",
-    "KohakUwUing   ",
+    "◐ KohakUwUing",
+    "◓ KohakUwUing.",
+    "◑ KohakUwUing..",
+    "◒ KohakUwUing...",
 ]
 
 
@@ -112,8 +113,8 @@ class AgentTUI(App):
         self._input_ready = asyncio.Event()
         self._input_value: str = ""
         self._stop_event = asyncio.Event()
-        self._thinking_timer: Any = None
-        self._thinking_frame_index: int = 0
+        self._thinking_active = False
+        self._thinking_thread: threading.Thread | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -159,34 +160,44 @@ class AgentTUI(App):
         self._input_ready.set()
 
     def start_thinking_animation(self) -> None:
-        """Start the KohakUwUing animation cycle."""
-        self._thinking_frame_index = 0
-        self._update_thinking_frame()
-        self._thinking_timer = self.set_interval(0.4, self._animate_thinking)
+        """Start KohakUwUing animation in a background thread."""
+        self._thinking_active = True
+        self._thinking_thread = threading.Thread(
+            target=self._thinking_loop, daemon=True
+        )
+        self._thinking_thread.start()
 
     def stop_thinking_animation(self) -> None:
-        """Stop animation and clear the status line."""
-        if self._thinking_timer is not None:
-            self._thinking_timer.stop()
-            self._thinking_timer = None
+        """Stop animation and clear status line."""
+        self._thinking_active = False
         try:
-            status = self.query_one("#quick-status", Static)
-            status.update("")
+            self.call_from_thread(self._clear_status)
         except Exception:
             pass
 
-    def _animate_thinking(self) -> None:
-        """Advance to the next animation frame."""
-        self._thinking_frame_index = (self._thinking_frame_index + 1) % len(
-            THINKING_FRAMES
-        )
-        self._update_thinking_frame()
+    def _thinking_loop(self) -> None:
+        """Background thread that cycles animation frames."""
+        idx = 0
+        while self._thinking_active:
+            frame = THINKING_FRAMES[idx % len(THINKING_FRAMES)]
+            try:
+                self.call_from_thread(self._set_status_text, frame)
+            except Exception:
+                break
+            idx += 1
+            time.sleep(0.3)
 
-    def _update_thinking_frame(self) -> None:
-        """Write current frame to the status widget."""
+    def _set_status_text(self, text: str) -> None:
+        """Update status widget (must be called on Textual thread)."""
         try:
-            status = self.query_one("#quick-status", Static)
-            status.update(THINKING_FRAMES[self._thinking_frame_index])
+            self.query_one("#quick-status", Static).update(text)
+        except Exception:
+            pass
+
+    def _clear_status(self) -> None:
+        """Clear status widget (must be called on Textual thread)."""
+        try:
+            self.query_one("#quick-status", Static).update("")
         except Exception:
             pass
 
@@ -218,20 +229,32 @@ class TUISession:
         self._assistant_buffer: list[str] = []
 
     def _safe_write(self, widget_id: str, content: Any) -> None:
-        """Safely write to a RichLog widget, routing errors to logs."""
+        """Safely write to a RichLog widget via Textual's thread-safe call."""
         if not self._app or not self._app.is_running:
             return
         try:
-            widget = self._app.query_one(f"#{widget_id}", RichLog)
+            self._app.call_from_thread(self._do_write, widget_id, content)
+        except Exception:
+            # Fallback: try direct write (works if already on Textual thread)
+            try:
+                widget = self._app.query_one(f"#{widget_id}", RichLog)
+                widget.write(content)
+            except Exception:
+                pass
+
+    @staticmethod
+    def _do_write_static(app: Any, widget_id: str, content: Any) -> None:
+        """Write content to widget (runs on Textual thread)."""
+        try:
+            widget = app.query_one(f"#{widget_id}", RichLog)
             widget.write(content)
-        except Exception as e:
-            # Route errors to logs tab if possible, otherwise silently ignore
-            if widget_id != "logs-log":
-                try:
-                    logs = self._app.query_one("#logs-log", RichLog)
-                    logs.write(f"[TUI Error] {widget_id}: {e}")
-                except Exception:
-                    pass
+        except Exception:
+            pass
+
+    def _do_write(self, widget_id: str, content: Any) -> None:
+        """Instance method for call_from_thread."""
+        if self._app:
+            self._do_write_static(self._app, widget_id, content)
 
     def write_to_output(self, content: Any) -> None:
         """
