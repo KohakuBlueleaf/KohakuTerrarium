@@ -7,6 +7,7 @@ ChatGPT Plus/Pro subscription, not API credits.
 """
 
 import asyncio
+import json as _json
 from typing import Any, AsyncIterator
 
 from kohakuterrarium.llm.base import (
@@ -226,6 +227,49 @@ class CodexOAuthProvider(BaseLLMProvider):
 
         # Call SDK in a thread (SDK is sync, we're async)
         loop = asyncio.get_running_loop()
+
+        # Validate: every function_call must have a function_call_output
+        call_ids = {
+            item["call_id"] for item in api_input if item.get("type") == "function_call"
+        }
+        output_ids = {
+            item["call_id"]
+            for item in api_input
+            if item.get("type") == "function_call_output"
+        }
+        missing = call_ids - output_ids
+        if missing:
+            # Add placeholder outputs for any missing tool results
+            for call_id in missing:
+                # Find the function name
+                name = ""
+                for item in api_input:
+                    if (
+                        item.get("type") == "function_call"
+                        and item.get("call_id") == call_id
+                    ):
+                        name = item.get("name", "")
+                        break
+                api_input.append(
+                    {
+                        "type": "function_call_output",
+                        "call_id": call_id,
+                        "output": f"[{name}] Execution pending.",
+                    }
+                )
+                logger.warning(
+                    "Added missing function_call_output",
+                    call_id=call_id,
+                    tool_name=name,
+                )
+
+
+        logger.debug(
+            "Codex API request",
+            model=self.model,
+            input_items=len(api_input),
+            input_preview=_json.dumps(api_input, ensure_ascii=False)[:500],
+        )
 
         def _create_stream() -> Any:
             return self._client.responses.create(
