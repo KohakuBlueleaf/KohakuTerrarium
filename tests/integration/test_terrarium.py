@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from kohakuterrarium.core.session import Session, get_session, remove_session
+from kohakuterrarium.core.session import Session, remove_session
 from kohakuterrarium.modules.trigger.channel import ChannelTrigger
 from kohakuterrarium.terrarium.config import (
     ChannelConfig,
@@ -247,16 +247,17 @@ class TestRuntimeLifecycle:
         remove_session(f"terrarium_{terrarium_config.name}")
 
     async def test_start_creates_channels(self, terrarium_config: TerrariumConfig):
-        """After start(), all declared channels exist in the shared session."""
+        """After start(), all declared channels exist in the environment."""
         runtime = TerrariumRuntime(terrarium_config)
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "fake-key-for-test"}):
             await runtime.start()
 
         try:
-            session = get_session(f"terrarium_{terrarium_config.name}")
-            channel_names = session.channels.list_channels()
+            channel_names = runtime.environment.shared_channels.list_channels()
             assert "ch_alpha" in channel_names
             assert "ch_beta" in channel_names
+            # Backward-compat: _session.channels points at shared_channels
+            assert runtime._session.channels is runtime.environment.shared_channels
         finally:
             await runtime.stop()
 

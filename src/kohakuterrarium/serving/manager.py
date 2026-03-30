@@ -95,8 +95,11 @@ class KohakuManager:
         else:
             raise ValueError("Must provide config_path or config")
 
+        from kohakuterrarium.core.environment import Environment
+
         terrarium_id = f"terrarium_{uuid4().hex[:8]}"
-        runtime = TerrariumRuntime(cfg)
+        env = Environment(env_id=f"terrarium_{cfg.name}_{uuid4().hex[:8]}")
+        runtime = TerrariumRuntime(cfg, environment=env)
         self._terrariums[terrarium_id] = runtime
 
         # Start in background task so create returns quickly

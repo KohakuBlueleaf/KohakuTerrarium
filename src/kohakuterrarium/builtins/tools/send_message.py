@@ -68,18 +68,38 @@ class SendMessageTool(BaseTool):
             except json.JSONDecodeError:
                 pass
 
-        # Get or create channel from context or global registry
-        chan_registry = (
-            context.session.channels
-            if context and context.session
-            else get_channel_registry()
-        )
+        # Resolve channel: private session first, shared environment second
+        channel = None
+        chan_registry = None
 
-        # For broadcast channels, require the channel to already exist
-        # (AgentChannels should be pre-declared or explicitly created)
-        existing = chan_registry.get(channel_name)
-        if existing is None and channel_type == "broadcast":
-            available = chan_registry.get_channel_info()
+        # 1. Check creature's private channels (sub-agent channels)
+        if context and context.session:
+            chan_registry = context.session.channels
+            channel = chan_registry.get(channel_name)
+
+        # 2. Check environment's shared channels (inter-creature channels)
+        if channel is None and context and context.environment:
+            channel = context.environment.shared_channels.get(channel_name)
+            if channel is not None:
+                chan_registry = context.environment.shared_channels
+
+        # 3. Fallback for no-context usage (standalone / testing)
+        if channel is None and not context:
+            fallback_registry = get_channel_registry()
+            channel = fallback_registry.get(channel_name)
+            if channel is None:
+                channel = fallback_registry.get_or_create(
+                    channel_name, channel_type=channel_type
+                )
+            chan_registry = fallback_registry
+
+        # 4. For broadcast channels that don't exist yet, error with listing
+        if channel is None and channel_type == "broadcast":
+            available: list[dict[str, str]] = []
+            if context and context.session:
+                available.extend(context.session.channels.get_channel_info())
+            if context and context.environment:
+                available.extend(context.environment.shared_channels.get_channel_info())
             avail_str = (
                 ", ".join(f"`{c['name']}` ({c['type']})" for c in available) or "none"
             )
@@ -90,7 +110,22 @@ class SendMessageTool(BaseTool):
                 )
             )
 
-        channel = chan_registry.get_or_create(channel_name, channel_type=channel_type)
+        # 5. Auto-create queue in private session (for sub-agent use)
+        if channel is None and context and context.session:
+            # Validate: warn if a shared channel has the same name
+            if context.environment:
+                conflict = context.environment.shared_channels.get(channel_name)
+                if conflict is not None:
+                    return ToolResult(
+                        error=(
+                            f"Channel '{channel_name}' exists in shared scope. "
+                            f"Use a unique name for private channels."
+                        )
+                    )
+            channel = context.session.channels.get_or_create(
+                channel_name, channel_type=channel_type
+            )
+            chan_registry = context.session.channels
 
         # Send message
         msg = ChannelMessage(
