@@ -129,20 +129,19 @@ class CodexOAuthProvider(BaseLLMProvider):
         tools: list[ToolSchema] | None = None,
     ) -> dict[str, Any]:
         """
-        Build Responses API request body from chat messages.
+        Build request body for the Codex backend.
 
-        The Codex backend accepts chat-format input directly.
+        Uses standard Chat Completions format (messages, model, stream).
+        The Codex backend accepts this format directly, same as OpenCode
+        which sends standard OpenAI SDK requests and just rewrites the URL.
         """
         body: dict[str, Any] = {
             "model": self.model,
-            "input": messages,
+            "messages": messages,
             "stream": True,
         }
         if tools:
-            body["tools"] = [
-                {"type": "function", "function": t.to_api_format()["function"]}
-                for t in tools
-            ]
+            body["tools"] = [t.to_api_format() for t in tools]
         return body
 
     # ------------------------------------------------------------------
@@ -212,7 +211,14 @@ class CodexOAuthProvider(BaseLLMProvider):
                             continue
                         raise last_error
 
-                    response.raise_for_status()
+                    if response.status_code >= 400:
+                        error_body = (await response.aread()).decode()
+                        logger.error(
+                            "Codex API error",
+                            status=response.status_code,
+                            body=error_body[:500],
+                        )
+                        response.raise_for_status()
 
                     async for line in response.aiter_lines():
                         if not line.startswith("data: "):
