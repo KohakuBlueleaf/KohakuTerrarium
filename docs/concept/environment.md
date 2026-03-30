@@ -1,4 +1,4 @@
-# Environment-Session System
+# Environment-Session Isolation
 
 Two-level isolation for running multiple agents and terrariums safely in one process.
 
@@ -15,23 +15,30 @@ Without isolation, two agents sharing the same session key would collide on chan
 
 ```
 Environment (shared)
-  ├── shared_channels: ChannelRegistry
-  │     ├── "ideas" (queue) - brainstorm -> planner
-  │     ├── "outline" (queue) - planner -> writer
-  │     └── "team_chat" (broadcast) - all
-  │
-  ├── Session "brainstorm" (private)
-  │     ├── channels: ChannelRegistry (sub-agent only)
-  │     └── scratchpad: Scratchpad
-  │
-  ├── Session "planner" (private)
-  │     ├── channels: ChannelRegistry
-  │     └── scratchpad: Scratchpad
-  │
-  └── Session "writer" (private)
-        ├── channels: ChannelRegistry
-        └── scratchpad: Scratchpad
+  +-- shared_channels: ChannelRegistry
+  |     +-- "ideas" (queue) - brainstorm -> planner
+  |     +-- "outline" (queue) - planner -> writer
+  |     +-- "team_chat" (broadcast) - all
+  |
+  +-- Session "brainstorm" (private)
+  |     +-- channels: ChannelRegistry (sub-agent only)
+  |     +-- scratchpad: Scratchpad
+  |
+  +-- Session "planner" (private)
+  |     +-- channels: ChannelRegistry
+  |     +-- scratchpad: Scratchpad
+  |
+  +-- Session "writer" (private)
+        +-- channels: ChannelRegistry
+        +-- scratchpad: Scratchpad
 ```
+
+### Isolation Guarantees
+
+- Creatures cannot accidentally read each other's scratchpads
+- Private channels (sub-agent communication within a creature) are invisible to other creatures
+- Shared channels (inter-creature communication) are managed at the environment level
+- Module state can be scoped to either environment or session as appropriate
 
 ## Programmatic Usage
 
@@ -90,8 +97,6 @@ assert planner_session.scratchpad.get("notes") is None  # not visible
 ```
 
 ### Custom Environment (Advanced)
-
-Create an Environment explicitly for full control:
 
 ```python
 from kohakuterrarium.core.environment import Environment
@@ -158,22 +163,19 @@ When a tool like `send_message` resolves a channel name:
 3. **Auto-create in private** - if not found anywhere, creates a queue in the session
 4. **Conflict validation** - if a shared channel has the same name, auto-create is blocked with an error
 
-This means:
-- Sub-agent channels stay private automatically
-- Terrarium channels are accessible to all creatures
-- No accidental shadowing of shared channels by private ones
+This means sub-agent channels stay private automatically, terrarium channels are accessible to all creatures, and there is no accidental shadowing.
 
-## Registration Pattern
+## Shared State Registration
 
-Modules can register their own state at the environment level:
+Modules can register their own state at the environment level without coupling to specific data structures:
 
 ```python
-# Budget tracker registers itself
-env.register("budget_tracker", BudgetTracker(max_calls=100))
+# Register shared state (e.g., in a custom tool's setup)
+environment.register("db_pool", connection_pool)
+environment.register("rate_limiter", limiter)
 
-# Later, any tool or module in the environment can access it
-tracker = env.get("budget_tracker")
-tracker.record_call()
+# Retrieve from anywhere with environment access
+pool = environment.get("db_pool")
 ```
 
-The Environment doesn't define what state it holds. Modules register what they need. This keeps Environment generic and extensible without modifying its class definition.
+The Environment does not define what state it holds. Modules register what they need, keeping Environment generic and extensible.

@@ -1,6 +1,6 @@
 # HTTP API Reference
 
-The HTTP API is a FastAPI application in `apps/api/` that exposes KohakuTerrarium's serving layer over REST and WebSocket. It is an application, not part of the core library.
+The HTTP API is a FastAPI application in `apps/api/` that exposes KohakuTerrarium's serving layer over REST and WebSocket. It is an application, not part of the core library. For the underlying Python API, see [Serving Layer](../architecture/serving.md).
 
 ## Quick Start
 
@@ -322,6 +322,41 @@ Bidirectional: client sends messages, server streams LLM output.
 {"type": "text", "content": " the source directory..."}
 {"type": "done"}
 ```
+
+## Endpoint Summary
+
+### Terrarium Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/terrariums` | Create and start a terrarium |
+| `GET` | `/api/terrariums` | List all running terrariums |
+| `GET` | `/api/terrariums/{id}` | Get terrarium status |
+| `DELETE` | `/api/terrariums/{id}` | Stop a terrarium |
+| `POST` | `/api/terrariums/{id}/channels` | Add a channel (hot-plug) |
+| `GET` | `/api/terrariums/{id}/creatures` | List creatures |
+| `POST` | `/api/terrariums/{id}/creatures` | Add a creature (hot-plug) |
+| `DELETE` | `/api/terrariums/{id}/creatures/{name}` | Remove a creature |
+| `POST` | `/api/terrariums/{id}/creatures/{name}/wire` | Wire creature to channel |
+| `GET` | `/api/terrariums/{id}/channels` | List channels |
+| `POST` | `/api/terrariums/{id}/channels/{name}/send` | Send message to channel |
+
+### Agent Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/agents` | Create and start an agent |
+| `GET` | `/api/agents` | List all running agents |
+| `GET` | `/api/agents/{id}` | Get agent status |
+| `DELETE` | `/api/agents/{id}` | Stop an agent |
+| `POST` | `/api/agents/{id}/chat` | Non-streaming chat |
+
+### WebSocket Endpoints
+
+| Path | Description |
+|------|-------------|
+| `ws://host/ws/terrariums/{id}/channels` | Stream channel messages |
+| `ws://host/ws/agents/{id}/chat` | Bidirectional chat stream |
 
 ## Error Handling
 
