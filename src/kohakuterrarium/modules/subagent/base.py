@@ -17,6 +17,7 @@ from kohakuterrarium.core.executor import Executor
 from kohakuterrarium.core.job import JobResult, JobState, JobStatus, JobType
 from kohakuterrarium.core.registry import Registry
 from kohakuterrarium.llm.base import LLMProvider
+from kohakuterrarium.llm.tools import build_tool_schemas
 from kohakuterrarium.modules.subagent.config import OutputTarget, SubAgentConfig
 from kohakuterrarium.modules.tool.base import Tool
 from kohakuterrarium.parsing import ParserConfig, StreamParser, TextEvent, ToolCallEvent
@@ -332,12 +333,17 @@ class SubAgent:
             self._running = False
 
     async def _run_internal(self, task: str) -> SubAgentResult:
-        """Internal run logic."""
+        """Internal run logic. Handles both native and custom tool calling."""
         # Setup conversation
         self.conversation = Conversation()
         system_prompt = self._build_system_prompt()
         self.conversation.append("system", system_prompt)
         self.conversation.append("user", task)
+
+        # Build native tool schemas if in native mode
+        native_tool_schemas = None
+        if self._is_native:
+            native_tool_schemas = build_tool_schemas(self.registry)
 
         output_parts: list[str] = []
 
@@ -350,33 +356,82 @@ class SubAgent:
                 turn=self._turns,
             )
 
-            # Get response from LLM
             messages = self.conversation.to_messages()
             assistant_content = ""
-            self._parser = StreamParser(self._parser_config)
-
-            # Track tools to execute
             tool_calls: list[ToolCallEvent] = []
 
-            async for chunk in self.llm.chat(messages, stream=True):
-                assistant_content += chunk
+            if self._is_native and native_tool_schemas:
+                # Native mode: pass tool schemas, extract structured calls
+                async for chunk in self.llm.chat(
+                    messages, stream=True, tools=native_tool_schemas or None
+                ):
+                    assistant_content += chunk
+                    if chunk:
+                        output_parts.append(chunk)
 
-                # Parse for tool calls
-                for event in self._parser.feed(chunk):
+                # Extract native tool calls
+                native_calls = (
+                    self.llm.last_tool_calls
+                    if hasattr(self.llm, "last_tool_calls")
+                    else []
+                )
+
+                if native_calls:
+                    tool_calls_data = []
+                    for tc in native_calls:
+                        tool_calls_data.append(
+                            {
+                                "id": tc.id,
+                                "type": "function",
+                                "function": {
+                                    "name": tc.name,
+                                    "arguments": tc.arguments,
+                                },
+                            }
+                        )
+                        tool_calls.append(
+                            ToolCallEvent(
+                                name=tc.name,
+                                args={
+                                    **tc.parsed_arguments(),
+                                    "_tool_call_id": tc.id,
+                                },
+                                raw=tc.arguments,
+                            )
+                        )
+                        logger.info(
+                            "Sub-agent native tool call",
+                            subagent_name=self.config.name,
+                            tool_name=tc.name,
+                        )
+
+                    # Add assistant message WITH tool_calls metadata
+                    self.conversation.append(
+                        "assistant",
+                        assistant_content or "",
+                        tool_calls=tool_calls_data,
+                    )
+                else:
+                    self.conversation.append("assistant", assistant_content)
+            else:
+                # Custom format mode: parse text for tool calls
+                self._parser = StreamParser(self._parser_config)
+
+                async for chunk in self.llm.chat(messages, stream=True):
+                    assistant_content += chunk
+                    for event in self._parser.feed(chunk):
+                        if isinstance(event, ToolCallEvent):
+                            tool_calls.append(event)
+                        elif isinstance(event, TextEvent):
+                            output_parts.append(event.text)
+
+                for event in self._parser.flush():
                     if isinstance(event, ToolCallEvent):
                         tool_calls.append(event)
                     elif isinstance(event, TextEvent):
                         output_parts.append(event.text)
 
-            # Flush parser
-            for event in self._parser.flush():
-                if isinstance(event, ToolCallEvent):
-                    tool_calls.append(event)
-                elif isinstance(event, TextEvent):
-                    output_parts.append(event.text)
-
-            # Add assistant message to conversation
-            self.conversation.append("assistant", assistant_content)
+                self.conversation.append("assistant", assistant_content)
 
             # Log LLM output preview
             preview = assistant_content[:200].replace("\n", " ")
@@ -394,11 +449,6 @@ class SubAgent:
                     subagent_name=self.config.name,
                     response_preview=assistant_content[:300].replace("\n", "\\n"),
                 )
-                logger.debug(
-                    "Sub-agent completed (no more tool calls)",
-                    subagent_name=self.config.name,
-                    total_turns=self._turns,
-                )
                 break
 
             # Execute tools
@@ -410,9 +460,30 @@ class SubAgent:
             )
             tool_results = await self._execute_tools(tool_calls)
 
-            # Add tool results as user message
-            if tool_results:
-                self.conversation.append("user", tool_results)
+            # Add tool results to conversation
+            if self._is_native:
+                # Native mode: add as role="tool" messages with tool_call_id
+                for tc in tool_calls:
+                    tool_call_id = tc.args.get("_tool_call_id", "")
+                    # Find matching result
+                    result_text = ""
+                    for r in tool_results.split("\n\n") if tool_results else []:
+                        if r.startswith(f"[{tc.name}]"):
+                            result_text = r
+                            break
+                    if not result_text:
+                        result_text = tool_results or "(no output)"
+                    if tool_call_id:
+                        self.conversation.append(
+                            "tool",
+                            result_text,
+                            tool_call_id=tool_call_id,
+                            name=tc.name,
+                        )
+            else:
+                # Custom mode: add as user message
+                if tool_results:
+                    self.conversation.append("user", tool_results)
 
         # Build final output
         final_output = "".join(output_parts).strip()
