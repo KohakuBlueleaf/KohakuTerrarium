@@ -137,7 +137,10 @@ class TerrariumRuntime(HotPlugMixin):
         if self.config.root:
             self._root_agent = self._build_root_agent()
             await self._root_agent.start()
-            logger.info("Root agent started", config=self.config.root.config_path)
+            logger.info(
+                "Root agent started",
+                base_config=self.config.root.config_data.get("base_config"),
+            )
 
         self._running = True
         logger.info(

@@ -84,7 +84,8 @@ def _run_terrarium_cli(args: argparse.Namespace) -> int:
     print(f"Creatures: {[c.name for c in config.creatures]}")
     print(f"Channels: {[c.name for c in config.channels]}")
     if config.root:
-        print(f"Root agent: {config.root.config_path} ({config.root.interface})")
+        base = config.root.config_data.get("base_config", "(inline)")
+        print(f"Root agent: {base}")
 
     # When root agent is configured, it handles all user interaction
     if config.root:
