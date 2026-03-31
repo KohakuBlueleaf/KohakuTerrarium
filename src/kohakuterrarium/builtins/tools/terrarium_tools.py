@@ -13,7 +13,8 @@ from typing import Any
 from uuid import uuid4
 
 from kohakuterrarium.builtins.tools.registry import register_builtin
-from kohakuterrarium.core.channel import AgentChannel, ChannelMessage
+from kohakuterrarium.core.channel import ChannelMessage
+from kohakuterrarium.modules.trigger.channel import ChannelTrigger
 from kohakuterrarium.modules.tool.base import (
     BaseTool,
     ExecutionMode,
@@ -312,12 +313,11 @@ class TerrariumSendTool(BaseTool):
 
 @register_builtin("terrarium_observe")
 class TerrariumObserveTool(BaseTool):
-    """Watch a terrarium channel for the next message (background-only).
+    """Subscribe/unsubscribe to a terrarium channel.
 
-    This tool ALWAYS runs in background. It subscribes to a channel and
-    waits indefinitely for the next message. The result is delivered as
-    a new event when a message arrives. The agent returns to idle and
-    can take user input while this runs.
+    Sets up a persistent ChannelTrigger on the agent. New messages
+    on the channel automatically trigger the agent. Returns immediately.
+    Use enabled=false to stop watching.
     """
 
     needs_context = True
@@ -328,14 +328,11 @@ class TerrariumObserveTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return (
-            "Watch a terrarium channel for the next message (runs in background, "
-            "result delivered when message arrives)"
-        )
+        return "Watch a terrarium channel (persistent subscription, messages arrive as events)"
 
     @property
     def execution_mode(self) -> ExecutionMode:
-        return ExecutionMode.BACKGROUND  # Forced background - never blocks agent
+        return ExecutionMode.DIRECT
 
     def get_parameters_schema(self) -> dict:
         return {
@@ -349,6 +346,10 @@ class TerrariumObserveTool(BaseTool):
                     "type": "string",
                     "description": "Channel name to watch",
                 },
+                "enabled": {
+                    "type": "boolean",
+                    "description": "True to start watching, false to stop (default true)",
+                },
             },
             "required": ["terrarium_id", "channel"],
         }
@@ -360,9 +361,29 @@ class TerrariumObserveTool(BaseTool):
 
         terrarium_id = args.get("terrarium_id", "").strip()
         channel_name = args.get("channel", "").strip()
+        enabled = args.get("enabled", True)
+        if isinstance(enabled, str):
+            enabled = enabled.lower() not in ("false", "0", "no")
 
         if not terrarium_id or not channel_name:
             return ToolResult(error="terrarium_id and channel are required")
+
+        if not context or not context.agent:
+            return ToolResult(error="Agent context required for observe")
+
+        trigger_id = f"observe_{terrarium_id}_{channel_name}"
+
+        if not enabled:
+            removed = await context.agent.trigger_manager.remove(trigger_id)
+            if removed:
+                return ToolResult(
+                    output=f"Stopped watching [{channel_name}].", exit_code=0
+                )
+            return ToolResult(output=f"Was not watching [{channel_name}].", exit_code=0)
+
+        # Check if already watching
+        if context.agent.trigger_manager.get(trigger_id):
+            return ToolResult(output=f"Already watching [{channel_name}].", exit_code=0)
 
         try:
             runtime = manager.get_runtime(terrarium_id)
@@ -374,24 +395,16 @@ class TerrariumObserveTool(BaseTool):
                     error=f"Channel '{channel_name}' not found. Available: {ch_names}"
                 )
 
-            # Subscribe and wait indefinitely for next message
-            # This runs in background - agent returns to idle
-            if isinstance(ch, AgentChannel):
-                sub_id = f"root_observe_{channel_name}"
-                subscription = ch.subscribe(sub_id)
-                try:
-                    msg = await subscription.receive()
-                finally:
-                    subscription.unsubscribe()
-            else:
-                msg = await ch.receive()
+            trigger = ChannelTrigger(
+                channel_name=channel_name,
+                subscriber_id=f"root_{channel_name}",
+                registry=runtime.environment.shared_channels,
+            )
+            await context.agent.trigger_manager.add(trigger, trigger_id=trigger_id)
 
-            sender = getattr(msg, "sender", "?")
-            content = getattr(msg, "content", str(msg))
             return ToolResult(
-                output=f"[{channel_name}] {sender}: {content}",
+                output=f"Now watching [{channel_name}]. Messages will arrive automatically.",
                 exit_code=0,
-                metadata={"channel": channel_name, "sender": sender},
             )
 
         except KeyError as e:

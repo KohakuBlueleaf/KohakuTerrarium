@@ -6,6 +6,7 @@ Not an agent -- pure wiring.
 """
 
 import asyncio
+from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
@@ -313,6 +314,7 @@ class TerrariumRuntime(HotPlugMixin):
             "terrarium_history",
             "creature_start",
             "creature_stop",
+            "list_triggers",
         ]
         for name in terrarium_tool_names:
             if agent.registry.get_tool(name) is None:
@@ -409,11 +411,14 @@ class TerrariumRuntime(HotPlugMixin):
                 prompt=prompt,
                 registry=self.environment.shared_channels,
             )
-            agent._triggers.append(trigger)
+            trigger_id = f"channel_{creature_cfg.name}_{ch_name}"
+            agent.trigger_manager._triggers[trigger_id] = trigger
+            agent.trigger_manager._created_at[trigger_id] = datetime.now()
             logger.debug(
                 "Injected channel trigger",
                 creature=creature_cfg.name,
                 channel=ch_name,
+                trigger_id=trigger_id,
                 broadcast=ch_name in broadcast_names,
             )
 

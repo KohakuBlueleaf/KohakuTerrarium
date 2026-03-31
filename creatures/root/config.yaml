@@ -14,3 +14,4 @@ tools:
   - { name: terrarium_history, type: builtin }
   - { name: creature_start, type: builtin }
   - { name: creature_stop, type: builtin }
+  - { name: list_triggers, type: builtin }

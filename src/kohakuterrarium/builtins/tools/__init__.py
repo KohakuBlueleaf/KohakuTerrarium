@@ -20,6 +20,7 @@ from kohakuterrarium.builtins.tools.grep import GrepTool
 from kohakuterrarium.builtins.tools.http_tool import HttpTool
 from kohakuterrarium.builtins.tools.json_read import JsonReadTool
 from kohakuterrarium.builtins.tools.json_write import JsonWriteTool
+from kohakuterrarium.builtins.tools.list_triggers import ListTriggersTool
 from kohakuterrarium.builtins.tools.read import ReadTool
 from kohakuterrarium.builtins.tools.scratchpad_tool import ScratchpadTool
 from kohakuterrarium.builtins.tools.send_message import SendMessageTool
@@ -48,6 +49,7 @@ __all__ = [
     "HttpTool",
     "JsonReadTool",
     "JsonWriteTool",
+    "ListTriggersTool",
     "ThinkTool",
     "TreeTool",
     "WaitChannelTool",

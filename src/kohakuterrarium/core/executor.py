@@ -71,6 +71,7 @@ class Executor:
         # Context for tools (set by agent during init)
         self._agent_name: str = ""
         self._tool_format: str = "native"
+        self._agent: Any = None  # Agent instance, set during init
         self._session: Any = None  # Session, set by agent during init
         self._environment: Any = None  # Environment, set by agent during init
         self._working_dir: Path = Path.cwd()
@@ -245,6 +246,7 @@ class Executor:
             memory_path=self._memory_path,
             environment=self._environment,
             tool_format=self._tool_format,
+            agent=self._agent,
         )
 
     async def wait_for(

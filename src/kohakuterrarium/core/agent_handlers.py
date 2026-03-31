@@ -93,15 +93,7 @@ class AgentHandlersMixin:
         which fires _process_event as a new task (same as triggers).
         """
         # Notify triggers of context update (for idle timer reset, etc.)
-        for trigger in self._triggers:
-            try:
-                trigger.set_context(event.context)
-            except Exception as e:
-                logger.warning(
-                    "Trigger context update failed",
-                    trigger=type(trigger).__name__,
-                    error=str(e),
-                )
+        self.trigger_manager.set_context_all(event.context)
 
         # Record activity for termination checker
         if self._termination_checker:
@@ -543,23 +535,6 @@ class AgentHandlersMixin:
                 "Sub-agent not registered", subagent_name=event.name, error=str(e)
             )
             return f"error_{event.name}"
-
-    async def _run_trigger(self, trigger: Any) -> None:
-        """Run a single trigger loop."""
-        while self._running:
-            try:
-                event = await trigger.wait_for_trigger()
-                if event:
-                    logger.info(
-                        "Trigger fired",
-                        trigger_type=event.type,
-                    )
-                    await self._process_event(event)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error("Trigger error", error=str(e))
-                await asyncio.sleep(1.0)  # Backoff on error
 
     def _on_bg_complete(self, event: TriggerEvent) -> None:
         """Callback fired by executor when a BACKGROUND tool completes.

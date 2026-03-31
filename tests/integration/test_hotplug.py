@@ -85,17 +85,14 @@ class TestAgentHotPlugTriggers:
             session=session,
         )
 
-        initial_count = len(agent._triggers)
+        initial_count = len(agent.trigger_manager.list())
 
         # Hot-plug: add the trigger at runtime
-        await agent.add_trigger(trigger)
+        trigger_id = await agent.add_trigger(trigger)
 
-        assert len(agent._triggers) == initial_count + 1
-        assert trigger in agent._triggers
+        assert len(agent.trigger_manager.list()) == initial_count + 1
+        assert agent.trigger_manager.get(trigger_id) is not None
         assert trigger.is_running
-
-        # The corresponding task should have been created
-        assert len(agent._trigger_tasks) == initial_count + 1
 
         await agent.stop()
 
@@ -111,13 +108,13 @@ class TestAgentHotPlugTriggers:
             subscriber_id="test_agent",
             session=session,
         )
-        await agent.add_trigger(trigger)
-        assert trigger in agent._triggers
+        trigger_id = await agent.add_trigger(trigger)
+        assert agent.trigger_manager.get(trigger_id) is not None
 
         # Hot-plug: remove
         await agent.remove_trigger(trigger)
 
-        assert trigger not in agent._triggers
+        assert agent.trigger_manager.get(trigger_id) is None
         assert not trigger.is_running
 
         await agent.stop()
@@ -443,7 +440,7 @@ class TestTerrariumHotPlugChannels:
             handle = runtime._creatures["alpha"]
             trigger_channels = [
                 t.channel_name
-                for t in handle.agent._triggers
+                for t in handle.agent.trigger_manager._triggers.values()
                 if isinstance(t, ChannelTrigger)
             ]
             assert "alerts" in trigger_channels

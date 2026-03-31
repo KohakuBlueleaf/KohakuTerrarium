@@ -57,6 +57,7 @@ class ToolContext:
     memory_path: Path | None = None
     environment: Any = None  # Environment - shared state (None for standalone agents)
     tool_format: str = "native"  # "native", "bracket", "xml", or custom
+    agent: Any = None  # Agent instance - for trigger_manager access, etc.
 
     @property
     def channels(self) -> Any:

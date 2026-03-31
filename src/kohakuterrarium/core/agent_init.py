@@ -6,6 +6,7 @@ Contains mixin methods for initializing all agent subsystems
 Separated from the main Agent class to keep file sizes manageable.
 """
 
+from datetime import datetime
 from typing import Any
 
 from kohakuterrarium.builtins.inputs import (
@@ -149,6 +150,7 @@ class AgentInitMixin:
         self.scratchpad = self.session.scratchpad
 
         # Set executor context
+        self.executor._agent = self
         self.executor._agent_name = self.config.name
         self.executor._session = self.session
         self.executor._environment = getattr(self, "environment", None)
@@ -459,22 +461,22 @@ class AgentInitMixin:
         return StdoutOutput()
 
     def _init_triggers(self) -> None:
-        """Initialize trigger modules from config."""
-        self._triggers: list[BaseTrigger] = []
-        self._trigger_tasks: list = []
-
+        """Initialize trigger modules from config into trigger_manager."""
         for trigger_config in self.config.triggers:
             trigger = self._create_trigger(trigger_config)
             if trigger:
-                self._triggers.append(trigger)
+                # Register without starting (start_all called in agent.start)
+                trigger_id = (
+                    f"{trigger_config.type}_{trigger_config.class_name or 'builtin'}"
+                )
+                # Use sync add via internal dict (not started yet)
+                self.trigger_manager._triggers[trigger_id] = trigger
+                self.trigger_manager._created_at[trigger_id] = datetime.now()
                 logger.debug(
                     "Registered trigger",
+                    trigger_id=trigger_id,
                     trigger_type=trigger_config.type,
-                    trigger_class=trigger_config.class_name,
                 )
-
-        if self._triggers:
-            logger.info("Triggers registered", count=len(self._triggers))
 
     def _create_trigger(self, trigger_config: Any) -> BaseTrigger | None:
         """Create a trigger from config."""

@@ -20,6 +20,7 @@ from kohakuterrarium.core.events import TriggerEvent
 from kohakuterrarium.core.loader import ModuleLoader
 from kohakuterrarium.core.session import Session
 from kohakuterrarium.core.termination import TerminationChecker, TerminationConfig
+from kohakuterrarium.core.trigger_manager import TriggerManager
 from kohakuterrarium.modules.input.base import InputModule
 from kohakuterrarium.modules.output.base import OutputModule
 from kohakuterrarium.modules.trigger.base import BaseTrigger
@@ -121,6 +122,7 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         self._running = False
         self._shutdown_event = asyncio.Event()
         self._processing_lock = asyncio.Lock()
+        self.trigger_manager = TriggerManager(self._process_event)
 
         # Environment and session (explicit or auto-created in _init_executor)
         self.environment: Environment | None = environment
@@ -148,7 +150,7 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             agent_name=config.name,
             model=config.model,
             tools=len(self.registry.list_tools()),
-            triggers=len(self._triggers),
+            triggers=len(self.trigger_manager.list()),
             ephemeral=config.ephemeral,
         )
 
@@ -179,19 +181,9 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
 
         await self.input.start()
         await self.output_router.start()
-
-        # Start triggers
-        for trigger in self._triggers:
-            await trigger.start()
-            task = asyncio.create_task(self._run_trigger(trigger))
-            self._trigger_tasks.append(task)
-
-        if self._triggers:
-            logger.info("Triggers started", count=len(self._triggers))
+        await self.trigger_manager.start_all()
 
         # Wire executor completion callback -> _process_event
-        # When a background tool finishes, it fires _process_event
-        # as a new task (same path as triggers)
         self.executor._on_complete = self._on_bg_complete
 
         self._running = True
@@ -207,14 +199,7 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         self._running = False
         self._shutdown_event.set()
 
-        # Stop triggers
-        for task in self._trigger_tasks:
-            task.cancel()
-        if self._trigger_tasks:
-            await asyncio.gather(*self._trigger_tasks, return_exceptions=True)
-        for trigger in self._triggers:
-            await trigger.stop()
-
+        await self.trigger_manager.stop_all()
         await self.input.stop()
         await self.output_router.stop()
         await self.llm.close()
@@ -384,41 +369,34 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
     # Hot-plug API
     # =========================================================================
 
-    async def add_trigger(self, trigger: BaseTrigger) -> None:
+    async def add_trigger(
+        self, trigger: BaseTrigger, trigger_id: str | None = None
+    ) -> str:
         """Add and start a trigger on a running agent.
 
-        Can be called while the agent is running. The trigger will
-        immediately begin listening and firing events.
+        Returns:
+            The trigger_id
         """
-        await trigger.start()
-        self._triggers.append(trigger)
-        task = asyncio.create_task(self._run_trigger(trigger))
-        self._trigger_tasks.append(task)
-        logger.info("Trigger added at runtime", trigger=type(trigger).__name__)
+        return await self.trigger_manager.add(trigger, trigger_id=trigger_id)
 
-    async def remove_trigger(self, trigger: BaseTrigger) -> None:
-        """Stop and remove a trigger from a running agent."""
-        idx = None
-        for i, t in enumerate(self._triggers):
-            if t is trigger:
-                idx = i
-                break
-        if idx is None:
-            return
+    async def remove_trigger(self, trigger_id_or_trigger: str | BaseTrigger) -> bool:
+        """Stop and remove a trigger.
 
-        # Cancel the corresponding task
-        if idx < len(self._trigger_tasks):
-            self._trigger_tasks[idx].cancel()
-            try:
-                await self._trigger_tasks[idx]
-            except asyncio.CancelledError:
-                pass
-            self._trigger_tasks.pop(idx)
+        Args:
+            trigger_id_or_trigger: Trigger ID string, or BaseTrigger instance
+                                   (for backward compat, searches by identity)
 
-        # Stop and remove the trigger
-        await trigger.stop()
-        self._triggers.pop(idx)
-        logger.info("Trigger removed at runtime", trigger=type(trigger).__name__)
+        Returns:
+            True if removed
+        """
+        if isinstance(trigger_id_or_trigger, str):
+            return await self.trigger_manager.remove(trigger_id_or_trigger)
+
+        # Backward compat: find by instance identity
+        for tid, t in self.trigger_manager._triggers.items():
+            if t is trigger_id_or_trigger:
+                return await self.trigger_manager.remove(tid)
+        return False
 
     def update_system_prompt(self, content: str, replace: bool = False) -> None:
         """Update the system prompt of a running agent.

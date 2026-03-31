@@ -276,7 +276,7 @@ class TestRuntimeLifecycle:
             alpha_handle = runtime._creatures["alpha"]
             trigger_channels = [
                 t.channel_name
-                for t in alpha_handle.agent._triggers
+                for t in alpha_handle.agent.trigger_manager._triggers.values()
                 if isinstance(t, ChannelTrigger)
             ]
             assert "ch_alpha" in trigger_channels
