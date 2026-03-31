@@ -54,7 +54,7 @@ class AskUserTool(BaseTool):
         except Exception as e:
             return ToolResult(error=f"Failed to get user input: {e}")
 
-    def get_full_documentation(self) -> str:
+    def get_full_documentation(self, tool_format: str = "native") -> str:
         return """# ask_user
 
 Ask the user a question and wait for their response. For human-in-the-loop
@@ -64,35 +64,16 @@ patterns: approval workflows, clarification, interactive agents.
 
 | Arg | Type | Description |
 |-----|------|-------------|
-| question | content | Question to ask the user (required) |
+| question | string | Question to ask the user (required) |
 
-## Examples
+## Behavior
 
-```
-[/ask_user]
-I found 3 potential approaches. Which should I use?
-1. Refactor the existing module
-2. Create a new module
-3. Use a third-party library
-[ask_user/]
-```
+- Prints the question to stderr and reads the response from stdin.
+- Returns the user's text response, or "(no response)" if empty.
+- Blocks until the user responds but does not block other tools.
 
-```
-[/ask_user]
-Should I proceed with deleting the deprecated files? (yes/no)
-[ask_user/]
-```
+## Limitations
 
-## Output
-
-Returns the user's text response.
-
-## Mode
-
-BACKGROUND - blocks until user responds but doesn't block other tools.
-
-## LIMITATIONS
-
-- CLI-only: reads from stdin, writes question to stderr
-- Will hang if stdin is not available (non-interactive mode)
+- CLI-only: reads from stdin, writes question to stderr.
+- Will hang if stdin is not available (non-interactive mode).
 """

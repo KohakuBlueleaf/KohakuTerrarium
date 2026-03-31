@@ -325,7 +325,7 @@ class EditTool(BaseTool):
             logger.error("Edit failed", error=str(e))
             return ToolResult(error=str(e))
 
-    def get_full_documentation(self) -> str:
+    def get_full_documentation(self, tool_format: str = "native") -> str:
         return """# edit
 
 Edit file using unified diff format.
@@ -334,10 +334,12 @@ Edit file using unified diff format.
 
 | Arg | Type | Description |
 |-----|------|-------------|
-| path | attribute | Path to file (required) |
-| diff | body | Unified diff content |
+| path | string | Path to file (required) |
+| diff | string | Unified diff content |
 
 ## Diff Format
+
+Standard unified diff with hunk headers:
 
 ```
 @@ -start,count +start,count @@
@@ -348,44 +350,13 @@ Edit file using unified diff format.
 
 - Lines starting with `-` are removed
 - Lines starting with `+` are added
-- Lines starting with ` ` (space) are context
-
-## Examples
-
-Replace a function:
-```xml
-<edit path="src/main.py">
-@@ -5,3 +5,3 @@
--def hello():
--    print("Hi")
-+def hello():
-+    print("Hello, World!")
-</edit>
-```
-
-Add import:
-```xml
-<edit path="src/utils.py">
-@@ -1,1 +1,2 @@
- import os
-+import sys
-</edit>
-```
-
-Delete lines:
-```xml
-<edit path="src/old.py">
-@@ -10,3 +10,1 @@
- # Keep this comment
--# Delete this
--# And this
-</edit>
-```
+- Lines starting with ` ` (space) are context (must match the file exactly)
 
 ## Tips
 
-- Use `<read path="file"/>` first to see line numbers
-- Include context lines to anchor changes
-- Line numbers in @@ are 1-indexed
-- Multiple hunks can be in one diff
+- Read the file first to see exact line numbers and content.
+- Include context lines (space-prefixed) to anchor changes precisely.
+- Line numbers in @@ headers are 1-indexed.
+- Multiple hunks can appear in a single diff.
+- Hunks are applied in reverse order to preserve line numbers.
 """

@@ -81,7 +81,7 @@ class WriteTool(BaseTool):
             logger.error("Write failed", error=str(e))
             return ToolResult(error=str(e))
 
-    def get_full_documentation(self) -> str:
+    def get_full_documentation(self, tool_format: str = "native") -> str:
         return """# write
 
 Write content to a file. Creates the file if it doesn't exist.
@@ -91,25 +91,16 @@ Creates parent directories automatically.
 
 | Arg | Type | Description |
 |-----|------|-------------|
-| path | attribute | Path to file (required) |
-| content | body | Content to write |
+| path | string | Path to file (required) |
+| content | string | Content to write |
 
-## Examples
+## Behavior
 
-Create a new file:
-```xml
-<write path="src/hello.py">
-def hello():
-    print("Hello, World!")
+- Overwrites the file if it already exists.
+- Creates parent directories if they don't exist.
+- Content is written exactly as provided (UTF-8 encoding).
 
-if __name__ == "__main__":
-    hello()
-</write>
-```
+## Output
 
-## Notes
-
-- Overwrites existing files
-- Creates parent directories if they don't exist
-- Content is written exactly as provided
+Returns confirmation with file path, line count, and byte count.
 """

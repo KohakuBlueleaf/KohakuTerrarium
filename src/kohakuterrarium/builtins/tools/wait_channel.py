@@ -114,7 +114,7 @@ class WaitChannelTool(BaseTool):
             if subscription is not None:
                 subscription.unsubscribe()
 
-    def get_full_documentation(self) -> str:
+    def get_full_documentation(self, tool_format: str = "native") -> str:
         return """# wait_channel
 
 Wait for a message to arrive on a named channel. For request-response
@@ -128,22 +128,15 @@ the agent name and unsubscribes after receiving.
 
 | Arg | Type | Description |
 |-----|------|-------------|
-| channel | @@arg | Channel name to listen on (required) |
-| timeout | @@arg | Seconds to wait (default: 30) |
+| channel | string | Channel name to listen on (required) |
+| timeout | number | Seconds to wait (default: 30) |
 
-## Examples
+## Behavior
 
-```
-[/wait_channel]
-@@channel=results_inbox
-@@timeout=60
-[wait_channel/]
-```
-
-## Output
-
-Returns sender, message ID, content, and metadata of the received message.
-On timeout, returns timeout notification with exit code 1.
+- Resolves the channel by checking private session first, then shared environment.
+- For broadcast channels, subscribes using the agent name and unsubscribes after receiving.
+- Returns sender, message ID, content, and metadata of the received message.
+- On timeout, returns a timeout notification with exit code 1.
 
 ## Mode
 

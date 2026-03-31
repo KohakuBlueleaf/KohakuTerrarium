@@ -134,7 +134,7 @@ class JsonWriteTool(BaseTool):
             exit_code=0,
         )
 
-    def get_full_documentation(self) -> str:
+    def get_full_documentation(self, tool_format: str = "native") -> str:
         return """# json_write
 
 Modify JSON files at specific paths.
@@ -143,39 +143,19 @@ Modify JSON files at specific paths.
 
 | Arg | Type | Description |
 |-----|------|-------------|
-| path | @@arg | Path to JSON file (required) |
-| query | @@arg | Dot-path to modify (default: "." for entire file) |
-| value | content | JSON value to set (required) |
+| path | string | Path to JSON file (required) |
+| query | string | Dot-path to modify (default: "." for entire file) |
+| value | string | JSON value to set (required) |
 
-## Examples
+## Behavior
 
-Set a string field:
-```
-[/json_write]
-@@path=config.json
-@@query=.database.host
-"localhost"
-[json_write/]
-```
-
-Set a nested object:
-```
-[/json_write]
-@@path=config.json
-@@query=.settings
-{"debug": true, "verbose": false}
-[json_write/]
-```
-
-Replace entire file:
-```
-[/json_write]
-@@path=data.json
-{"key": "value"}
-[json_write/]
-```
+- If the file does not exist, creates it with an empty object as the base.
+- Creates intermediate parent directories if needed.
+- The value is parsed as JSON first; if invalid JSON, treated as a plain string.
+- Use query "." to replace the entire file contents.
+- Intermediate keys are auto-created as objects when setting nested paths.
 
 ## Output
 
-Confirmation that the file was updated.
+Confirmation that the file was updated at the specified path.
 """

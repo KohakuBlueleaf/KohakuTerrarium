@@ -196,7 +196,7 @@ class TreeTool(BaseTool):
             logger.error("Tree failed", error=str(e))
             return ToolResult(error=str(e))
 
-    def get_full_documentation(self) -> str:
+    def get_full_documentation(self, tool_format: str = "native") -> str:
         return """# tree
 
 List directory structure with frontmatter summaries.
@@ -205,44 +205,20 @@ List directory structure with frontmatter summaries.
 
 | Arg | Type | Description |
 |-----|------|-------------|
-| path | body or attribute | Directory to list (default: cwd) |
-| depth | attribute | Max recursion depth (default: 3) |
-| hidden | attribute | Show hidden files (default: false) |
+| path | string | Directory to list (default: cwd) |
+| depth | integer | Max recursion depth (default: 3) |
+| hidden | boolean | Show hidden files (default: false) |
 
-## Examples
+## Frontmatter Extraction
 
-List current directory:
-```xml
-<tree/>
-```
-
-List specific directory:
-```xml
-<tree>memory</tree>
-```
-
-With options:
-```xml
-<tree path="memory" depth="5"/>
-```
-
-## Frontmatter
-
-For markdown files, extracts and displays:
-- `summary`: Brief description
+For markdown files, extracts and displays inline summaries from YAML frontmatter:
+- `summary`: Brief description (preferred)
 - `title`: File title (fallback)
 - `description`: Description (fallback)
 - `protected`: Shows [protected] marker
 
-## Output Format
+## Output
 
-```
-memory/
-├── character.md - Cat girl persona definition
-├── rules.md [protected] - Core agent rules
-├── context.md - Current session context
-└── facts/
-    ├── user.md - Known user information
-    └── project.md - Project details
-```
+Tree-formatted directory listing with connectors. Directories are listed
+before files. Markdown files show extracted frontmatter summaries inline.
 """

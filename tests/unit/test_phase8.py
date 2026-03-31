@@ -1125,8 +1125,8 @@ class TestAggregatorSkillMode:
         from kohakuterrarium.prompt.aggregator import _build_dynamic_hints
 
         hints = _build_dynamic_hints()
-        assert "[/info]" in hints
-        assert "read docs" in hints
+        assert "info" in hints.lower()
+        assert "docs" in hints.lower()
 
     def test_static_mode_hints(self):
         """Test static mode doesn't include info command."""

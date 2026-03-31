@@ -28,6 +28,7 @@ class PluginContext:
     registry: "Registry | None" = None
     working_dir: Path = field(default_factory=Path.cwd)
     agent_path: Path | None = None
+    tool_format: str = "bracket"
     extra: dict[str, Any] = field(default_factory=dict)
 
 
@@ -129,45 +130,46 @@ class FrameworkHintsPlugin(BasePlugin):
         return 60
 
     def get_content(self, context: PluginContext) -> str | None:
-        return """## Tool Call Syntax
+        if context.tool_format == "native":
+            return (
+                "## Tool Usage\n\n"
+                "Tools are called via the API's native function calling mechanism.\n"
+                "You do not need to format tool calls manually.\n\n"
+                "Use the `info` tool for full documentation on any function."
+            )
 
-Use this format to call tools:
+        # Custom format: generate examples from ToolCallFormat
+        from kohakuterrarium.parsing.format import (
+            BRACKET_FORMAT,
+            XML_FORMAT,
+            format_tool_call_example,
+        )
 
-```
-[/tool_name]
-@@arg=value
-content here
-[tool_name/]
-```
+        match context.tool_format:
+            case "xml":
+                fmt = XML_FORMAT
+            case _:
+                fmt = BRACKET_FORMAT
 
-### Examples:
+        bash_ex = format_tool_call_example(fmt, "bash", body="ls -la")
+        read_ex = format_tool_call_example(fmt, "read", {"path": "src/main.py"})
+        write_ex = format_tool_call_example(
+            fmt, "write", {"path": "new_file.py"}, "file content here"
+        )
+        grep_ex = format_tool_call_example(
+            fmt, "grep", {"pattern": "TODO", "path": "src/"}
+        )
+        info_ex = format_tool_call_example(fmt, "info", body="tool_name")
 
-```
-[/bash]ls -la[bash/]
-```
-
-```
-[/read]@@path=src/main.py[read/]
-```
-
-```
-[/write]
-@@path=new_file.py
-file content here
-[write/]
-```
-
-```
-[/grep]
-@@pattern=TODO
-@@path=src/
-[grep/]
-```
-
-## Framework Commands
-
-- `[/info]tool_name[info/]` - Get full documentation for a tool
-- `[/read_job]job_id[read_job/]` - Read output from a background job"""
+        return (
+            "## Tool Call Syntax\n\n"
+            f"```\n{bash_ex}\n```\n\n"
+            f"```\n{read_ex}\n```\n\n"
+            f"```\n{write_ex}\n```\n\n"
+            f"```\n{grep_ex}\n```\n\n"
+            "## Framework Commands\n\n"
+            f"- Get full docs: `{info_ex}`"
+        )
 
 
 class EnvInfoPlugin(BasePlugin):

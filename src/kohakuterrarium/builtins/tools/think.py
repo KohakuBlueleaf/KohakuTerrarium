@@ -34,28 +34,21 @@ class ThinkTool(BaseTool):
         """Think is a no-op - just acknowledge the thought."""
         return ToolResult(output="Noted.", exit_code=0)
 
-    def get_full_documentation(self) -> str:
+    def get_full_documentation(self, tool_format: str = "native") -> str:
         return """# think
 
 Explicit reasoning/thinking step. The tool itself does nothing -
 its value is that the thought is preserved in conversation context
 and won't be lost to context compaction.
 
+Use this to externalize multi-step reasoning, plan before acting,
+or record decisions that should survive context compaction.
+
 ## Arguments
 
 | Arg | Type | Description |
 |-----|------|-------------|
-| thought | content | Your reasoning (required) |
-
-## Examples
-
-```
-[/think]
-The user wants X. I should approach this by...
-1. First check the config
-2. Then modify the handler
-[think/]
-```
+| thought | string | Your reasoning (required) |
 
 ## Output
 

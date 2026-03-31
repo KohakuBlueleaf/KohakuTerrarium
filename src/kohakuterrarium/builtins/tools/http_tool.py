@@ -99,7 +99,7 @@ class HttpTool(BaseTool):
         except httpx.RequestError as e:
             return ToolResult(error=f"Request failed: {e}")
 
-    def get_full_documentation(self) -> str:
+    def get_full_documentation(self, tool_format: str = "native") -> str:
         return """# http
 
 Make HTTP requests to APIs and web services.
@@ -108,36 +108,19 @@ Make HTTP requests to APIs and web services.
 
 | Arg | Type | Description |
 |-----|------|-------------|
-| method | @@arg | HTTP method: GET, POST, PUT, DELETE, PATCH (default: GET) |
-| url | @@arg | URL to request (required) |
-| headers | @@arg | JSON object of headers |
-| body | content | Request body |
+| method | string | HTTP method: GET, POST, PUT, DELETE, PATCH (default: GET) |
+| url | string | URL to request (required) |
+| headers | string | JSON object of request headers |
+| body | string | Request body content |
 
-## Examples
+## Behavior
 
-GET request:
-```
-[/http]
-@@method=GET
-@@url=https://api.example.com/status
-[http/]
-```
-
-POST with JSON:
-```
-[/http]
-@@method=POST
-@@url=https://api.example.com/data
-@@headers={"Content-Type": "application/json"}
-{"key": "value"}
-[http/]
-```
+- Follows redirects automatically.
+- 30-second timeout per request.
+- Response body is truncated to 50KB if larger.
+- Exit code is 0 for 2xx/3xx status codes, 1 for 4xx/5xx.
 
 ## Output
 
-Returns status code, content-type, and response body (truncated to 50KB).
-
-## Mode
-
-BACKGROUND - runs asynchronously, does not block other tools.
+Returns status code, content-type header, and response body.
 """

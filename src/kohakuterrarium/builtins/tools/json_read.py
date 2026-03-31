@@ -126,7 +126,7 @@ class JsonReadTool(BaseTool):
 
         return ToolResult(output=output, exit_code=0)
 
-    def get_full_documentation(self) -> str:
+    def get_full_documentation(self, tool_format: str = "native") -> str:
         return """# json_read
 
 Read and query JSON files with simple path expressions.
@@ -135,8 +135,8 @@ Read and query JSON files with simple path expressions.
 
 | Arg | Type | Description |
 |-----|------|-------------|
-| path | @@arg | Path to JSON file (required) |
-| query | @@arg | Dot-path query (default: "." for entire file) |
+| path | string | Path to JSON file (required) |
+| query | string | Dot-path query (default: "." for entire file) |
 
 ## Query Syntax
 
@@ -146,24 +146,8 @@ Read and query JSON files with simple path expressions.
 - `.array[0]` - array index
 - `.array[0].field` - nested in array element
 
-## Examples
-
-Read entire file:
-```
-[/json_read]
-@@path=config.json
-[json_read/]
-```
-
-Query a nested field:
-```
-[/json_read]
-@@path=config.json
-@@query=.database.host
-[json_read/]
-```
-
 ## Output
 
 Returns the queried value formatted as JSON (objects/arrays) or plain text (primitives).
+Output is truncated to 50KB if larger.
 """

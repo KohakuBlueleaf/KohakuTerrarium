@@ -144,8 +144,8 @@ class BashTool(BaseTool):
             logger.error("Command execution failed", error=str(e))
             return ToolResult(error=str(e))
 
-    def get_full_documentation(self) -> str:
-        """Full documentation for info command."""
+    def get_full_documentation(self, tool_format: str = "native") -> str:
+        """Full documentation for bash tool."""
         return """# bash
 
 Execute shell commands and return output.
@@ -154,37 +154,19 @@ Execute shell commands and return output.
 
 | Arg | Type | Description |
 |-----|------|-------------|
-| command | body | Command to execute (required) |
+| command | string | Shell command to execute (required) |
 
-## Examples
+## Behavior
 
-```xml
-<bash>ls -la</bash>
-```
-
-```xml
-<bash>echo "Hello World"</bash>
-```
-
-Multi-line commands:
-```xml
-<bash>
-cd /tmp
-ls -la
-pwd
-</bash>
-```
+- On Windows, commands run in PowerShell (pwsh preferred, falls back to powershell).
+- On Unix/Linux/Mac, commands run in bash (falls back to sh).
+- stdout and stderr are combined in the output.
+- Commands have a configurable timeout; killed on timeout.
+- Large outputs may be truncated to the configured max size.
 
 ## Output
 
-Returns stdout and stderr combined. Exit code is included in result.
-
-## Notes
-
-- On Windows, commands run in PowerShell
-- On Unix/Linux/Mac, commands run in bash
-- Commands have a default timeout (configurable)
-- Large outputs may be truncated
+Returns combined stdout/stderr. Exit code is included in the result metadata.
 """
 
 
@@ -255,7 +237,7 @@ class PythonTool(BaseTool):
             logger.error("Python execution failed", error=str(e))
             return ToolResult(error=str(e))
 
-    def get_full_documentation(self) -> str:
+    def get_full_documentation(self, tool_format: str = "native") -> str:
         return """# python
 
 Execute Python code and return output.
@@ -264,26 +246,16 @@ Execute Python code and return output.
 
 | Arg | Type | Description |
 |-----|------|-------------|
-| code | body | Python code to execute (required) |
+| code | string | Python code to execute (required) |
 
-## Examples
+## Behavior
 
-```xml
-<python>print("Hello World")</python>
-```
+- Code runs in a separate subprocess using the current Python interpreter.
+- Has access to all installed packages in the environment.
+- stdout and stderr are captured and returned.
+- Configurable timeout; killed on timeout.
 
-Multi-line code:
-```xml
-<python>
-import os
-for f in os.listdir('.'):
-    print(f)
-</python>
-```
+## Output
 
-## Notes
-
-- Code runs in a separate subprocess
-- Has access to installed packages
-- stdout and stderr are captured
+Returns combined stdout/stderr. Exit code is included in the result metadata.
 """

@@ -12,6 +12,12 @@ from pathlib import Path
 
 from kohakuterrarium.builtin_skills import get_all_subagent_docs, get_all_tool_docs
 from kohakuterrarium.core.registry import Registry
+from kohakuterrarium.parsing.format import (
+    BRACKET_FORMAT,
+    XML_FORMAT,
+    ToolCallFormat,
+    format_tool_call_example,
+)
 from kohakuterrarium.prompt.plugins import (
     BasePlugin,
     PluginContext,
@@ -45,20 +51,7 @@ If you want to send to {first_output}, wrap your message exactly like above.
 Without the wrapper, nothing gets sent.
 """
 
-# Framework hints base - examples are generated dynamically from registry
-_DYNAMIC_HINTS_HEADER = """## Calling Functions
-
-All functions (tools and sub-agents) use this format:
-
-```
-[/function_name]
-@@arg=value
-content here
-[function_name/]
-```
-"""
-
-_DYNAMIC_HINTS_FOOTER = """
+_EXECUTION_MODEL_DYNAMIC = """
 ## Execution Model
 
 - **Direct tools**: Results return after you finish your response
@@ -67,27 +60,9 @@ _DYNAMIC_HINTS_FOOTER = """
 
 IMPORTANT: When calling a function, output ONLY the function call block. Do not output any extra text, markers, or filler characters (like dashes, dots, etc.) before or after the function call. If you need results before continuing, end with the function call and nothing else.
 IMPORTANT: You may ONLY call functions listed in the "Available Functions" section above. Do NOT call functions that are not listed.
-
-## Commands
-
-- `[/info]tool_name[info/]` - read docs for a tool
-- `[/jobs][jobs/]` - list running background jobs
-- `[/wait]job_id[wait/]` - block until job completes (default 60s timeout)
-- `[/wait timeout="10"]job_id[wait/]` - wait with custom timeout (seconds)
-
-### Wait Command Usage
-
-Sub-agents run in background. To get their results, you MUST call wait:
-
-1. Call a sub-agent (you get a job_id)
-2. Call `[/wait]job_id[wait/]` to block until it completes
-
-Without calling wait, sub-agent results are NOT delivered to you.
 """
 
-_STATIC_HINTS_HEADER = _DYNAMIC_HINTS_HEADER
-
-_STATIC_HINTS_FOOTER = """
+_EXECUTION_MODEL_STATIC = """
 ## Execution Model
 
 - **Direct tools**: Results return after you finish your response
@@ -98,17 +73,43 @@ IMPORTANT: You may ONLY call functions listed in the "Available Functions" secti
 """
 
 
+def _build_format_header(tool_format: str) -> str:
+    """Build format-aware calling syntax header."""
+    fmt = _get_tool_call_format(tool_format)
+    generic = format_tool_call_example(
+        fmt, "function_name", {"arg": "value"}, "content here"
+    )
+    return f"## Calling Functions\n\nAll functions (tools and sub-agents) use this format:\n\n```\n{generic}\n```"
+
+
+def _build_command_hints(tool_format: str) -> str:
+    """Build format-aware command hints (info, jobs, wait)."""
+    fmt = _get_tool_call_format(tool_format)
+    info_ex = format_tool_call_example(fmt, "info", body="tool_name")
+    jobs_ex = format_tool_call_example(fmt, "jobs")
+    wait_ex = format_tool_call_example(fmt, "wait", body="job_id")
+
+    return (
+        "## Commands\n\n"
+        f"- Read docs: `{info_ex}`\n"
+        f"- List jobs: `{jobs_ex}`\n"
+        f"- Wait for job: `{wait_ex}`\n\n"
+        "Sub-agents run in background. Use wait to get their results."
+    )
+
+
 def _build_dynamic_hints(
     registry: Registry | None = None, tool_format: str = "bracket"
 ) -> str:
     """Build framework hints with examples from actual registered tools."""
-    parts = [_DYNAMIC_HINTS_HEADER.strip()]
+    parts = [_build_format_header(tool_format)]
 
     examples = _build_tool_examples(registry, tool_format=tool_format)
     if examples:
         parts.append("Examples:\n" + examples)
 
-    parts.append(_DYNAMIC_HINTS_FOOTER.strip())
+    parts.append(_EXECUTION_MODEL_DYNAMIC.strip())
+    parts.append(_build_command_hints(tool_format))
     return "\n\n".join(parts)
 
 
@@ -116,13 +117,13 @@ def _build_static_hints(
     registry: Registry | None = None, tool_format: str = "bracket"
 ) -> str:
     """Build static framework hints with examples from actual registered tools."""
-    parts = [_STATIC_HINTS_HEADER.strip()]
+    parts = [_build_format_header(tool_format)]
 
     examples = _build_tool_examples(registry, tool_format=tool_format)
     if examples:
         parts.append("Examples:\n" + examples)
 
-    parts.append(_STATIC_HINTS_FOOTER.strip())
+    parts.append(_EXECUTION_MODEL_STATIC.strip())
     return "\n\n".join(parts)
 
 
@@ -151,82 +152,62 @@ def _build_native_hints(registry: Registry | None = None) -> str:
     return _NATIVE_HINTS.strip()
 
 
+def _get_tool_call_format(tool_format: str) -> ToolCallFormat:
+    """Resolve tool_format string to ToolCallFormat instance."""
+    match tool_format:
+        case "xml":
+            return XML_FORMAT
+        case _:
+            return BRACKET_FORMAT
+
+
 def _build_tool_examples(
     registry: Registry | None, tool_format: str = "bracket"
 ) -> str:
     """Generate call examples from actual registered tools and sub-agents.
 
-    Examples adapt to the tool_format:
-    - bracket: [/tool]@@arg=val\\ncontent[tool/]
-    - xml: <tool arg="val">content</tool>
+    Examples are generated from the configured ToolCallFormat,
+    so they work correctly for bracket, xml, or any custom format.
     """
     if not registry:
         return ""
 
+    fmt = _get_tool_call_format(tool_format)
     examples: list[str] = []
     tool_names = set(registry.list_tools())
     subagent_names = set(registry.list_subagents())
 
-    if tool_format == "xml":
-        # XML format examples
-        if "read" in tool_names:
-            examples.append('```\n<read path="file.py"/>\n```')
-        elif "glob" in tool_names:
-            examples.append('```\n<glob pattern="**/*.py"/>\n```')
+    # Pick representative tools to show
+    if "read" in tool_names:
+        ex = format_tool_call_example(fmt, "read", {"path": "file.py"})
+        examples.append(f"```\n{ex}\n```")
+    elif "glob" in tool_names:
+        ex = format_tool_call_example(fmt, "glob", {"pattern": "**/*.py"})
+        examples.append(f"```\n{ex}\n```")
 
-        if "bash" in tool_names:
-            examples.append("```\n<bash>ls -la</bash>\n```")
-        elif "think" in tool_names:
-            examples.append(
-                "```\n<think>Analyze the problem step by step...</think>\n```"
-            )
+    if "bash" in tool_names:
+        ex = format_tool_call_example(fmt, "bash", body="ls -la")
+        examples.append(f"```\n{ex}\n```")
+    elif "think" in tool_names:
+        ex = format_tool_call_example(
+            fmt, "think", body="Analyze the problem step by step..."
+        )
+        examples.append(f"```\n{ex}\n```")
 
-        if "write" in tool_names:
-            examples.append('```\n<write path="out.txt">content here</write>\n```')
-        elif "send_message" in tool_names:
-            examples.append(
-                '```\n<send_message channel="inbox">Hello</send_message>\n```'
-            )
-    else:
-        # Bracket format examples (default)
-        if "read" in tool_names:
-            examples.append("```\n[/read]@@path=file.py[read/]\n```")
-        elif "json_read" in tool_names:
-            examples.append("```\n[/json_read]@@path=data.json[json_read/]\n```")
-        elif "glob" in tool_names:
-            examples.append("```\n[/glob]@@pattern=**/*.py[glob/]\n```")
-
-        if "think" in tool_names:
-            examples.append(
-                "```\n[/think]\nAnalyze the problem step by step...\n[think/]\n```"
-            )
-        elif "bash" in tool_names:
-            examples.append("```\n[/bash]ls -la[bash/]\n```")
-
-        if "write" in tool_names:
-            examples.append(
-                "```\n[/write]\n@@path=out.txt\ncontent here\n[write/]\n```"
-            )
-        elif "scratchpad" in tool_names:
-            examples.append(
-                "```\n[/scratchpad]\n@@action=set\n@@key=plan\nmy plan here\n[scratchpad/]\n```"
-            )
-        elif "send_message" in tool_names:
-            examples.append(
-                "```\n[/send_message]\n@@channel=inbox\nHello from agent\n[send_message/]\n```"
-            )
+    if "write" in tool_names:
+        ex = format_tool_call_example(fmt, "write", {"path": "out.txt"}, "content here")
+        examples.append(f"```\n{ex}\n```")
+    elif "send_message" in tool_names:
+        ex = format_tool_call_example(
+            fmt, "send_message", {"channel": "inbox"}, "Hello from agent"
+        )
+        examples.append(f"```\n{ex}\n```")
 
     # Sub-agent example
     if subagent_names:
         first_sa = sorted(subagent_names)[0]
-        if tool_format == "xml":
-            examples.append(
-                f"```\n<{first_sa}>describe the task here</{first_sa}>\n```"
-            )
-        else:
-            examples.append(
-                f"```\n[/{first_sa}]describe the task here[{first_sa}/]\n```"
-            )
+        ex = format_tool_call_example(fmt, first_sa, body="describe the task here")
+        examples.append(f"```\n{ex}\n```")
 
     return "\n\n".join(examples)
 

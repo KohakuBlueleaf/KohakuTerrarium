@@ -147,7 +147,7 @@ class GrepTool(BaseTool):
             logger.error("Grep failed", error=str(e))
             return ToolResult(error=str(e))
 
-    def get_full_documentation(self) -> str:
+    def get_full_documentation(self, tool_format: str = "native") -> str:
         return """# grep
 
 Search file contents for a pattern (regex supported).
@@ -156,39 +156,20 @@ Search file contents for a pattern (regex supported).
 
 | Arg | Type | Description |
 |-----|------|-------------|
-| pattern | body | Search pattern - regex (required) |
-| path | attribute | Directory or file to search (default: cwd) |
-| glob | attribute | File pattern filter (default: "**/*") |
-| limit | attribute | Max matches (default: 50) |
-| ignore_case | attribute | Case-insensitive (default: false) |
+| pattern | string | Search pattern - Python regex (required) |
+| path | string | Directory or file to search (default: cwd) |
+| glob | string | File pattern filter (default: "**/*") |
+| limit | integer | Max matches (default: 50) |
+| ignore_case | boolean | Case-insensitive search (default: false) |
 
-## Examples
+## Behavior
 
-Search for function definitions:
-```xml
-<grep glob="**/*.py">def \\w+\\(</grep>
-```
-
-Case-insensitive search:
-```xml
-<grep ignore_case="true">todo|fixme</grep>
-```
-
-Search in specific file:
-```xml
-<grep path="src/main.py">import</grep>
-```
-
-Search in directory:
-```xml
-<grep path="src/" glob="*.py">class \\w+:</grep>
-```
+- Skips binary files automatically.
+- Searches recursively through directories matching the glob filter.
+- Stops after reaching the match limit.
 
 ## Output
 
-Returns matches in format:
-```
-file.py:10: matching line content
-file.py:25: another match
-```
+Returns matches in `file:line: content` format, one per line.
+Shows total match count and files searched at the end.
 """

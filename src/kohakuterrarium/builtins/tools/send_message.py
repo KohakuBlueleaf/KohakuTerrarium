@@ -147,7 +147,7 @@ class SendMessageTool(BaseTool):
             exit_code=0,
         )
 
-    def get_full_documentation(self) -> str:
+    def get_full_documentation(self, tool_format: str = "native") -> str:
         return """# send_message
 
 Send a message to a named channel. Used for agent-to-agent communication.
@@ -156,49 +156,22 @@ Send a message to a named channel. Used for agent-to-agent communication.
 
 | Arg | Type | Description |
 |-----|------|-------------|
-| channel | @@arg | Channel name (required) |
-| message | content | Message content (required) |
-| metadata | @@arg | Optional JSON metadata |
-| channel_type | @@arg | Channel type: "queue" (default) or "broadcast" |
-| reply_to | @@arg | Optional message ID to reply to (for threading) |
+| channel | string | Channel name (required) |
+| message | string | Message content (required) |
+| metadata | string | Optional JSON metadata object |
+| channel_type | string | Channel type: "queue" (default) or "broadcast" |
+| reply_to | string | Optional message ID to reply to (for threading) |
 
-## Examples
+## Behavior
 
-```
-[/send_message]
-@@channel=inbox_agent_b
-Please research the authentication module.
-[send_message/]
-```
+- Resolves the channel by checking private session channels first, then shared environment channels.
+- For queue channels, auto-creates in the private session if not found.
+- For broadcast channels, the channel must already exist.
+- Returns a confirmation with the generated message ID on success.
 
-With metadata:
-```
-[/send_message]
-@@channel=results
-@@metadata={"priority": "high"}
-Analysis complete. Found 3 issues.
-[send_message/]
-```
+## Tips
 
-Reply to a previous message:
-```
-[/send_message]
-@@channel=inbox_agent_b
-@@reply_to=msg_abc123def456
-Here are the results you requested.
-[send_message/]
-```
-
-Broadcast channel:
-```
-[/send_message]
-@@channel=status_updates
-@@channel_type=broadcast
-Build completed successfully.
-[send_message/]
-```
-
-## Output
-
-Confirmation that message was sent, including the generated message ID.
+- Use metadata to attach structured data (e.g. priority, tags) alongside the message content.
+- Use reply_to with a previous message ID to create threaded conversations.
+- Queue channels are point-to-point; broadcast channels deliver to all subscribers.
 """

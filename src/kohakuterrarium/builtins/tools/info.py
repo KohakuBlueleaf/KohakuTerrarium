@@ -78,7 +78,7 @@ class InfoTool(BaseTool):
             "Check the tool/sub-agent name and try again."
         )
 
-    def get_full_documentation(self) -> str:
+    def get_full_documentation(self, tool_format: str = "native") -> str:
         return """# info
 
 Get full documentation for any tool or sub-agent.
@@ -89,18 +89,15 @@ Get full documentation for any tool or sub-agent.
 |-----|------|-------------|
 | name | string | Name of the tool or sub-agent to look up |
 
-## Examples
+## Behavior
 
-Get documentation for the bash tool:
-  info(name="bash")
-
-Get documentation for the explore sub-agent:
-  info(name="explore")
+- Checks builtin tool docs first, then builtin sub-agent docs.
+- Falls back to agent-local docs in prompts/tools/ or prompts/subagents/.
+- Returns an error if no documentation is found for the given name.
 
 ## Notes
 
-Use this when you need to understand a tool's full parameter set,
-see usage examples, or learn about edge cases. The tool list in
-your system prompt shows one-line descriptions; this gives you
-the complete reference.
+Use this when you need to understand a tool's full parameter set
+or learn about edge cases. The tool list in your system prompt shows
+one-line descriptions; this gives you the complete reference.
 """

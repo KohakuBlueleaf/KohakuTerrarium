@@ -82,7 +82,7 @@ class ScratchpadTool(BaseTool):
                     error=f"Unknown action: {action}. Use: get, set, delete, list, clear"
                 )
 
-    def get_full_documentation(self) -> str:
+    def get_full_documentation(self, tool_format: str = "native") -> str:
         return """# scratchpad
 
 Read/write session-scoped working memory. Data persists within the session
@@ -92,51 +92,17 @@ but is cleared on restart. Use for plans, tracking progress, notes.
 
 | Arg | Type | Description |
 |-----|------|-------------|
-| action | @@arg | get, set, delete, list, or clear |
-| key | @@arg | Key name (required for get/set/delete) |
-| value | content | Value to store (required for set) |
+| action | string | get, set, delete, list, or clear |
+| key | string | Key name (required for get/set/delete) |
+| value | string | Value to store (required for set) |
 
-## Examples
+## Actions
 
-Set a value:
-```
-[/scratchpad]
-@@action=set
-@@key=plan
-Step 1: Read the config
-Step 2: Modify the handler
-[scratchpad/]
-```
-
-Get a value:
-```
-[/scratchpad]
-@@action=get
-@@key=plan
-[scratchpad/]
-```
-
-List all keys:
-```
-[/scratchpad]
-@@action=list
-[scratchpad/]
-```
-
-Delete a key:
-```
-[/scratchpad]
-@@action=delete
-@@key=plan
-[scratchpad/]
-```
-
-Clear all data:
-```
-[/scratchpad]
-@@action=clear
-[scratchpad/]
-```
+- **set**: Store a value under the given key. Overwrites if key exists.
+- **get**: Retrieve the value for a key. Returns "not found" if missing.
+- **delete**: Remove a key and its value.
+- **list**: Show all stored keys.
+- **clear**: Remove all keys and values.
 
 ## Output
 

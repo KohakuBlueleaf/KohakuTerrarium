@@ -97,7 +97,7 @@ class GlobTool(BaseTool):
 
         return ToolResult(output=output or "(no matches)", exit_code=0)
 
-    def get_full_documentation(self) -> str:
+    def get_full_documentation(self, tool_format: str = "native") -> str:
         return """# glob
 
 Find files matching a glob pattern.
@@ -106,26 +106,9 @@ Find files matching a glob pattern.
 
 | Arg | Type | Description |
 |-----|------|-------------|
-| pattern | body | Glob pattern (required) |
-| path | attribute | Base directory (default: cwd) |
-| limit | attribute | Max results (default: 100) |
-
-## Examples
-
-Find all Python files:
-```xml
-<glob>**/*.py</glob>
-```
-
-Find files in specific directory:
-```xml
-<glob path="src/components">*.ts</glob>
-```
-
-With limit:
-```xml
-<glob path="." limit="50">**/*.md</glob>
-```
+| pattern | string | Glob pattern (required) |
+| path | string | Base directory (default: cwd) |
+| limit | integer | Max results (default: 100) |
 
 ## Patterns
 
@@ -136,5 +119,7 @@ With limit:
 
 ## Output
 
-Returns list of matching file paths, sorted by modification time (newest first).
+Returns list of matching file paths relative to the base directory,
+sorted by modification time (newest first). Shows total count when
+results are truncated by the limit.
 """

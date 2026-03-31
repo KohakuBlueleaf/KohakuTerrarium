@@ -101,7 +101,7 @@ class ReadTool(BaseTool):
             logger.error("Read failed", error=str(e))
             return ToolResult(error=str(e))
 
-    def get_full_documentation(self) -> str:
+    def get_full_documentation(self, tool_format: str = "native") -> str:
         return """# read
 
 Read file contents with optional line range.
@@ -110,32 +110,17 @@ Read file contents with optional line range.
 
 | Arg | Type | Description |
 |-----|------|-------------|
-| path | attribute/content | Path to file (required) |
-| offset | attribute | Line to start from (0-based, default: 0) |
-| limit | attribute | Max lines to read (default: all) |
+| path | string | Path to file (required) |
+| offset | integer | Line to start from (0-based, default: 0) |
+| limit | integer | Max lines to read (default: all) |
 
-## Examples
+## Behavior
 
-Read entire file:
-```xml
-<read path="src/main.py"/>
-```
-
-Read lines 10-30:
-```xml
-<read path="src/main.py" offset="10" limit="20"/>
-```
-
-Alternative (path as content):
-```xml
-<read>src/main.py</read>
-```
+- Returns file contents with line numbers in the format `     1→content`.
+- If offset and limit are specified, only that range is returned.
+- Shows a truncation notice when the range does not cover the full file.
 
 ## Output
 
-Returns file contents with line numbers:
-```
-     1→first line
-     2→second line
-```
+Line-numbered file contents. Line numbers are 1-indexed in the output.
 """
