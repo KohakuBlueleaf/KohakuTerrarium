@@ -94,14 +94,17 @@ class Executor:
         tool_name: str,
         args: dict[str, Any],
         job_id: str | None = None,
+        is_direct: bool = False,
     ) -> str:
         """
-        Submit a tool for background execution.
+        Submit a tool for execution.
 
         Args:
             tool_name: Name of the tool to execute
             args: Arguments for the tool
             job_id: Optional job ID (generated if not provided)
+            is_direct: If True, skip _on_complete callback and event queue
+                       (direct tools are awaited by the processing loop)
 
         Returns:
             Job ID
@@ -126,31 +129,35 @@ class Executor:
         )
         self.job_store.register(status)
 
-        # Start background task
-        task = asyncio.create_task(self._run_tool(job_id, tool, args))
+        # Start task
+        task = asyncio.create_task(self._run_tool(job_id, tool, args, is_direct))
         self._tasks[job_id] = task
 
         logger.info("Running tool: %s", tool_name)
         logger.debug("Tool job submitted", job_id=job_id, tool_name=tool_name)
         return job_id
 
-    async def submit_from_event(self, event: ToolCallEvent) -> str:
+    async def submit_from_event(
+        self, event: ToolCallEvent, is_direct: bool = False
+    ) -> str:
         """
         Submit a tool from a ToolCallEvent.
 
         Args:
             event: Parsed tool call event
+            is_direct: If True, skip completion callback (awaited by loop)
 
         Returns:
             Job ID
         """
-        return await self.submit(event.name, event.args)
+        return await self.submit(event.name, event.args, is_direct=is_direct)
 
     async def _run_tool(
         self,
         job_id: str,
         tool: Tool,
         args: dict[str, Any],
+        is_direct: bool = False,
     ) -> JobResult:
         """Run a tool and update status."""
         try:
@@ -189,18 +196,18 @@ class Executor:
             logger.info("Tool %s: %s", tool.tool_name, status)
             logger.debug("Tool job completed", job_id=job_id, success=result.success)
 
-            # Create completion event (full output, no truncation)
-            event = create_tool_complete_event(
-                job_id=job_id,
-                content=result.output if result.output else "",
-                exit_code=result.exit_code,
-                error=result.error,
-            )
-
-            # Notify via callback or queue
-            if self._on_complete:
-                self._on_complete(event)
-            await self._event_queue.put(event)
+            # For background tools: fire completion callback and queue event
+            # Direct tools are awaited by the processing loop - no callback needed
+            if not is_direct:
+                event = create_tool_complete_event(
+                    job_id=job_id,
+                    content=result.output if result.output else "",
+                    exit_code=result.exit_code,
+                    error=result.error,
+                )
+                if self._on_complete:
+                    self._on_complete(event)
+                await self._event_queue.put(event)
 
             return job_result
 
@@ -217,15 +224,15 @@ class Executor:
             job_result = JobResult(job_id=job_id, error=str(e))
             self._results[job_id] = job_result
 
-            # Create error event
-            event = create_tool_complete_event(
-                job_id=job_id,
-                content="",
-                error=str(e),
-            )
-            if self._on_complete:
-                self._on_complete(event)
-            await self._event_queue.put(event)
+            if not is_direct:
+                event = create_tool_complete_event(
+                    job_id=job_id,
+                    content="",
+                    error=str(e),
+                )
+                if self._on_complete:
+                    self._on_complete(event)
+                await self._event_queue.put(event)
 
             return job_result
 
