@@ -312,12 +312,12 @@ class TerrariumSendTool(BaseTool):
 
 @register_builtin("terrarium_observe")
 class TerrariumObserveTool(BaseTool):
-    """Wait for the next message on a terrarium channel (background-only).
+    """Watch a terrarium channel for the next message (background-only).
 
     This tool ALWAYS runs in background. It subscribes to a channel and
-    waits for the next message. The result is delivered as a new event
-    when a message arrives. The agent can continue working or wait for
-    user input while this runs.
+    waits indefinitely for the next message. The result is delivered as
+    a new event when a message arrives. The agent returns to idle and
+    can take user input while this runs.
     """
 
     needs_context = True
@@ -349,10 +349,6 @@ class TerrariumObserveTool(BaseTool):
                     "type": "string",
                     "description": "Channel name to watch",
                 },
-                "timeout": {
-                    "type": "number",
-                    "description": "Seconds to wait before giving up (default 300)",
-                },
             },
             "required": ["terrarium_id", "channel"],
         }
@@ -364,7 +360,6 @@ class TerrariumObserveTool(BaseTool):
 
         terrarium_id = args.get("terrarium_id", "").strip()
         channel_name = args.get("channel", "").strip()
-        timeout = float(args.get("timeout", 300))
 
         if not terrarium_id or not channel_name:
             return ToolResult(error="terrarium_id and channel are required")
@@ -379,19 +374,17 @@ class TerrariumObserveTool(BaseTool):
                     error=f"Channel '{channel_name}' not found. Available: {ch_names}"
                 )
 
-            # Subscribe and wait for next message
+            # Subscribe and wait indefinitely for next message
+            # This runs in background - agent returns to idle
             if isinstance(ch, AgentChannel):
                 sub_id = f"root_observe_{channel_name}"
                 subscription = ch.subscribe(sub_id)
                 try:
-                    msg = await asyncio.wait_for(
-                        subscription.receive(), timeout=timeout
-                    )
+                    msg = await subscription.receive()
                 finally:
                     subscription.unsubscribe()
             else:
-                # Queue channel - receive next message
-                msg = await asyncio.wait_for(ch.receive(), timeout=timeout)
+                msg = await ch.receive()
 
             sender = getattr(msg, "sender", "?")
             content = getattr(msg, "content", str(msg))
@@ -401,11 +394,6 @@ class TerrariumObserveTool(BaseTool):
                 metadata={"channel": channel_name, "sender": sender},
             )
 
-        except asyncio.TimeoutError:
-            return ToolResult(
-                output=f"No messages on [{channel_name}] after {timeout}s.",
-                exit_code=0,
-            )
         except KeyError as e:
             return ToolResult(error=str(e))
 

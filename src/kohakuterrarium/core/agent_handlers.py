@@ -338,21 +338,27 @@ class AgentHandlersMixin:
 
             # ===================================================================
             # PHASE 5: Decide whether to continue the loop
-            # Exit only when: no new jobs, no pending jobs, no feedback
+            #
+            # Exit when there's nothing immediate to process. Background
+            # jobs do NOT block exit - they deliver results via TriggerEvent
+            # when they complete, which re-enters _process_event.
             # ===================================================================
-            if (
-                not jobs_started_this_round
-                and not pending_background_ids
-                and not pending_subagent_ids
-                and not feedback_parts
-                and not native_results_added
-            ):
-                logger.debug(
-                    "No jobs pending and no feedback, exiting process loop",
-                    jobs_this_round=jobs_started_this_round,
-                    pending_bg=len(pending_background_ids),
-                    pending_sa=len(pending_subagent_ids),
-                )
+            has_immediate_work = bool(
+                feedback_parts or native_results_added or direct_tasks
+            )
+
+            if not has_immediate_work:
+                if pending_background_ids or pending_subagent_ids:
+                    logger.debug(
+                        "Exiting process loop with background jobs running. "
+                        "Results will arrive as trigger events.",
+                        pending_bg=len(pending_background_ids),
+                        pending_sa=len(pending_subagent_ids),
+                    )
+                else:
+                    logger.debug(
+                        "No jobs pending and no feedback, exiting process loop"
+                    )
                 break
 
             # ===================================================================
@@ -384,15 +390,6 @@ class AgentHandlersMixin:
                     pending_sa=len(pending_subagent_ids),
                 )
                 await controller.push_event(feedback_event)
-            else:
-                # No feedback but pending jobs. Wait and re-check.
-                # No status hint needed - completion events notify naturally.
-                logger.debug(
-                    "Waiting for background jobs",
-                    pending_bg=len(pending_background_ids),
-                    pending_sa=len(pending_subagent_ids),
-                )
-                await asyncio.sleep(0.5)
 
         # Notify output modules that processing has ended
         await self.output_router.on_processing_end()

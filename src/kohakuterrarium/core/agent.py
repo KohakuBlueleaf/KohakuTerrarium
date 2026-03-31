@@ -234,28 +234,26 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             idle_logged = False
             while self._running:
 
-                # Get input
+                # Wait for EITHER user input OR background job completion
                 if not idle_logged:
-                    logger.debug("Agent idle, waiting for input...")
+                    logger.debug(
+                        "Agent idle, waiting for input or background results..."
+                    )
                     idle_logged = True
-                event = await self.input.get_input()
+
+                event = await self._wait_for_next_event()
 
                 # Check for exit
                 if event is None:
-                    # InputModule protocol does not define exit_requested;
-                    # it is an optional property on concrete implementations
-                    # like CLIInput. The hasattr check is the correct approach
-                    # here since not all input modules support exit signaling.
                     if (
                         hasattr(self.input, "exit_requested")
                         and self.input.exit_requested
                     ):
                         logger.info("Exit requested")
                         break
-                    # Timeout or no input, continue waiting
                     continue
 
-                idle_logged = False  # Reset so we log idle again after processing
+                idle_logged = False
                 # Log content length (handle multimodal)
                 if event.is_multimodal():
                     content_len = len(event.get_text_content())
@@ -279,6 +277,40 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             raise
         finally:
             await self.stop()
+
+    async def _wait_for_next_event(self) -> TriggerEvent | None:
+        """Wait for the next event from any source.
+
+        Races user input against background job completions.
+        Returns whichever arrives first. This allows the agent to
+        be idle while background tools (like terrarium_observe) run,
+        and wake up when either the user types or a background job
+        delivers results.
+        """
+        input_task = asyncio.create_task(self.input.get_input())
+        bg_task = asyncio.create_task(self.executor.get_next_event(timeout=None))
+
+        done, pending = await asyncio.wait(
+            {input_task, bg_task},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        # Cancel the loser
+        for task in pending:
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+
+        # Return the winner's result
+        for task in done:
+            try:
+                return task.result()
+            except Exception:
+                return None
+
+        return None
 
     # =========================================================================
     # Programmatic API
