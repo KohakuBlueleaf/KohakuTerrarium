@@ -1,0 +1,5 @@
+name: creative
+version: "1.0"
+base_config: ../general
+
+system_prompt_file: prompts/system.md

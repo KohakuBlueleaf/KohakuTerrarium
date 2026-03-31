@@ -21,6 +21,7 @@ creatures/
     +-- reviewer/   <-- Code review, severity levels, structured feedback
     +-- ops/        <-- Infrastructure, CI/CD, deployment, monitoring
     +-- researcher/ <-- Research methodology, source evaluation
+    +-- creative/   <-- Creative writing, craft principles, two-mode operation
     +-- root/       <-- Terrarium management, task delegation
 ```
 
@@ -93,6 +94,13 @@ Infrastructure and operations specialist. Inherits everything from general and a
 Research and analysis specialist. Inherits everything from general and adds research methodology.
 
 - **Additional prompt sections**: Approach (multiple sources, reliability evaluation), Output (citations, confidence levels)
+- **Tool set**: Inherited from general
+
+### Creative
+
+Creative writing specialist. Inherits everything from general and adds writing craft methodology.
+
+- **Additional prompt sections**: Two Modes (workshop vs writing), Craft Principles (show don't tell, tension, dialogue), Process (outline first, complete scenes), What NOT to Do
 - **Tool set**: Inherited from general
 
 ### Root
