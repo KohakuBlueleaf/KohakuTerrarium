@@ -143,30 +143,28 @@ kt terrarium run examples/terrariums/swe_team_managed_tui/
 ## Architecture
 
 ```
-              List, Create, Delete
-              v                 ^
-         +---------+      +---------+
-         | Trigger |<-----| Tools   |
-         | System  |      | System  |
-         +---------+      +---------+
-          ^   |  ^           ^   |
-          |   v  |           |   v
- Input -->+   |  |      Controller (LLM) <----> Sub-Agents
-              |  |           |   |               (own tools
-              |  +-- fires --+   |                & triggers)
-              |                  |
-   Receive    |        +---------+---------+
-      |       v        |                   |
- +----------+     +----------+      +----------+
- | Channels |     | Channels |      |  Output  |
- +----------+     +----------+      +----------+
-       ^
-       |
- +----------+
- |  Other   |
- | Creature |
- +----------+
+
+    List, Create, Delete  ┌──────────────────┐
+                    ┌─────│   Tools System   │
+      ┌─────────┐   │     └──────────────────┘
+      │  Input  │   │          ^        │
+      └─────────┘   V          │        v
+        │   ┌─────────┐   ┌──────────────────┐   ┌────────────┐
+        └──>│ Trigger │──>│    Controller    │──>│ Sub Agents │
+User input  │ System  │   │    (Main LLM)    │<──│ with tools │
+            └─────────┘   └──────────────────┘   └────────────┘
+                ^             │          ^
+                │             v          │
+                │         ┌────────┐  ┌──────┐
+                └─────────│Channels|  │Output│
+                 Receive  └────────┘  └──────┘
+                             │  ^
+                             v  │
+                          ┌──────────────────┐
+                          │ Other Creatures  │
+                          └──────────────────┘
 ```
+
 
 Three concurrent event sources drive every agent:
 
