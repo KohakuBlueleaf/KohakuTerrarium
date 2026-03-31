@@ -261,13 +261,13 @@ class AgentHandlersMixin:
                     break
 
             # ===================================================================
-            # PHASE 3: Flush output and update job tracking
+            # PHASE 3: Flush output before collecting results
+            # This ensures buffered LLM text renders in TUI BEFORE
+            # tool_done/tool_error activity notifications appear.
             # ===================================================================
             await self.output_router.flush()
-
-            # Note: Commands (read, info, jobs, wait) are handled inline by
-            # controller during run_once() - they never reach output_router.
-            # See controller._handle_command() which uses ControllerContext.
+            if hasattr(self.output_router.default_output, "reset"):
+                self.output_router.default_output.reset()
 
             jobs_started_this_round = bool(direct_tasks)
 
@@ -332,6 +332,11 @@ class AgentHandlersMixin:
                 )
                 logger.debug("Pushing feedback to controller, continuing")
                 await controller.push_event(feedback_event)
+
+        # Flush remaining buffered output
+        await self.output_router.flush()
+        if hasattr(self.output_router.default_output, "reset"):
+            self.output_router.default_output.reset()
 
         # Notify output modules that processing has ended
         await self.output_router.on_processing_end()
@@ -570,12 +575,4 @@ class AgentHandlersMixin:
             )
 
         logger.info("Background job completed", job_id=job_id)
-        asyncio.create_task(self._process_and_flush_bg(event))
-
-    async def _process_and_flush_bg(self, event: TriggerEvent) -> None:
-        """Process a background completion event and flush TUI output."""
-        await self._process_event(event)
-        # Flush buffered output so TUI displays immediately
-        await self.output_router.flush()
-        if hasattr(self.output_router.default_output, "reset"):
-            self.output_router.default_output.reset()
+        asyncio.create_task(self._process_event(event))
