@@ -18,8 +18,10 @@ from kohakuterrarium.serving.events import ChannelEvent, OutputEvent
 
 # Paths reused across test classes
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-SWE_AGENT_DIR = str((PROJECT_ROOT / "agents" / "swe_agent").resolve())
-NOVEL_TERRARIUM_DIR = str((PROJECT_ROOT / "agents" / "novel_terrarium").resolve())
+SWE_AGENT_DIR = str((PROJECT_ROOT / "examples" / "agent-apps" / "swe_agent").resolve())
+NOVEL_TERRARIUM_DIR = str(
+    (PROJECT_ROOT / "examples" / "terrariums" / "novel_terrarium").resolve()
+)
 
 # Environment patch applied to every test that instantiates agents/terrariums
 _FAKE_ENV = {"OPENROUTER_API_KEY": "fake-key-for-test"}
@@ -303,7 +305,8 @@ class TestKohakuManagerTerrariums:
         # Add a new creature wired to the new channel
         creature_cfg = CreatureConfig(
             name="reviewer",
-            config_path=SWE_AGENT_DIR,
+            config_data={"base_config": SWE_AGENT_DIR},
+            base_dir=Path("."),
             listen_channels=["review"],
             send_channels=[],
         )

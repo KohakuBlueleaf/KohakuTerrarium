@@ -14,14 +14,16 @@ from kohakuterrarium.terrarium.config import (
     TerrariumConfig,
     load_terrarium_config,
 )
-from kohakuterrarium.terrarium.runtime import (
-    TerrariumRuntime,
-    _build_channel_topology_prompt,
-)
+from kohakuterrarium.terrarium.config import build_channel_topology_prompt
+from kohakuterrarium.terrarium.runtime import TerrariumRuntime
 
 # Paths used across multiple tests
-NOVEL_TERRARIUM_DIR = Path(__file__).resolve().parents[2] / "agents" / "novel_terrarium"
-SWE_AGENT_DIR = Path(__file__).resolve().parents[2] / "agents" / "swe_agent"
+NOVEL_TERRARIUM_DIR = (
+    Path(__file__).resolve().parents[2] / "examples" / "terrariums" / "novel_terrarium"
+)
+SWE_AGENT_DIR = (
+    Path(__file__).resolve().parents[2] / "examples" / "agent-apps" / "swe_agent"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -68,15 +70,13 @@ class TestConfigLoading:
         assert "ideas" in brainstorm.send_channels
         assert "team_chat" in brainstorm.send_channels
 
-    def test_creature_config_path_resolution(self):
-        """Creature config paths are resolved relative to terrarium dir."""
+    def test_creature_config_data_has_base_config(self):
+        """Creature config_data contains base_config for inheritance."""
         config = load_terrarium_config(NOVEL_TERRARIUM_DIR)
         brainstorm = config.creatures[0]
-        resolved = Path(brainstorm.config_path)
-        # Must be absolute and end with the creature folder
-        assert resolved.is_absolute()
-        assert resolved.name == "brainstorm"
-        assert resolved.parent.name == "creatures"
+        # config_data should have base_config (converted from old "config" key)
+        assert "base_config" in brainstorm.config_data
+        assert brainstorm.base_dir == NOVEL_TERRARIUM_DIR
 
     def test_load_by_directory(self):
         """Passing a directory finds terrarium.yaml automatically."""
@@ -100,7 +100,7 @@ class TestConfigLoading:
 
 
 class TestChannelTopologyPrompt:
-    """Test _build_channel_topology_prompt directly with config objects."""
+    """Test build_channel_topology_prompt directly with config objects."""
 
     def _make_config(
         self,
@@ -110,7 +110,8 @@ class TestChannelTopologyPrompt:
     ) -> tuple[TerrariumConfig, CreatureConfig]:
         creature = CreatureConfig(
             name="alpha",
-            config_path="/fake",
+            config_data={"name": "alpha"},
+            base_dir=Path("."),
             listen_channels=creature_listen or [],
             send_channels=creature_send or [],
         )
@@ -125,7 +126,7 @@ class TestChannelTopologyPrompt:
         """Channels in listen list are annotated with (listen)."""
         channels = [ChannelConfig(name="inbox", channel_type="queue")]
         config, creature = self._make_config(channels, creature_listen=["inbox"])
-        prompt = _build_channel_topology_prompt(config, creature)
+        prompt = build_channel_topology_prompt(config, creature)
         assert "(listen)" in prompt
         assert "`inbox`" in prompt
 
@@ -133,7 +134,7 @@ class TestChannelTopologyPrompt:
         """Channels in send list are annotated with (send)."""
         channels = [ChannelConfig(name="outbox", channel_type="queue")]
         config, creature = self._make_config(channels, creature_send=["outbox"])
-        prompt = _build_channel_topology_prompt(config, creature)
+        prompt = build_channel_topology_prompt(config, creature)
         assert "(send)" in prompt
         assert "`outbox`" in prompt
 
@@ -143,7 +144,7 @@ class TestChannelTopologyPrompt:
         config, creature = self._make_config(
             channels, creature_listen=["bidir"], creature_send=["bidir"]
         )
-        prompt = _build_channel_topology_prompt(config, creature)
+        prompt = build_channel_topology_prompt(config, creature)
         assert "listen" in prompt
         assert "send" in prompt
 
@@ -153,7 +154,7 @@ class TestChannelTopologyPrompt:
             ChannelConfig(name="news", channel_type="broadcast", description="Updates"),
         ]
         config, creature = self._make_config(channels)
-        prompt = _build_channel_topology_prompt(config, creature)
+        prompt = build_channel_topology_prompt(config, creature)
         assert "`news`" in prompt
         assert "[broadcast]" in prompt
 
@@ -163,7 +164,7 @@ class TestChannelTopologyPrompt:
             ChannelConfig(name="private", channel_type="queue"),
         ]
         config, creature = self._make_config(channels)
-        prompt = _build_channel_topology_prompt(config, creature)
+        prompt = build_channel_topology_prompt(config, creature)
         assert prompt == ""
 
     def test_description_included(self):
@@ -176,28 +177,28 @@ class TestChannelTopologyPrompt:
             ),
         ]
         config, creature = self._make_config(channels, creature_listen=["tasks"])
-        prompt = _build_channel_topology_prompt(config, creature)
+        prompt = build_channel_topology_prompt(config, creature)
         assert "Pending work items" in prompt
 
     def test_send_channel_listed(self):
         """When creature can send, the channel is listed with (send) role."""
         channels = [ChannelConfig(name="out", channel_type="queue")]
         config, creature = self._make_config(channels, creature_send=["out"])
-        prompt = _build_channel_topology_prompt(config, creature)
+        prompt = build_channel_topology_prompt(config, creature)
         assert "(send)" in prompt
 
     def test_listen_channel_listed(self):
         """When creature listens, the channel is listed with (listen) role."""
         channels = [ChannelConfig(name="in", channel_type="queue")]
         config, creature = self._make_config(channels, creature_listen=["in"])
-        prompt = _build_channel_topology_prompt(config, creature)
+        prompt = build_channel_topology_prompt(config, creature)
         assert "(listen)" in prompt
 
     def test_channel_semantics_explained(self):
         """Prompt explains that messages are information, not requests."""
         channels = [ChannelConfig(name="ch", channel_type="queue")]
         config, creature = self._make_config(channels, creature_listen=["ch"])
-        prompt = _build_channel_topology_prompt(config, creature)
+        prompt = build_channel_topology_prompt(config, creature)
         assert "information" in prompt.lower()
         assert "not" in prompt.lower() and "reply" in prompt.lower()
 
@@ -219,13 +220,15 @@ class TestRuntimeLifecycle:
             creatures=[
                 CreatureConfig(
                     name="alpha",
-                    config_path=swe_path,
+                    config_data={"base_config": str(swe_path)},
+                    base_dir=Path("."),
                     listen_channels=["ch_alpha"],
                     send_channels=["ch_beta"],
                 ),
                 CreatureConfig(
                     name="beta",
-                    config_path=swe_path,
+                    config_data={"base_config": str(swe_path)},
+                    base_dir=Path("."),
                     listen_channels=["ch_beta"],
                     send_channels=["ch_alpha"],
                 ),

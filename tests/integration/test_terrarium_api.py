@@ -18,7 +18,9 @@ from kohakuterrarium.terrarium.config import (
 from kohakuterrarium.terrarium.observer import ChannelObserver, ObservedMessage
 from kohakuterrarium.terrarium.runtime import TerrariumRuntime
 
-SWE_AGENT_DIR = Path(__file__).resolve().parents[2] / "agents" / "swe_agent"
+SWE_AGENT_DIR = (
+    Path(__file__).resolve().parents[2] / "examples" / "agent-apps" / "swe_agent"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -35,13 +37,15 @@ def terrarium_config() -> TerrariumConfig:
         creatures=[
             CreatureConfig(
                 name="alpha",
-                config_path=swe_path,
+                config_data={"base_config": swe_path},
+                base_dir=Path("."),
                 listen_channels=["inbox_alpha"],
                 send_channels=["outbox_alpha", "team_chat"],
             ),
             CreatureConfig(
                 name="beta",
-                config_path=swe_path,
+                config_data={"base_config": swe_path},
+                base_dir=Path("."),
                 listen_channels=["inbox_beta"],
                 send_channels=["outbox_beta", "team_chat"],
             ),

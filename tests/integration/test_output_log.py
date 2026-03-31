@@ -1,5 +1,7 @@
 """Integration tests for output log capture system."""
 
+from pathlib import Path
+
 import pytest
 
 from kohakuterrarium.terrarium.config import CreatureConfig
@@ -199,7 +201,8 @@ class TestCreatureOutputLog:
         # We use a stub for agent since we only test handle accessors
         cfg = CreatureConfig(
             name="test_creature",
-            config_path="/tmp/fake",
+            config_data={"base_config": "/tmp/fake"},
+            base_dir=Path("."),
         )
 
         class _StubAgent:

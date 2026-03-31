@@ -38,7 +38,9 @@ from kohakuterrarium.terrarium.runtime import TerrariumRuntime
 # Shared paths
 # ---------------------------------------------------------------------------
 
-SWE_AGENT_DIR = Path(__file__).resolve().parents[2] / "agents" / "swe_agent"
+SWE_AGENT_DIR = (
+    Path(__file__).resolve().parents[2] / "examples" / "agent-apps" / "swe_agent"
+)
 
 # Fake API key for all tests that create real Agent instances
 FAKE_ENV = {"OPENROUTER_API_KEY": "fake-key-for-test"}
@@ -236,7 +238,8 @@ class TestTerrariumHotPlugCreatures:
             creatures=[
                 CreatureConfig(
                     name="alpha",
-                    config_path=swe_path,
+                    config_data={"base_config": swe_path},
+                    base_dir=Path("."),
                     listen_channels=["work"],
                     send_channels=["results"],
                 ),
@@ -267,7 +270,8 @@ class TestTerrariumHotPlugCreatures:
             swe_path = str(SWE_AGENT_DIR.resolve())
             new_creature = CreatureConfig(
                 name="beta",
-                config_path=swe_path,
+                config_data={"base_config": swe_path},
+                base_dir=Path("."),
                 listen_channels=["results"],
                 send_channels=["work"],
             )
@@ -294,7 +298,8 @@ class TestTerrariumHotPlugCreatures:
             swe_path = str(SWE_AGENT_DIR.resolve())
             duplicate = CreatureConfig(
                 name="alpha",  # Already exists
-                config_path=swe_path,
+                config_data={"base_config": swe_path},
+                base_dir=Path("."),
                 listen_channels=[],
                 send_channels=[],
             )
@@ -312,7 +317,8 @@ class TestTerrariumHotPlugCreatures:
         terrarium_config.creatures.append(
             CreatureConfig(
                 name="beta",
-                config_path=swe_path,
+                config_data={"base_config": swe_path},
+                base_dir=Path("."),
                 listen_channels=["results"],
                 send_channels=["work"],
             )
@@ -366,7 +372,8 @@ class TestTerrariumHotPlugChannels:
             creatures=[
                 CreatureConfig(
                     name="alpha",
-                    config_path=swe_path,
+                    config_data={"base_config": swe_path},
+                    base_dir=Path("."),
                     listen_channels=["inbox"],
                     send_channels=["outbox"],
                 ),
