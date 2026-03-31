@@ -121,9 +121,6 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         self._running = False
         self._shutdown_event = asyncio.Event()
         self._processing_lock = asyncio.Lock()
-        self._direct_job_ids: set[str] = (
-            set()
-        )  # Track direct tools to skip in _on_bg_complete
 
         # Environment and session (explicit or auto-created in _init_executor)
         self.environment: Environment | None = environment

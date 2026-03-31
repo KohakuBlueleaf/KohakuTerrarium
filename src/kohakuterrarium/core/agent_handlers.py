@@ -173,7 +173,6 @@ class AgentHandlersMixin:
                     if is_direct:
                         direct_tasks[job_id] = task
                         direct_job_ids.append(job_id)
-                        self._direct_job_ids.add(job_id)
                     else:
                         # Background: add placeholder so API sees a response
                         # for every tool call. Actual result comes later via
@@ -372,8 +371,11 @@ class AgentHandlersMixin:
             if tool and isinstance(tool, BaseTool):
                 is_direct = tool.execution_mode == ExecutionMode.DIRECT
 
-            # Submit to executor - this creates the task internally
-            job_id = await self.executor.submit_from_event(tool_call)
+            # Submit to executor - pass is_direct so executor skips
+            # callback/queue for direct tools
+            job_id = await self.executor.submit_from_event(
+                tool_call, is_direct=is_direct
+            )
 
             # Get the task handle from executor using public API
             task = self.executor.get_task(job_id)
@@ -551,22 +553,15 @@ class AgentHandlersMixin:
                 await asyncio.sleep(1.0)  # Backoff on error
 
     def _on_bg_complete(self, event: TriggerEvent) -> None:
-        """Callback fired by executor when ANY tool completes.
+        """Callback fired by executor when a BACKGROUND tool completes.
 
-        Only handles BACKGROUND tools. Direct tools are tracked in
-        _direct_job_ids and handled by the processing loop.
+        Direct tools never fire this - the executor skips the callback
+        for them (is_direct=True). Only background tools reach here.
         """
         if not self._running:
             return
 
         job_id = getattr(event, "job_id", "")
-
-        # Skip direct tools - they're awaited by the processing loop
-        if job_id in self._direct_job_ids:
-            self._direct_job_ids.discard(job_id)
-            return
-
-        # Background tool completed - show in TUI and process
         tool_name = job_id.rsplit("_", 1)[0] if "_" in job_id else job_id
         short_id = job_id.rsplit("_", 1)[-1][:6] if "_" in job_id else ""
         label = f"{tool_name}[{short_id}]" if short_id else tool_name
