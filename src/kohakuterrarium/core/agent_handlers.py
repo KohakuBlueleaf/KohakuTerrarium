@@ -9,10 +9,7 @@ the main Agent class to keep file sizes manageable.
 import asyncio
 from typing import Any
 
-from kohakuterrarium.core.constants import (
-    STATUS_PREVIEW_MAX_CHARS,
-    TOOL_RESULT_MAX_CHARS,
-)
+from kohakuterrarium.core.constants import TOOL_RESULT_MAX_CHARS
 from kohakuterrarium.core.controller import Controller
 from kohakuterrarium.core.events import (
     EventType,
@@ -78,33 +75,22 @@ class AgentHandlersMixin:
         """
         Process a single event through the specified controller.
 
-        This is the main agent loop. It continues until:
-        1. No new jobs were started this round, AND
-        2. No background jobs or sub-agents are still pending, AND
-        3. No feedback (tool results, status updates, output confirmations) to report
+        This loop handles ONE event and all its direct tool calls.
+        It exits as soon as there's no more immediate feedback.
 
         Flow per iteration:
         1. Run controller.run_once() to get LLM response
         2. Handle parse events:
-           - ToolCallEvent -> start tool immediately (direct or background)
-           - SubAgentCallEvent -> start sub-agent (always background)
+           - ToolCallEvent -> start tool (direct or background)
+           - SubAgentCallEvent -> start sub-agent (background)
            - Others -> route to output_router
-        3. Wait for direct tools to complete
-        4. Collect feedback:
-           - Output feedback (what was sent to named outputs)
-           - Direct tool results
-           - Background job/sub-agent status (RUNNING or completed)
-        5. Push feedback as event to controller for next iteration
+        3. Wait for DIRECT tools only, collect results
+        4. Push feedback to controller for next iteration
+        5. Exit when no feedback remains
 
-        Job lifecycle:
-        - Jobs are tracked in pending_*_ids lists until their results are reported
-        - Once a job completes and its result is included in feedback, it's removed
-        - Loop stays alive while any jobs are pending (even if RUNNING)
-
-        Wait command integration:
-        - Model can use [/wait]job_id[wait/] to block until a specific job completes
-        - Wait command uses shared job_store (same as executor and subagent_manager)
-        - Controller handles wait command inline, result is surfaced to model
+        Background tools and sub-agents do NOT block this loop.
+        They deliver results via executor._on_complete callback,
+        which fires _process_event as a new task (same as triggers).
         """
         # Notify triggers of context update (for idle timer reset, etc.)
         for trigger in self._triggers:
@@ -130,8 +116,8 @@ class AgentHandlersMixin:
         # Job Tracking: pending_*_ids lists track jobs across loop iterations.
         # Jobs stay in these lists until their results are reported to model.
         # =======================================================================
-        pending_background_ids: list[str] = []
-        pending_subagent_ids: list[str] = []
+        # Background jobs are NOT tracked here. They deliver results
+        # via executor._on_complete -> _process_event when they complete.
 
         while True:
             # ===================================================================
@@ -144,11 +130,9 @@ class AgentHandlersMixin:
             if hasattr(self.output_router.default_output, "reset"):
                 self.output_router.default_output.reset()
 
-            # Track jobs started THIS iteration (direct vs background)
+            # Track jobs started THIS iteration
             direct_tasks: dict[str, asyncio.Task] = {}  # Direct: we wait for these
             direct_job_ids: list[str] = []
-            new_background_ids: list[str] = []  # Background: tracked until done
-            new_subagent_ids: list[str] = []  # Sub-agents: always background
             round_text_output: list[str] = []  # Collect text for termination check
 
             # ===================================================================
@@ -190,15 +174,14 @@ class AgentHandlersMixin:
                         direct_tasks[job_id] = task
                         direct_job_ids.append(job_id)
                     else:
-                        new_background_ids.append(job_id)
-                        # Background tools: add immediate placeholder result
-                        # so the API always sees a response for every tool call
+                        # Background: add placeholder so API sees a response
+                        # for every tool call. Actual result comes later via
+                        # _on_bg_complete -> _process_event.
                         if tool_call_id:
                             controller.conversation.append(
                                 "tool",
-                                f"Running in background (job: {job_id}). "
-                                "Results will be delivered automatically. "
-                                "Continue with your current work.",
+                                f"Running in background. "
+                                "Result will be delivered when ready.",
                                 tool_call_id=tool_call_id,
                                 name=parse_event.name,
                             )
@@ -229,7 +212,6 @@ class AgentHandlersMixin:
                     )
                 elif isinstance(parse_event, SubAgentCallEvent):
                     job_id = await self._start_subagent_async(parse_event)
-                    new_subagent_ids.append(job_id)
                     # Notify output of sub-agent activity with name[id]
                     sa_short_id = job_id.rsplit("_", 1)[-1][:6] if "_" in job_id else ""
                     sa_label = (
@@ -287,13 +269,7 @@ class AgentHandlersMixin:
             # controller during run_once() - they never reach output_router.
             # See controller._handle_command() which uses ControllerContext.
 
-            jobs_started_this_round = bool(
-                direct_tasks or new_background_ids or new_subagent_ids
-            )
-
-            # Add new background jobs to pending lists for tracking
-            pending_background_ids.extend(new_background_ids)
-            pending_subagent_ids.extend(new_subagent_ids)
+            jobs_started_this_round = bool(direct_tasks)
 
             # ===================================================================
             # PHASE 4: Collect feedback for the model
@@ -325,40 +301,15 @@ class AgentHandlersMixin:
                     if results:
                         feedback_parts.append(results)
 
-            # 4c. Background job status - report RUNNING or completed results
-            # Completed jobs are removed from pending lists after reporting
-            if pending_background_ids or pending_subagent_ids:
-                bg_status, pending_background_ids, pending_subagent_ids = (
-                    self._get_and_cleanup_background_status(
-                        pending_background_ids, pending_subagent_ids
-                    )
-                )
-                if bg_status:
-                    feedback_parts.append(bg_status)
-
             # ===================================================================
             # PHASE 5: Decide whether to continue the loop
             #
-            # Exit when there's nothing immediate to process. Background
-            # jobs do NOT block exit - they deliver results via TriggerEvent
-            # when they complete, which re-enters _process_event.
+            # Exit when there's no feedback from direct tools or outputs.
+            # Background jobs deliver results asynchronously via
+            # _on_bg_complete -> _process_event (same path as triggers).
             # ===================================================================
-            has_immediate_work = bool(
-                feedback_parts or native_results_added or direct_tasks
-            )
-
-            if not has_immediate_work:
-                if pending_background_ids or pending_subagent_ids:
-                    logger.debug(
-                        "Exiting process loop with background jobs running. "
-                        "Results will arrive as trigger events.",
-                        pending_bg=len(pending_background_ids),
-                        pending_sa=len(pending_subagent_ids),
-                    )
-                else:
-                    logger.debug(
-                        "No jobs pending and no feedback, exiting process loop"
-                    )
+            if not feedback_parts and not native_results_added:
+                logger.debug("No feedback, exiting process loop")
                 break
 
             # ===================================================================
@@ -366,13 +317,8 @@ class AgentHandlersMixin:
             # ===================================================================
             if native_results_added and not feedback_parts:
                 # Native mode: tool results already in conversation as
-                # role="tool" messages. Just trigger next LLM turn with
-                # an empty event so the controller calls the LLM again.
-                logger.debug(
-                    "Native tool results in conversation, continuing loop",
-                    pending_bg=len(pending_background_ids),
-                    pending_sa=len(pending_subagent_ids),
-                )
+                # role="tool" messages. Trigger next LLM turn.
+                logger.debug("Native tool results in conversation, continuing")
                 await controller.push_event(
                     TriggerEvent(type="tool_complete", content="")
                 )
@@ -384,11 +330,7 @@ class AgentHandlersMixin:
                     exit_code=0,
                     error=None,
                 )
-                logger.debug(
-                    "Pushing feedback to controller, continuing loop",
-                    pending_bg=len(pending_background_ids),
-                    pending_sa=len(pending_subagent_ids),
-                )
+                logger.debug("Pushing feedback to controller, continuing")
                 await controller.push_event(feedback_event)
 
         # Notify output modules that processing has ended
@@ -559,137 +501,6 @@ class AgentHandlersMixin:
 
         return "\n\n".join(result_strs) if result_strs else ""
 
-    def _get_and_cleanup_background_status(
-        self,
-        background_job_ids: list[str],
-        subagent_job_ids: list[str],
-    ) -> tuple[str, list[str], list[str]]:
-        """
-        Get status of background jobs and sub-agents, cleaning up completed ones.
-
-        This function serves two purposes:
-        1. Report status to the model (so it knows what's happening)
-        2. Clean up completed jobs (so they don't get reported again)
-
-        For each job:
-        - If COMPLETED: Include result in status, DON'T add to remaining list
-        - If RUNNING: Include "RUNNING" status, ADD to remaining list
-
-        The remaining lists are used by the main loop to determine:
-        - Whether to continue looping (pending jobs exist)
-        - What to check on the next iteration
-
-        IMPORTANT: Always report RUNNING status. This ensures:
-        - Model knows jobs are still in progress
-        - Loop continues while jobs are running
-        - Model can use [/wait] command to block if needed
-
-        Args:
-            background_job_ids: IDs of background tool jobs to check
-            subagent_job_ids: IDs of sub-agent jobs to check
-
-        Returns:
-            Tuple of:
-            - status_string: Formatted status for feedback to model
-            - remaining_background_ids: Background jobs still running
-            - remaining_subagent_ids: Sub-agent jobs still running
-        """
-        if not background_job_ids and not subagent_job_ids:
-            return "", [], []
-
-        status_lines: list[str] = []
-        remaining_bg: list[str] = []
-        remaining_sa: list[str] = []
-
-        # Check background tools
-        for job_id in background_job_ids:
-            tool_name = job_id.rsplit("_", 1)[0] if "_" in job_id else job_id
-            short_id = job_id.rsplit("_", 1)[-1][:6] if "_" in job_id else ""
-            label = f"{tool_name}[{short_id}]" if short_id else tool_name
-
-            status = self.executor.get_status(job_id)
-            if status:
-                if status.is_complete:
-                    result = self.executor.get_result(job_id)
-                    if result and result.error:
-                        status_lines.append(
-                            f"- `{label}`: COMPLETED with ERROR - {result.error}"
-                        )
-                        self.output_router.default_output.on_activity(
-                            "tool_error", f"[{label}] ERROR: {result.error}"
-                        )
-                    else:
-                        output = (
-                            result.output[:STATUS_PREVIEW_MAX_CHARS]
-                            if result and result.output
-                            else ""
-                        )
-                        status_lines.append(
-                            f"- `{label}`: COMPLETED successfully\n{output}"
-                        )
-                        self.output_router.default_output.on_activity(
-                            "tool_done", f"[{label}] DONE"
-                        )
-                else:
-                    status_lines.append(
-                        f"- `{label}`: STILL RUNNING ({status.state.value})"
-                    )
-                    remaining_bg.append(job_id)
-
-        # Check sub-agents
-        for job_id in subagent_job_ids:
-            sa_name = (
-                job_id.replace("agent_", "", 1).rsplit("_", 1)[0]
-                if "_" in job_id
-                else job_id
-            )
-            short_id = job_id.rsplit("_", 1)[-1][:6] if "_" in job_id else ""
-            label = f"{sa_name}[{short_id}]" if short_id else sa_name
-
-            if job_id.startswith("error_"):
-                status_lines.append(f"- `{job_id}`: ERROR - Sub-agent not registered")
-                self.output_router.default_output.on_activity(
-                    "subagent_error", f"[{label}] Not registered"
-                )
-                continue
-
-            result = self.subagent_manager.get_result(job_id)
-            if result:
-                if result.success:
-                    output = result.truncated(max_chars=STATUS_PREVIEW_MAX_CHARS)
-                    status_lines.append(
-                        f"- `{job_id}`: DONE (turns={result.turns})\n{output}"
-                    )
-                    self.output_router.default_output.on_activity(
-                        "subagent_done",
-                        f"[{label}] DONE (turns={result.turns})",
-                    )
-                else:
-                    status_lines.append(f"- `{job_id}`: ERROR - {result.error}")
-                    self.output_router.default_output.on_activity(
-                        "subagent_error", f"[{label}] ERROR: {result.error}"
-                    )
-            else:
-                status_lines.append(f"- `{job_id}`: RUNNING")
-                remaining_sa.append(job_id)
-
-        if not status_lines:
-            return "", remaining_bg, remaining_sa
-
-        # Clear header indicating which jobs finished vs still running
-        header = "## Background Jobs Status"
-        if not remaining_bg and not remaining_sa:
-            header += " (all completed)"
-        else:
-            running = len(remaining_bg) + len(remaining_sa)
-            header += f" ({running} still running)"
-
-        return (
-            header + "\n\n" + "\n".join(status_lines),
-            remaining_bg,
-            remaining_sa,
-        )
-
     async def _start_subagent_async(self, event: SubAgentCallEvent) -> str:
         """
         Start a sub-agent execution.
@@ -730,3 +541,15 @@ class AgentHandlersMixin:
             except Exception as e:
                 logger.error("Trigger error", error=str(e))
                 await asyncio.sleep(1.0)  # Backoff on error
+
+    def _on_bg_complete(self, event: TriggerEvent) -> None:
+        """Callback fired by executor when a background job completes.
+
+        Creates a new asyncio task to process the result through
+        _process_event, same path as triggers. The processing lock
+        ensures serialization with any ongoing LLM turn.
+        """
+        if not self._running:
+            return
+        logger.info("Background job completed", event_type=event.type)
+        asyncio.create_task(self._process_event(event))

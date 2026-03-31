@@ -189,6 +189,11 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         if self._triggers:
             logger.info("Triggers started", count=len(self._triggers))
 
+        # Wire executor completion callback -> _process_event
+        # When a background tool finishes, it fires _process_event
+        # as a new task (same path as triggers)
+        self.executor._on_complete = self._on_bg_complete
+
         self._running = True
         self._shutdown_event.clear()
 
@@ -234,14 +239,12 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             idle_logged = False
             while self._running:
 
-                # Wait for EITHER user input OR background job completion
+                # Get input (triggers fire _process_event directly via separate tasks)
                 if not idle_logged:
-                    logger.debug(
-                        "Agent idle, waiting for input or background results..."
-                    )
+                    logger.debug("Agent idle, waiting for input...")
                     idle_logged = True
 
-                event = await self._wait_for_next_event()
+                event = await self.input.get_input()
 
                 # Check for exit
                 if event is None:
@@ -277,40 +280,6 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             raise
         finally:
             await self.stop()
-
-    async def _wait_for_next_event(self) -> TriggerEvent | None:
-        """Wait for the next event from any source.
-
-        Races user input against background job completions.
-        Returns whichever arrives first. This allows the agent to
-        be idle while background tools (like terrarium_observe) run,
-        and wake up when either the user types or a background job
-        delivers results.
-        """
-        input_task = asyncio.create_task(self.input.get_input())
-        bg_task = asyncio.create_task(self.executor.get_next_event(timeout=None))
-
-        done, pending = await asyncio.wait(
-            {input_task, bg_task},
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-
-        # Cancel the loser
-        for task in pending:
-            task.cancel()
-            try:
-                await task
-            except (asyncio.CancelledError, Exception):
-                pass
-
-        # Return the winner's result
-        for task in done:
-            try:
-                return task.result()
-            except Exception:
-                return None
-
-        return None
 
     # =========================================================================
     # Programmatic API
