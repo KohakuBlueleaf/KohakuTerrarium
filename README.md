@@ -143,16 +143,29 @@ kt terrarium run examples/terrariums/swe_team_managed_tui/
 ## Architecture
 
 ```
-Input ----------+
-                +----> Controller (LLM) <----> Tools (parallel, async)
-Triggers -------+           |            <---->  |  can create/delete triggers
-  ^                         |            <----> Sub-Agents (nested LLMs)
-  |                         |                     +-- own tools & triggers
-  +---- tools can           |
-        manage triggers     |
-                      +-----+------+
-                      |            |
-                   Output      Channels ----> Other Creatures
+              List, Create, Delete
+              v                 ^
+         +---------+      +---------+
+         | Trigger |<-----| Tools   |
+         | System  |      | System  |
+         +---------+      +---------+
+          ^   |  ^           ^   |
+          |   v  |           |   v
+ Input -->+   |  |      Controller (LLM) <----> Sub-Agents
+              |  |           |   |               (own tools
+              |  +-- fires --+   |                & triggers)
+              |                  |
+   Receive    |        +---------+---------+
+      |       v        |                   |
+ +----------+     +----------+      +----------+
+ | Channels |     | Channels |      |  Output  |
+ +----------+     +----------+      +----------+
+       ^
+       |
+ +----------+
+ |  Other   |
+ | Creature |
+ +----------+
 ```
 
 Three concurrent event sources drive every agent:
