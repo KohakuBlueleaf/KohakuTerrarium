@@ -8,10 +8,7 @@ import asyncio
 from pathlib import Path
 from typing import Any, Callable
 
-from kohakuterrarium.core.constants import (
-    COMPLETION_EVENT_MAX_CHARS,
-    TOOL_OUTPUT_PREVIEW_CHARS,
-)
+from kohakuterrarium.core.constants import TOOL_OUTPUT_PREVIEW_CHARS
 from kohakuterrarium.core.events import TriggerEvent, create_tool_complete_event
 from kohakuterrarium.core.job import (
     JobResult,
@@ -192,12 +189,10 @@ class Executor:
             logger.info("Tool %s: %s", tool.tool_name, status)
             logger.debug("Tool job completed", job_id=job_id, success=result.success)
 
-            # Create completion event
+            # Create completion event (full output, no truncation)
             event = create_tool_complete_event(
                 job_id=job_id,
-                content=(
-                    result.output[:COMPLETION_EVENT_MAX_CHARS] if result.output else ""
-                ),
+                content=result.output if result.output else "",
                 exit_code=result.exit_code,
                 error=result.error,
             )

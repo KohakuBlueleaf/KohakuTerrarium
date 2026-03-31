@@ -10,10 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from kohakuterrarium.core.constants import (
-    SUBAGENT_TOOL_OUTPUT_MAX_CHARS,
-    TOOL_OUTPUT_PREVIEW_CHARS,
-)
+from kohakuterrarium.core.constants import TOOL_OUTPUT_PREVIEW_CHARS
 from kohakuterrarium.core.conversation import Conversation
 from kohakuterrarium.core.events import TriggerEvent
 from kohakuterrarium.core.executor import Executor
@@ -471,11 +468,7 @@ class SubAgent:
                 if result.success:
                     # Use get_text_output() to handle both str and multimodal
                     text_output = result.get_text_output()
-                    output = (
-                        text_output[:SUBAGENT_TOOL_OUTPUT_MAX_CHARS]
-                        if text_output
-                        else "(no output)"
-                    )
+                    output = text_output if text_output else "(no output)"
                     results.append(f"[{tool_call.name}]\n{output}")
                     # Log success with output preview
                     output_preview = (text_output or "")[:100].replace("\n", " ")

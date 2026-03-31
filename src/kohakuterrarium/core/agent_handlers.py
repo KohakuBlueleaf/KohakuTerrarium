@@ -9,7 +9,7 @@ the main Agent class to keep file sizes manageable.
 import asyncio
 from typing import Any
 
-from kohakuterrarium.core.constants import TOOL_RESULT_MAX_CHARS
+
 from kohakuterrarium.core.controller import Controller
 from kohakuterrarium.core.events import (
     EventType,
@@ -428,7 +428,7 @@ class AgentHandlersMixin:
                     "tool_error", f"[{tool_name}] ERROR: {result.error}"
                 )
             elif result is not None:
-                content = result.output[:TOOL_RESULT_MAX_CHARS] if result.output else ""
+                content = result.output if result.output else ""
                 status = "OK" if result.exit_code == 0 else f"exit={result.exit_code}"
                 self.output_router.default_output.on_activity(
                     "tool_done", f"[{tool_name}] {status}"
@@ -482,7 +482,7 @@ class AgentHandlersMixin:
                     "tool_error", f"[{tool_name}] FAILED: {result}"
                 )
             elif result is not None:
-                output = result.output[:TOOL_RESULT_MAX_CHARS] if result.output else ""
+                output = result.output if result.output else ""
                 if result.error:
                     result_strs.append(f"## {job_id} - ERROR\n{result.error}\n{output}")
                     logger.info("Tool %s: error", tool_name)
