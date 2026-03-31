@@ -52,10 +52,10 @@ Manages async tool execution in the background.
 
 **Execution flow:**
 1. Tool call detected during LLM streaming
-2. `start_tool()` creates `asyncio.Task` immediately (non-blocking)
+2. `submit()` creates `asyncio.Task` immediately (non-blocking)
 3. LLM continues streaming
-4. After streaming ends, `wait_for_direct_tools()` gathers results
-5. Results batched into feedback event
+4. For DIRECT tools: processing loop waits for task, feeds result back
+5. For BACKGROUND tools: placeholder added to conversation, result delivered later via `_on_complete` callback
 
 **Job tracking:**
 - Each tool execution gets a unique `job_id`
@@ -157,7 +157,7 @@ class Tool(Protocol):
     async def execute(self, args: dict[str, Any]) -> ToolResult
 ```
 
-Tools with `needs_context = True` receive a `ToolContext` with agent name, session, working directory, and memory path.
+Tools with `needs_context = True` receive a `ToolContext` with agent name, session, working directory, memory path, environment, and tool_format.
 
 ### Output Modules (`modules/output/base.py`)
 
@@ -194,7 +194,7 @@ Activity notifications (`on_activity()`) are separate from text output - they ar
 
 ### Sub-Agent System (`modules/subagent/`)
 
-Sub-agents are always background jobs. The `SubAgentManager` registers and spawns sub-agents, sharing the `JobStore` with the executor. See [Creatures - Sub-Agents](../concept/creature.md#sub-agents) for the conceptual overview.
+Sub-agents are background jobs. The `SubAgentManager` registers and spawns sub-agents, sharing the `JobStore` with the executor. Results are delivered via the executor's `_on_complete` callback, same as background tools. See [Creatures - Sub-Agents](../concept/creature.md#sub-agents) for the conceptual overview.
 
 ## Parsing System
 
@@ -224,29 +224,86 @@ Builds complete system prompts from components:
 4. **Output model hints** (if named outputs configured)
 
 **Skill modes:**
-- **Dynamic** (default): Model uses `[/info]tool_name[info/]` to read docs on demand
+- **Dynamic** (default): Model uses the `info` tool to read docs on demand
 - **Static**: All tool docs included in system prompt upfront
 
-## Agent Process Loop
+## Agent Event Architecture
 
-The full event processing loop in `agent_handlers.py` has six phases:
+The agent has three concurrent event sources, all converging on `_process_event()`:
 
 ```
-Phase 1: Reset router state for new iteration
-Phase 2: Run controller.run_once()
-         +-- ToolCallEvent     -> start_tool_async() (direct or background)
-         +-- SubAgentCallEvent -> start_subagent_async() (always background)
-         +-- CommandResultEvent-> on_activity()
-         +-- Other             -> output_router.route()
-Phase 3: Termination check (max_turns, keywords, duration)
-Phase 4: Flush output, update job tracking
-Phase 5: Collect feedback
-         +-- Output feedback (what was sent to named outputs)
-         +-- Direct tool results (waited for)
-         +-- Background job status (RUNNING or DONE)
-Phase 6: Push feedback to controller -> loop back to Phase 1
+                  +-------------------+
+                  |  _process_event() |  <-- processing lock serializes access
+                  +-------------------+
+                    ^       ^       ^
+                    |       |       |
+              +-----+  +---+---+  +--------+
+              |Input |  |Trigger|  |BG Tool |
+              |Loop  |  |Tasks  |  |Complete|
+              +------+  +-------+  +--------+
 
-Exit condition: no new jobs AND no pending jobs AND no feedback
+Input Loop:    agent.run() -> input.get_input() -> _process_event()
+Trigger Tasks: asyncio.create_task(_run_trigger()) -> _process_event()
+BG Complete:   executor._on_complete callback -> asyncio.create_task(_process_event())
+```
+
+**Input loop** (`agent.run()`): Blocks on `input.get_input()`, processes user messages.
+
+**Trigger tasks**: Each trigger runs as a separate `asyncio.Task`. When a trigger fires (channel message, timer, etc.), it calls `_process_event()` directly.
+
+**Background completion**: When a background tool finishes, the executor calls `_on_bg_complete` which creates a new task calling `_process_event()`. This is the SAME delivery path as triggers.
+
+The `_processing_lock` (asyncio.Lock) ensures only one `_process_event` runs at a time, serializing concurrent trigger fires and background completions.
+
+## Processing Loop
+
+`_process_event_with_controller()` handles ONE event and all its direct tool calls:
+
+```
+Phase 1: Reset router, prepare tracking
+Phase 2: Run controller.run_once()
+         +-- ToolCallEvent (direct)    -> start task, track in direct_tasks
+         +-- ToolCallEvent (background)-> start task, add placeholder to conversation
+         +-- SubAgentCallEvent         -> start sub-agent (background)
+         +-- CommandResultEvent        -> on_activity()
+         +-- TextEvent / Other         -> output_router.route()
+Phase 3: Termination check
+Phase 4: Flush output, collect feedback
+         +-- Output feedback (named outputs)
+         +-- Direct tool results (waited for)
+Phase 5: Exit if no feedback; continue if direct results pending
+Phase 6: Push feedback to controller -> loop to Phase 1
+```
+
+**Key design: background tools do NOT block the loop.** They get a placeholder response ("Running in background") so the API always sees a tool result for every tool call. When the background tool finishes, the executor's `_on_complete` callback fires `_process_event` as a new event -- the agent is back in idle by then, waiting for input or the next trigger.
+
+### Tool Execution Modes
+
+| Mode | Declaration | Behavior |
+|------|-------------|----------|
+| **DIRECT** | `execution_mode = ExecutionMode.DIRECT` | Loop waits for result, feeds back to LLM |
+| **BACKGROUND** | `execution_mode = ExecutionMode.BACKGROUND` | Placeholder response, result delivered later via `_on_complete` |
+| **Opt-in background** | Model passes `run_in_background=True` | Same as BACKGROUND, but decided by the model at call time |
+
+Tools declaring `BACKGROUND` mode are FORCED background -- the model cannot make them direct. This is used for tools like `terrarium_observe` that wait indefinitely for external events.
+
+### Example: Root Agent + Background Observe
+
+```
+1. User: "Fix the auth bug"
+2. _process_event(user_input)
+   -> LLM calls terrarium_send(channel=tasks, message="Fix auth bug")  [direct]
+   -> LLM calls terrarium_observe(channel=results)                      [forced bg]
+   -> terrarium_send completes, result fed back
+   -> terrarium_observe gets placeholder "Running in background"
+   -> LLM responds: "Task dispatched, team is working on it"
+   -> No more feedback -> loop exits
+3. Agent idle, waiting for input.get_input()
+4. ... swe creature works, posts to results channel ...
+5. terrarium_observe receives message, executor fires _on_complete
+6. _on_bg_complete -> asyncio.create_task(_process_event(tool_complete_event))
+7. _process_event runs with the observe result
+   -> LLM sees the result, summarizes for user
 ```
 
 ## File Organization
