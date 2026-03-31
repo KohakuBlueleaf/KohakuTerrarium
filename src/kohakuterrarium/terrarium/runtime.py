@@ -310,6 +310,7 @@ class TerrariumRuntime(HotPlugMixin):
             "terrarium_stop",
             "terrarium_send",
             "terrarium_observe",
+            "terrarium_history",
             "creature_start",
             "creature_stop",
         ]

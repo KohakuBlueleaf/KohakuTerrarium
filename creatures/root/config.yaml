@@ -11,5 +11,6 @@ tools:
   - { name: terrarium_stop, type: builtin }
   - { name: terrarium_send, type: builtin }
   - { name: terrarium_observe, type: builtin }
+  - { name: terrarium_history, type: builtin }
   - { name: creature_start, type: builtin }
   - { name: creature_stop, type: builtin }

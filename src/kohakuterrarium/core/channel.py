@@ -42,9 +42,11 @@ class ChannelMessage:
 class BaseChannel(ABC):
     """Base interface for all channel types."""
 
-    def __init__(self, name: str, description: str = ""):
+    def __init__(self, name: str, description: str = "", max_history: int = 200):
         self.name = name
         self.description = description
+        self.history: list[ChannelMessage] = []
+        self._max_history = max_history
 
     @abstractmethod
     async def send(self, message: ChannelMessage) -> None: ...
@@ -80,6 +82,9 @@ class SubAgentChannel(BaseChannel):
     async def send(self, message: ChannelMessage) -> None:
         """Send a message to the channel."""
         message.channel = self.name
+        self.history.append(message)
+        if len(self.history) > self._max_history:
+            self.history = self.history[-self._max_history :]
         await self._queue.put(message)
         logger.debug(
             "Message sent on channel '%s' from '%s'",
@@ -203,6 +208,9 @@ class AgentChannel(BaseChannel):
     async def send(self, message: ChannelMessage) -> None:
         """Broadcast a message to all subscribers except the sender."""
         message.channel = self.name
+        self.history.append(message)
+        if len(self.history) > self._max_history:
+            self.history = self.history[-self._max_history :]
         delivered = 0
         for sub_id, queue in self._subscribers.items():
             if sub_id == message.sender:

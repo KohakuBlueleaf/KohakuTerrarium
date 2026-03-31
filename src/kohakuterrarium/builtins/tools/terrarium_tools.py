@@ -398,6 +398,88 @@ class TerrariumObserveTool(BaseTool):
             return ToolResult(error=str(e))
 
 
+@register_builtin("terrarium_history")
+class TerrariumHistoryTool(BaseTool):
+    """Read recent message history from a terrarium channel."""
+
+    needs_context = True
+
+    @property
+    def tool_name(self) -> str:
+        return "terrarium_history"
+
+    @property
+    def description(self) -> str:
+        return "Read the last K messages from a terrarium channel"
+
+    @property
+    def execution_mode(self) -> ExecutionMode:
+        return ExecutionMode.DIRECT
+
+    def get_parameters_schema(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "terrarium_id": {
+                    "type": "string",
+                    "description": "Terrarium ID",
+                },
+                "channel": {
+                    "type": "string",
+                    "description": "Channel name to read history from",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Number of recent messages to return (default 10)",
+                },
+            },
+            "required": ["terrarium_id", "channel"],
+        }
+
+    async def _execute(
+        self, args: dict[str, Any], context: ToolContext | None = None
+    ) -> ToolResult:
+        manager = _get_manager(context)
+
+        terrarium_id = args.get("terrarium_id", "").strip()
+        channel_name = args.get("channel", "").strip()
+        limit = int(args.get("limit", 10))
+
+        if not terrarium_id or not channel_name:
+            return ToolResult(error="terrarium_id and channel are required")
+
+        try:
+            runtime = manager.get_runtime(terrarium_id)
+            ch = runtime.environment.shared_channels.get(channel_name)
+            if ch is None:
+                available = runtime.environment.shared_channels.list_channels()
+                ch_names = [info["name"] for info in available]
+                return ToolResult(
+                    error=f"Channel '{channel_name}' not found. Available: {ch_names}"
+                )
+
+            messages = ch.history[-limit:]
+
+            if not messages:
+                return ToolResult(
+                    output=f"No messages in [{channel_name}].",
+                    exit_code=0,
+                )
+
+            lines = [f"Last {len(messages)} message(s) in [{channel_name}]:"]
+            for msg in messages:
+                ts = msg.timestamp.strftime("%H:%M:%S")
+                content = (
+                    msg.content if isinstance(msg.content, str) else str(msg.content)
+                )
+                lines.append(f"  [{ts}] {msg.sender}: {content}")
+
+            return ToolResult(output="\n".join(lines), exit_code=0)
+
+        except KeyError as e:
+            return ToolResult(error=str(e))
+
+
 @register_builtin("creature_start")
 class CreatureStartTool(BaseTool):
     """Add and start a new creature in a running terrarium."""
