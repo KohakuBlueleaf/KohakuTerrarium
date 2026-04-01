@@ -13,6 +13,8 @@ Method hierarchy:
 """
 
 import asyncio
+import os
+from pathlib import Path
 from typing import Any, AsyncIterator
 from uuid import uuid4
 
@@ -44,12 +46,14 @@ class KohakuManager:
       creature_channel_*   creature private channel ops
     """
 
-    def __init__(self) -> None:
+    def __init__(self, session_dir: str | None = None) -> None:
         self._terrariums: dict[str, TerrariumRuntime] = {}
         self._terrarium_tasks: dict[str, asyncio.Task] = {}
         self._mounted: dict[str, AgentSession] = {}  # mounted creature sessions
         self._agents: dict[str, AgentSession] = {}
         self._observers: dict[str, ChannelObserver] = {}
+        self._session_stores: dict[str, Any] = {}
+        self._session_dir = session_dir
 
     # =================================================================
     # Agent Lifecycle
@@ -173,6 +177,48 @@ class KohakuManager:
         env = Environment(env_id=f"terrarium_{cfg.name}_{uuid4().hex[:8]}")
         runtime = TerrariumRuntime(cfg, environment=env)
         self._terrariums[terrarium_id] = runtime
+
+        # Prepare session store before run (auto-attached after start inside run)
+        if self._session_dir:
+            try:
+                from kohakuterrarium.session.store import SessionStore
+
+                session_path = Path(self._session_dir) / f"{terrarium_id}.kt"
+                store = SessionStore(session_path)
+                store.init_meta(
+                    session_id=terrarium_id,
+                    config_type="terrarium",
+                    config_path=config_path or "",
+                    pwd=os.getcwd(),
+                    agents=[c.name for c in cfg.creatures]
+                    + (["root"] if cfg.root else []),
+                    terrarium_name=cfg.name,
+                    terrarium_channels=[
+                        {
+                            "name": ch.name,
+                            "type": ch.channel_type,
+                            "description": ch.description,
+                        }
+                        for ch in cfg.channels
+                    ],
+                    terrarium_creatures=[
+                        {
+                            "name": c.name,
+                            "listen": c.listen_channels,
+                            "send": c.send_channels,
+                        }
+                        for c in cfg.creatures
+                    ],
+                )
+                runtime._pending_session_store = store
+                self._session_stores[terrarium_id] = store
+                logger.info("Session store prepared", terrarium_id=terrarium_id)
+            except Exception as e:
+                logger.warning(
+                    "Failed to create session store",
+                    terrarium_id=terrarium_id,
+                    error=str(e),
+                )
 
         task = asyncio.create_task(runtime.run())
         self._terrarium_tasks[terrarium_id] = task

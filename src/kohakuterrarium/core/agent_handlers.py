@@ -63,6 +63,21 @@ class AgentHandlersMixin:
         triggers fire simultaneously (e.g. broadcast), events are
         serialized so only one LLM call runs at a time.
         """
+        # Record user input to session store (catches CLI + inject_input + all sources)
+        if (
+            hasattr(self, "session_store")
+            and self.session_store
+            and event.type == "user_input"
+        ):
+            content = (
+                event.get_text_content()
+                if hasattr(event, "is_multimodal") and event.is_multimodal()
+                else (event.content or "")
+            )
+            self.session_store.append_event(
+                self.config.name, "user_input", {"content": content}
+            )
+
         async with self._processing_lock:
             if not self._running:
                 logger.debug("Dropping event, agent stopped", event_type=event.type)

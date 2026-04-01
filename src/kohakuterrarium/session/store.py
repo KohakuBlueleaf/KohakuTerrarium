@@ -15,6 +15,7 @@ Single .kt file (SQLite) containing:
 import os
 import platform
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -390,7 +391,6 @@ class SessionStore:
         terrarium_creatures: list[dict] | None = None,
     ) -> None:
         """Initialize session metadata. Called once when session is created."""
-        from datetime import datetime, timezone
 
         now = datetime.now(timezone.utc).isoformat()
 
@@ -416,14 +416,12 @@ class SessionStore:
 
     def update_status(self, status: str) -> None:
         """Update session status (running, paused, completed, crashed)."""
-        from datetime import datetime, timezone
 
         self.meta["status"] = status
         self.meta["last_active"] = datetime.now(timezone.utc).isoformat()
 
     def touch(self) -> None:
         """Update last_active timestamp."""
-        from datetime import datetime, timezone
 
         self.meta["last_active"] = datetime.now(timezone.utc).isoformat()
 

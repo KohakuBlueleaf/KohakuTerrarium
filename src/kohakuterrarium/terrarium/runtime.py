@@ -202,6 +202,11 @@ class TerrariumRuntime(HotPlugMixin):
         """
         await self.start()
 
+        # Attach pending session store (set before run, applied after start)
+        if hasattr(self, "_pending_session_store") and self._pending_session_store:
+            self.attach_session_store(self._pending_session_store)
+            self._pending_session_store = None
+
         try:
             for handle in self._creatures.values():
                 task = asyncio.create_task(
@@ -231,6 +236,59 @@ class TerrariumRuntime(HotPlugMixin):
     # ------------------------------------------------------------------
     # Status
     # ------------------------------------------------------------------
+
+    def attach_session_store(self, store: Any) -> None:
+        """Attach a SessionStore to all creatures, root agent, and channels.
+
+        Must be called AFTER start() (when creatures exist) but works
+        at any time during the runtime lifecycle.
+        """
+        self._session_store = store
+
+        # Attach to all creature agents
+        for name, handle in self._creatures.items():
+            handle.agent.attach_session_store(store)
+
+        # Attach to root agent
+        if self._root_agent is not None:
+            self._root_agent.attach_session_store(store)
+
+        # Register on_send callbacks for all shared channels
+        for ch in self.environment.shared_channels._channels.values():
+
+            def _make_cb(ch_name):
+                def _cb(channel_name, message):
+                    try:
+                        ts = (
+                            message.timestamp.isoformat()
+                            if hasattr(message.timestamp, "isoformat")
+                            else str(message.timestamp)
+                        )
+                        store.save_channel_message(
+                            channel_name,
+                            {
+                                "sender": message.sender,
+                                "content": (
+                                    message.content
+                                    if isinstance(message.content, str)
+                                    else str(message.content)
+                                ),
+                                "msg_id": message.message_id,
+                                "ts": ts,
+                            },
+                        )
+                    except Exception:
+                        pass
+
+                return _cb
+
+            ch.on_send(_make_cb(ch.name))
+
+        logger.info(
+            "Session store attached to terrarium",
+            creatures=list(self._creatures.keys()),
+            channels=len(self.environment.shared_channels._channels),
+        )
 
     @property
     def root_agent(self) -> Agent | None:

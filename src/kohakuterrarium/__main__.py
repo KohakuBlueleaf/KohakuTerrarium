@@ -21,6 +21,7 @@ import yaml
 
 from kohakuterrarium.core.agent import Agent
 from kohakuterrarium.llm.codex_auth import CodexTokens, oauth_login
+from kohakuterrarium.session.store import SessionStore
 from kohakuterrarium.terrarium.cli import (
     add_terrarium_subparser,
     handle_terrarium_command,
@@ -47,6 +48,13 @@ def main() -> int:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         default="INFO",
         help="Logging level",
+    )
+    run_parser.add_argument(
+        "--session",
+        nargs="?",
+        const="__auto__",
+        default=None,
+        help="Enable session persistence (optionally specify .kt file path)",
     )
 
     # List command
@@ -78,7 +86,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.command == "run":
-        return run_agent_cli(args.agent_path, args.log_level)
+        return run_agent_cli(args.agent_path, args.log_level, session=args.session)
     elif args.command == "list":
         return list_agents_cli(args.path)
     elif args.command == "info":
@@ -92,7 +100,7 @@ def main() -> int:
         return 0
 
 
-def run_agent_cli(agent_path: str, log_level: str) -> int:
+def run_agent_cli(agent_path: str, log_level: str, session: str | None = None) -> int:
     """Run an agent from CLI."""
 
     # Setup logging
@@ -111,9 +119,32 @@ def run_agent_cli(agent_path: str, log_level: str) -> int:
             print(f"Error: No config.yaml found in {agent_path}")
             return 1
 
+    store = None
     try:
-        # Create and run agent
+        # Create agent
         agent = Agent.from_path(str(path))
+
+        # Attach session store if requested
+        if session is not None:
+            if session == "__auto__":
+                # Auto-generate path
+                session_dir = Path(".kohaku/sessions")
+                session_dir.mkdir(parents=True, exist_ok=True)
+                session_file = session_dir / f"{agent.config.name}_{id(agent):08x}.kt"
+            else:
+                session_file = Path(session)
+
+            store = SessionStore(session_file)
+            store.init_meta(
+                session_id=f"cli_{id(agent):08x}",
+                config_type="agent",
+                config_path=str(path),
+                pwd=str(Path.cwd()),
+                agents=[agent.config.name],
+            )
+            agent.attach_session_store(store)
+            print(f"Session: {session_file}")
+
         asyncio.run(agent.run())
         return 0
     except KeyboardInterrupt:
@@ -122,6 +153,9 @@ def run_agent_cli(agent_path: str, log_level: str) -> int:
     except Exception as e:
         print(f"Error: {e}")
         return 1
+    finally:
+        if store:
+            store.close()
 
 
 def list_agents_cli(agents_path: str) -> int:

@@ -4,6 +4,7 @@ import argparse
 import asyncio
 from pathlib import Path
 
+from kohakuterrarium.session.store import SessionStore
 from kohakuterrarium.terrarium.config import load_terrarium_config
 from kohakuterrarium.terrarium.observer import ChannelObserver
 from kohakuterrarium.terrarium.runtime import TerrariumRuntime
@@ -47,6 +48,13 @@ def add_terrarium_subparser(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Disable channel observation",
     )
+    run_p.add_argument(
+        "--session",
+        nargs="?",
+        const="__auto__",
+        default=None,
+        help="Enable session persistence (optionally specify .kt file path)",
+    )
 
     # terrarium info <path>
     info_p = terrarium_sub.add_parser("info", help="Show terrarium info")
@@ -87,13 +95,50 @@ def _run_terrarium_cli(args: argparse.Namespace) -> int:
         base = config.root.config_data.get("base_config", "(inline)")
         print(f"Root agent: {base}")
 
+    # Session store setup
+    session_arg = getattr(args, "session", None)
+    store = None
+    session_file = None
+    if session_arg is not None:
+        if session_arg == "__auto__":
+            session_dir = Path(".kohaku/sessions")
+            session_dir.mkdir(parents=True, exist_ok=True)
+            session_file = session_dir / f"{config.name}_{id(config):08x}.kt"
+        else:
+            session_file = Path(session_arg)
+
+        store = SessionStore(session_file)
+        store.init_meta(
+            session_id=f"cli_{config.name}",
+            config_type="terrarium",
+            config_path=str(path),
+            pwd=str(Path.cwd()),
+            agents=[c.name for c in config.creatures]
+            + (["root"] if config.root else []),
+            terrarium_name=config.name,
+            terrarium_channels=[
+                {
+                    "name": ch.name,
+                    "type": ch.channel_type,
+                    "description": ch.description,
+                }
+                for ch in config.channels
+            ],
+            terrarium_creatures=[
+                {"name": c.name, "listen": c.listen_channels, "send": c.send_channels}
+                for c in config.creatures
+            ],
+        )
+        print(f"Session: {session_file}")
+
     # When root agent is configured, it handles all user interaction
     if config.root:
         print()
 
         async def _run_with_root() -> None:
             runtime = TerrariumRuntime(config)
-            # runtime.run() handles root agent + creatures concurrently
+            if store:
+                runtime._pending_session_store = store
             await runtime.run()
 
         try:
@@ -105,6 +150,9 @@ def _run_terrarium_cli(args: argparse.Namespace) -> int:
         except Exception as e:
             print(f"Error: {e}")
             return 1
+        finally:
+            if store:
+                store.close()
 
     # No root agent: basic seed/observe CLI
     seed_prompt = args.seed

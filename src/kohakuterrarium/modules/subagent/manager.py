@@ -88,6 +88,9 @@ class SubAgentManager:
         self._on_complete: Callable[[Any], None] | None = None
         # Callback: (subagent_name, activity_type, tool_name, detail) -> None
         self._on_tool_activity: Callable[[str, str, str, str], None] | None = None
+        # Session store for persisting sub-agent conversations
+        self._session_store: Any = None
+        self._parent_name: str = ""
 
         # Registered sub-agent configs
         self._configs: dict[str, SubAgentConfig] = {}
@@ -242,6 +245,14 @@ class SubAgentManager:
                 parent_cb(sa_name, activity_type, tool_name, detail)
 
             subagent.on_tool_activity = _forward_activity
+
+        # Pass session store for conversation persistence
+        if self._session_store:
+            subagent._session_store = self._session_store
+            subagent._parent_name = self._parent_name
+            subagent._run_index = self._session_store.next_subagent_run(
+                self._parent_name, name
+            )
 
         # Create job wrapper
         job = SubAgentJob(subagent, job_id)

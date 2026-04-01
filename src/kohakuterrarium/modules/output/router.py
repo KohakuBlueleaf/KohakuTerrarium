@@ -351,16 +351,20 @@ class OutputRouter:
             await output.flush()
 
     async def on_processing_start(self) -> None:
-        """Notify output modules that processing is starting."""
+        """Notify all output modules that processing is starting."""
         await self.default_output.on_processing_start()
         for output in self.named_outputs.values():
             await output.on_processing_start()
+        for secondary in self._secondary_outputs:
+            await secondary.on_processing_start()
 
     async def on_processing_end(self) -> None:
-        """Notify output modules that processing has ended."""
+        """Notify all output modules that processing has ended."""
         await self.default_output.on_processing_end()
         for output in self.named_outputs.values():
             await output.on_processing_end()
+        for secondary in self._secondary_outputs:
+            await secondary.on_processing_end()
 
     def reset(self) -> None:
         """

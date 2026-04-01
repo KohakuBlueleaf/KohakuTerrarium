@@ -168,6 +168,11 @@ class SubAgent:
         # Signature: on_tool_activity(activity_type: str, tool_name: str, detail: str)
         self.on_tool_activity: Any = None
 
+        # Optional session store for persisting sub-agent conversations
+        self._session_store: Any = None
+        self._parent_name: str = ""
+        self._run_index: int = 0
+
         # Create limited registry with only allowed tools
         self.registry = self._create_limited_registry()
 
@@ -511,6 +516,34 @@ class SubAgent:
 
         # Build final output
         final_output = "".join(output_parts).strip()
+
+        # Save sub-agent conversation to session store before it's destroyed
+        if self._session_store:
+            try:
+                self._session_store.save_subagent(
+                    parent=self._parent_name,
+                    name=self.config.name,
+                    run=self._run_index,
+                    meta={
+                        "task": (
+                            self.conversation.to_messages()[1].get("content", "")
+                            if len(self.conversation.to_messages()) > 1
+                            else ""
+                        ),
+                        "turns": self._turns,
+                        "tools_used": tools_used,
+                        "success": True,
+                        "duration": self._calculate_duration(),
+                        "output_preview": final_output[:500],
+                    },
+                    conv_json=self.conversation.to_json(),
+                )
+            except Exception as e:
+                logger.debug(
+                    "Failed to save sub-agent conversation",
+                    subagent=self.config.name,
+                    error=str(e),
+                )
 
         return SubAgentResult(
             output=final_output,

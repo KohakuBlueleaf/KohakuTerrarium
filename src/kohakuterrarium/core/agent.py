@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 from kohakuterrarium.core.agent_handlers import AgentHandlersMixin
 from kohakuterrarium.core.agent_init import AgentInitMixin
 from kohakuterrarium.core.config import AgentConfig, load_agent_config
-from kohakuterrarium.core.events import TriggerEvent
+from kohakuterrarium.core.events import TriggerEvent, create_user_input_event
 from kohakuterrarium.core.loader import ModuleLoader
 from kohakuterrarium.core.session import Session
 from kohakuterrarium.core.termination import TerminationChecker, TerminationConfig
@@ -24,6 +24,7 @@ from kohakuterrarium.core.trigger_manager import TriggerManager
 from kohakuterrarium.modules.input.base import InputModule
 from kohakuterrarium.modules.output.base import OutputModule
 from kohakuterrarium.modules.trigger.base import BaseTrigger
+from kohakuterrarium.session.output import SessionOutput
 from kohakuterrarium.utils.logging import get_logger
 
 if TYPE_CHECKING:
@@ -123,6 +124,10 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         self._shutdown_event = asyncio.Event()
         self._processing_lock = asyncio.Lock()
         self.trigger_manager = TriggerManager(self._process_event)
+
+        # Session persistence (set externally via attach_session_store)
+        self.session_store: Any = None
+        self._session_output: Any = None
 
         # Environment and session (explicit or auto-created in _init_executor)
         self.environment: Environment | None = environment
@@ -329,13 +334,12 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         Inject user input programmatically.
 
         Use this to send input without going through the input module.
+        User input is recorded in session store via _process_event hook.
 
         Args:
             text: Input text to inject
             source: Source identifier for context
         """
-        from kohakuterrarium.core.events import create_user_input_event
-
         event = create_user_input_event(text, source=source)
         await self._process_event(event)
 
@@ -347,6 +351,25 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             event: TriggerEvent to inject
         """
         await self._process_event(event)
+
+    def attach_session_store(self, store: Any) -> None:
+        """Attach a SessionStore for persistent event recording.
+
+        Registers a SessionOutput as a secondary output module.
+        Records all text, activity, processing events, conversation
+        snapshots, and agent state to the store.
+        """
+        self.session_store = store
+
+        self._session_output = SessionOutput(self.config.name, store, self)
+        self.output_router.add_secondary(self._session_output)
+
+        # Wire session store to sub-agent manager for conversation capture
+        if hasattr(self, "subagent_manager"):
+            self.subagent_manager._session_store = store
+            self.subagent_manager._parent_name = self.config.name
+
+        logger.debug("Session store attached", agent=self.config.name)
 
     def set_output_handler(self, handler: Any, replace_default: bool = False) -> None:
         """
@@ -361,9 +384,8 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         Example:
             agent.set_output_handler(lambda text: print(f"AI: {text}"))
         """
-        # Create a simple callback output module
-        from kohakuterrarium.modules.output.base import OutputModule
 
+        # Create a simple callback output module
         class CallbackOutput(OutputModule):
             def __init__(self, callback: Any):
                 self._callback = callback
