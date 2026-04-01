@@ -102,6 +102,12 @@ export const agentAPI = {
     await api.delete(`/agents/${id}`);
   },
 
+  /** Get conversation history + event log */
+  async getHistory(id) {
+    const { data } = await api.get(`/agents/${id}/history`);
+    return data;
+  },
+
   /** Non-streaming chat */
   async chat(id, message) {
     const { data } = await api.post(`/agents/${id}/chat`, { message });

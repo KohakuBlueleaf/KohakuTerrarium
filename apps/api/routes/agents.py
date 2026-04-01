@@ -43,6 +43,23 @@ async def stop_agent(agent_id: str, manager=Depends(get_manager)):
         raise HTTPException(404, str(e))
 
 
+@router.get("/{agent_id}/history")
+def agent_history(agent_id: str, manager=Depends(get_manager)):
+    """Get conversation history + event log for a standalone agent."""
+    from apps.api.ws.chat import get_event_log
+
+    try:
+        session = manager._agents.get(agent_id)
+        if not session:
+            raise ValueError(f"Agent not found: {agent_id}")
+        return {
+            "messages": session.agent.conversation_history,
+            "events": get_event_log(f"agent:{agent_id}"),
+        }
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
 @router.post("/{agent_id}/chat")
 async def chat(agent_id: str, req: AgentChat, manager=Depends(get_manager)):
     """Non-streaming chat. For streaming, use the WebSocket endpoint."""

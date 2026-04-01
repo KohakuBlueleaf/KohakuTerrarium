@@ -1,4 +1,4 @@
-import { terrariumAPI } from "@/utils/api";
+import { terrariumAPI, agentAPI } from "@/utils/api";
 import { useMessagesStore } from "@/stores/messages";
 import { useInstancesStore } from "@/stores/instances";
 
@@ -335,6 +335,25 @@ export const useChatStore = defineStore("chat", {
         this.processing = false;
       };
       this._ws = ws;
+
+      // Load history for the creature tab
+      const tabKey = this.tabs[0];
+      if (tabKey) {
+        this._loadAgentHistory(agentId, tabKey);
+      }
+    },
+
+    async _loadAgentHistory(agentId, tabKey) {
+      try {
+        const { messages, events } = await agentAPI.getHistory(agentId);
+        if (events?.length) {
+          this.messagesByTab[tabKey] = _replayEvents(messages, events);
+        } else if (messages?.length) {
+          this.messagesByTab[tabKey] = _convertHistory(messages);
+        }
+      } catch {
+        /* no history yet */
+      }
     },
 
     /** Handle ALL incoming WS messages */
