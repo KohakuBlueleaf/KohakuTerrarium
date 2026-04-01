@@ -6,10 +6,9 @@ version: "1.0"
 
 # LLM Configuration - Controller (orchestration)
 controller:
-  model: "${OPENROUTER_MODEL:google/gemini-3.1-pro-preview}"
+  model: gpt-5.4
+  auth_mode: codex-oauth
   temperature: 1
-  api_key_env: OPENROUTER_API_KEY
-  base_url: https://openrouter.ai/api/v1
   tool_format: native
 
   # Ephemeral mode - clear conversation after each interaction

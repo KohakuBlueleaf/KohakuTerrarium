@@ -6,11 +6,10 @@ version: "1.0"
 
 # LLM Configuration - Controller (orchestration)
 controller:
-  model: "${OPENROUTER_MODEL:google/gemini-3-flash-preview}"
+  model: gpt-5.4
+  auth_mode: codex-oauth
   temperature: 0.7
   max_tokens: 65536
-  api_key_env: OPENROUTER_API_KEY
-  base_url: https://openrouter.ai/api/v1
 
 # System prompt (loaded from file)
 system_prompt_file: prompts/system.md

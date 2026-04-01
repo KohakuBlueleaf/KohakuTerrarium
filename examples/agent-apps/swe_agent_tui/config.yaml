@@ -6,15 +6,6 @@ version: "1.0"
 base_config: creatures/swe
 
 controller:
-  # --- OpenRouter (API credits) ---
-  # model: "${OPENROUTER_MODEL:google/gemini-3-flash-preview}"
-  # temperature: 0.5
-  # max_tokens: 512000
-  # api_key_env: OPENROUTER_API_KEY
-  # base_url: https://openrouter.ai/api/v1
-  # tool_format: native
-
-  # --- Codex OAuth (ChatGPT subscription) ---
   model: gpt-5.4
   auth_mode: codex-oauth
   reasoning_effort: xhigh
