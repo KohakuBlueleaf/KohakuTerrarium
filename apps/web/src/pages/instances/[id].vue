@@ -21,14 +21,36 @@
         instance.pwd
       }}</span>
       <div class="flex-1" />
-      <!-- Token usage display -->
-      <div
-        v-if="totalTokens > 0"
-        class="flex items-center gap-1.5 text-xs text-warm-400 font-mono"
-      >
-        <span class="i-carbon-meter text-amber text-sm" />
-        <span>{{ formatTokens(totalTokens) }}</span>
-      </div>
+      <!-- Token usage display with hover detail -->
+      <el-tooltip v-if="totalTokens > 0" placement="bottom" :show-after="200">
+        <template #content>
+          <div class="text-xs font-mono leading-relaxed">
+            <div
+              v-for="(usage, name) in chat.tokenUsage"
+              :key="name"
+              class="flex justify-between gap-4"
+            >
+              <span class="text-warm-300">{{ name }}</span>
+              <span
+                >{{ formatTokens(usage.prompt) }} in /
+                {{ formatTokens(usage.completion) }} out</span
+              >
+            </div>
+            <div
+              class="border-t border-warm-600 mt-1 pt-1 flex justify-between gap-4"
+            >
+              <span class="font-semibold">total</span>
+              <span class="font-semibold">{{ formatTokens(totalTokens) }}</span>
+            </div>
+          </div>
+        </template>
+        <div
+          class="flex items-center gap-1.5 text-xs text-warm-400 font-mono cursor-default"
+        >
+          <span class="i-carbon-meter text-amber" />
+          <span>{{ formatTokens(totalTokens) }}</span>
+        </div>
+      </el-tooltip>
       <el-tooltip
         :content="
           layoutMode === 'horizontal' ? 'Vertical layout' : 'Horizontal layout'
