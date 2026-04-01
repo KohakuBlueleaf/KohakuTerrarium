@@ -59,6 +59,7 @@ class CodexOAuthProvider(BaseLLMProvider):
         self._tokens: CodexTokens | None = None
         self._client: Any = None  # openai.OpenAI
         self._last_tool_calls: list[NativeToolCall] = []
+        self._last_usage: dict[str, int] = {}
 
     async def ensure_authenticated(self) -> None:
         """Ensure valid tokens exist. Opens browser/device code if needed."""
@@ -337,7 +338,27 @@ class CodexOAuthProvider(BaseLLMProvider):
                                     )
                                 )
                         case "response.completed":
-                            pass
+                            # Extract usage from completed response
+                            resp = getattr(event, "response", None)
+                            if resp:
+                                u = getattr(resp, "usage", None)
+                                if u:
+                                    text_queue.put_nowait(
+                                        (
+                                            "__usage__",
+                                            {
+                                                "prompt_tokens": getattr(
+                                                    u, "input_tokens", 0
+                                                ),
+                                                "completion_tokens": getattr(
+                                                    u, "output_tokens", 0
+                                                ),
+                                                "total_tokens": getattr(
+                                                    u, "total_tokens", 0
+                                                ),
+                                            },
+                                        )
+                                    )
             except Exception as e:
                 logger.error("Stream error", error=str(e))
             finally:
@@ -350,6 +371,10 @@ class CodexOAuthProvider(BaseLLMProvider):
             chunk = await text_queue.get()
             if chunk is None:
                 break
+            # Handle usage tuple from response.completed
+            if isinstance(chunk, tuple) and chunk[0] == "__usage__":
+                self._last_usage = chunk[1]
+                continue
             yield chunk
 
         await consume_task
