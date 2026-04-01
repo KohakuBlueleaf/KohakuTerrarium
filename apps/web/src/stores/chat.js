@@ -46,50 +46,46 @@ function _convertHistory(messages) {
 /**
  * Replay event log to reconstruct exact live view.
  */
+/**
+ * Replay a single ordered event list to reconstruct chat view.
+ * Every event has a `ts` timestamp. We process them strictly in order.
+ * No separate message list, no interleaving heuristics.
+ */
 function _replayEvents(messages, events) {
+  // If no events, fall back to conversation history
+  if (!events?.length) return _convertHistory(messages);
+
+  // Events are already ordered by ts from the backend
   const result = [];
-  let cur = null;
-  const userMsgs = messages.filter((m) => m.role === "user");
-  let ui = 0;
+  let cur = null; // current assistant message being built
 
   for (const evt of events) {
     if (evt.type === "user_input") {
-      // User message recorded in event log
+      cur = null;
       result.push({
-        id: "h_u_" + result.length,
+        id: "h_" + result.length,
         role: "user",
         content: evt.content || "",
         timestamp: "",
       });
-      cur = null;
-      continue;
-    }
-    if (evt.type === "processing_start") {
-      // If no user_input event preceded this, try to insert from conversation
-      if (
-        ui < userMsgs.length &&
-        !result.some(
-          (m) => m.role === "user" && m.content === userMsgs[ui]?.content,
-        )
-      ) {
-        result.push({
-          id: "h_u_" + ui,
-          role: "user",
-          content: userMsgs[ui].content || "",
-          timestamp: "",
-        });
-        ui++;
-      }
+    } else if (evt.type === "processing_start") {
       cur = {
-        id: "h_a_" + result.length,
+        id: "h_" + result.length,
         role: "assistant",
         parts: [],
         timestamp: "",
       };
       result.push(cur);
-    } else if (evt.type === "text" && cur) {
-      // Append to last text part or create new
-      if (!cur.parts) cur.parts = [];
+    } else if (evt.type === "text") {
+      if (!cur) {
+        cur = {
+          id: "h_" + result.length,
+          role: "assistant",
+          parts: [],
+          timestamp: "",
+        };
+        result.push(cur);
+      }
       const tail = cur.parts.length ? cur.parts[cur.parts.length - 1] : null;
       if (tail && tail.type === "text") {
         tail.content += evt.content;
@@ -97,14 +93,17 @@ function _replayEvents(messages, events) {
         cur.parts.push({ type: "text", content: evt.content });
       }
     } else if (evt.type === "activity") {
-      // Trigger fired: insert as trigger message
-      if (evt.activity_type === "trigger_fired") {
+      const at = evt.activity_type;
+
+      // Trigger fired: standalone message, breaks current assistant
+      if (at === "trigger_fired") {
+        cur = null;
         const channel = evt.channel || "";
         const sender = evt.sender || "";
         const label = channel ? `channel: ${channel}` : evt.name;
         const from = sender ? ` from ${sender}` : "";
         result.push({
-          id: "h_trig_" + result.length,
+          id: "h_" + result.length,
           role: "trigger",
           content: `${label}${from}`,
           channel,
@@ -113,18 +112,26 @@ function _replayEvents(messages, events) {
         });
         continue;
       }
+
+      // Token usage: skip in replay (shown in header)
+      if (at === "token_usage" || at === "processing_complete") continue;
+
+      // Tool/subagent activity: attach to current assistant
       if (!cur) {
         cur = {
-          id: "h_a_" + result.length,
+          id: "h_" + result.length,
           role: "assistant",
           parts: [],
           timestamp: "",
         };
         result.push(cur);
       }
-      if (!cur.parts) cur.parts = [];
-      const at = evt.activity_type;
+
       if (at === "tool_start" || at === "subagent_start") {
+        // Finalize trailing text part
+        const tail = cur.parts.length ? cur.parts[cur.parts.length - 1] : null;
+        if (tail && tail.type === "text") tail._streaming = false;
+
         cur.parts.push({
           type: "tool",
           id: evt.id,
@@ -156,6 +163,7 @@ function _replayEvents(messages, events) {
       cur = null;
     }
   }
+
   // Clean up empty parts
   for (const msg of result) {
     if (msg.parts?.length === 0) delete msg.parts;
