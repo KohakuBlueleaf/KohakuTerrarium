@@ -5,59 +5,38 @@
 #   tasks -> swe (implements) -> review -> reviewer (reviews)
 #   reviewer sends feedback or approval back
 #   team_chat broadcast for coordination
-#
-# Without root: basic CLI interface (inject tasks, observe channels)
-#   kt terrarium run terrariums/swe_team/
-#
-# With root: uncomment the root section below
-#   The user talks to root agent, root orchestrates the team
 
 terrarium:
   name: swe_team
 
-  # Optional: root agent manages this terrarium from outside
-  # Uncomment to enable root agent interface:
-  #
-  # root:
-  #   base_config: creatures/root
-  #   controller:
-  #     # --- OpenRouter (API credits) ---
-  #     model: "${OPENROUTER_MODEL:google/gemini-3-flash-preview}"
-  #     api_key_env: OPENROUTER_API_KEY
-  #     base_url: https://openrouter.ai/api/v1
-  #     tool_format: native
-  #     # --- Codex OAuth (ChatGPT subscription) ---
-  #     # model: gpt-5.4
-  #     # auth_mode: codex-oauth
-  #     # reasoning_effort: high
-  #     # tool_format: native
-  #   input:
-  #     type: cli
-  #   output:
-  #     type: stdout
-  #     controller_direct: true
+  root:
+    base_config: creatures/root
+    controller:
+      model: gpt-5.4
+      auth_mode: codex-oauth
+      reasoning_effort: high
+      tool_format: native
 
   creatures:
     - name: swe
       base_config: creatures/swe
-      # Override controller per-creature (optional):
-      # controller:
-      #   model: gpt-5.4
-      #   auth_mode: codex-oauth
-      #   reasoning_effort: xhigh
-      #   service_tier: priority
-      #   tool_format: native
+      controller:
+        model: gpt-5.4
+        auth_mode: codex-oauth
+        reasoning_effort: xhigh
+        service_tier: priority
+        tool_format: native
       channels:
         listen: [tasks, feedback, team_chat]
         can_send: [review, team_chat]
 
     - name: reviewer
       base_config: creatures/reviewer
-      # controller:
-      #   model: gpt-5.4
-      #   auth_mode: codex-oauth
-      #   reasoning_effort: high
-      #   tool_format: native
+      controller:
+        model: gpt-5.4
+        auth_mode: codex-oauth
+        reasoning_effort: high
+        tool_format: native
       channels:
         listen: [review, team_chat]
         can_send: [feedback, results, team_chat]

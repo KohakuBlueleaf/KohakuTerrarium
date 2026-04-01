@@ -47,6 +47,7 @@ class KohakuManager:
     def __init__(self) -> None:
         self._terrariums: dict[str, TerrariumRuntime] = {}
         self._terrarium_tasks: dict[str, asyncio.Task] = {}
+        self._mounted: dict[str, AgentSession] = {}  # mounted creature sessions
         self._agents: dict[str, AgentSession] = {}
         self._observers: dict[str, ChannelObserver] = {}
 
@@ -175,7 +176,7 @@ class KohakuManager:
 
         task = asyncio.create_task(runtime.run())
         self._terrarium_tasks[terrarium_id] = task
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.5)
 
         logger.info("Terrarium created", terrarium_id=terrarium_id)
         return terrarium_id
@@ -185,6 +186,10 @@ class KohakuManager:
         observer = self._observers.pop(terrarium_id, None)
         if observer:
             await observer.stop()
+        # Cleanup any mounted sessions for this terrarium
+        to_remove = [k for k in self._mounted if k.startswith(f"{terrarium_id}:")]
+        for k in to_remove:
+            self._mounted.pop(k, None)
         runtime = self._terrariums.pop(terrarium_id, None)
         if runtime:
             await runtime.stop()
@@ -195,6 +200,56 @@ class KohakuManager:
                 await task
             except asyncio.CancelledError:
                 pass
+
+    def terrarium_mount(self, terrarium_id: str, target: str) -> AgentSession:
+        """Mount onto a creature (or root) in a running terrarium.
+
+        Creates an AgentSession wrapping the target's Agent. This lets
+        the API inject input and capture output without modifying the
+        terrarium runtime.
+
+        Args:
+            terrarium_id: The terrarium ID.
+            target: "root" for the root agent, or a creature name.
+
+        Returns:
+            AgentSession wrapping the target agent.
+        """
+        mount_key = f"{terrarium_id}:{target}"
+        if mount_key in self._mounted:
+            return self._mounted[mount_key]
+
+        runtime = self._get_runtime(terrarium_id)
+
+        if target == "root":
+            agent = runtime.root_agent
+            if agent is None:
+                raise ValueError(f"Terrarium {terrarium_id} has no root agent")
+        else:
+            agent = runtime.get_creature_agent(target)
+            if agent is None:
+                raise ValueError(f"Creature not found: {target}")
+
+        session = AgentSession(agent, agent_id=mount_key)
+        self._mounted[mount_key] = session
+        return session
+
+    async def terrarium_chat(
+        self, terrarium_id: str, target: str, message: str
+    ) -> AsyncIterator[str]:
+        """Chat with any creature (or root) in a terrarium.
+
+        Mounts onto the target on first call, then injects input
+        and streams response chunks.
+
+        Args:
+            terrarium_id: The terrarium ID.
+            target: "root" for root agent, or creature name.
+            message: The message to send.
+        """
+        session = self.terrarium_mount(terrarium_id, target)
+        async for chunk in session.chat(message):
+            yield chunk
 
     def terrarium_status(self, terrarium_id: str) -> dict:
         """Get terrarium status (creatures, channels, running state)."""

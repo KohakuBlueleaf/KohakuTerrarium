@@ -203,7 +203,6 @@ class TerrariumRuntime(HotPlugMixin):
         await self.start()
 
         try:
-            # Fire startup triggers and run creature event loops
             for handle in self._creatures.values():
                 task = asyncio.create_task(
                     self._run_creature(handle),
@@ -233,6 +232,16 @@ class TerrariumRuntime(HotPlugMixin):
     # Status
     # ------------------------------------------------------------------
 
+    @property
+    def root_agent(self) -> Agent | None:
+        """The root agent, if configured."""
+        return self._root_agent
+
+    def get_creature_agent(self, name: str) -> Agent | None:
+        """Get a creature's Agent instance by name. For API mounting."""
+        handle = self._creatures.get(name)
+        return handle.agent if handle else None
+
     def get_status(self) -> dict[str, Any]:
         """Return a status dict for monitoring."""
         creature_states: dict[str, dict[str, Any]] = {}
@@ -249,6 +258,7 @@ class TerrariumRuntime(HotPlugMixin):
         return {
             "name": self.config.name,
             "running": self._running,
+            "has_root": self._root_agent is not None,
             "creatures": creature_states,
             "channels": channel_info,
         }
