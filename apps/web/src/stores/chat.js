@@ -191,6 +191,8 @@ export const useChatStore = defineStore("chat", {
     /** @type {string[]} */
     tabs: [],
     processing: false,
+    /** @type {Object<string, {prompt: number, completion: number, total: number}>} Per-source token usage */
+    tokenUsage: {},
     /** @type {string | null} */
     _instanceId: null,
     /** @type {string | null} */
@@ -392,6 +394,21 @@ export const useChatStore = defineStore("chat", {
       if (!this.messagesByTab[source]) return;
 
       const msgs = this.messagesByTab[source];
+
+      // Token usage: update per-source usage stats
+      if (at === "token_usage") {
+        const prev = this.tokenUsage[source] || {
+          prompt: 0,
+          completion: 0,
+          total: 0,
+        };
+        this.tokenUsage[source] = {
+          prompt: data.prompt_tokens || prev.prompt,
+          completion: prev.completion + (data.completion_tokens || 0),
+          total: data.total_tokens || prev.total,
+        };
+        return;
+      }
 
       // Trigger fired: show as a system message in the creature's chat
       if (at === "trigger_fired") {
