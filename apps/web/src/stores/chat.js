@@ -106,6 +106,7 @@ function _replayEvents(messages, events) {
           id: "h_" + result.length,
           role: "trigger",
           content: `${label}${from}`,
+          triggerContent: evt.content || "",
           channel,
           sender,
           timestamp: "",
@@ -314,6 +315,7 @@ export const useChatStore = defineStore("chat", {
         );
         if (events?.length) {
           this.messagesByTab[target] = _replayEvents(messages, events);
+          this._restoreTokenUsage(target, events);
         } else if (messages?.length) {
           this.messagesByTab[target] = _convertHistory(messages);
         }
@@ -358,11 +360,30 @@ export const useChatStore = defineStore("chat", {
         const { messages, events } = await agentAPI.getHistory(agentId);
         if (events?.length) {
           this.messagesByTab[tabKey] = _replayEvents(messages, events);
+          this._restoreTokenUsage(tabKey, events);
         } else if (messages?.length) {
           this.messagesByTab[tabKey] = _convertHistory(messages);
         }
       } catch {
         /* no history yet */
+      }
+    },
+
+    /** Restore token usage from event log (for page refresh) */
+    _restoreTokenUsage(source, events) {
+      for (const evt of events) {
+        if (evt.type === "activity" && evt.activity_type === "token_usage") {
+          const prev = this.tokenUsage[source] || {
+            prompt: 0,
+            completion: 0,
+            total: 0,
+          };
+          this.tokenUsage[source] = {
+            prompt: evt.prompt_tokens || prev.prompt,
+            completion: prev.completion + (evt.completion_tokens || 0),
+            total: evt.total_tokens || prev.total,
+          };
+        }
       }
     },
 
@@ -417,7 +438,7 @@ export const useChatStore = defineStore("chat", {
       if (!this.messagesByTab[source]) return;
       const msgs = this.messagesByTab[source];
 
-      // Trigger fired: show as a system message in the creature's chat
+      // Trigger fired: show with expandable message content
       if (at === "trigger_fired") {
         const channel = data.channel || "";
         const sender = data.sender || "";
@@ -427,6 +448,7 @@ export const useChatStore = defineStore("chat", {
           id: "trig_" + Date.now(),
           role: "trigger",
           content: `${label}${from}`,
+          triggerContent: data.content || "",
           channel,
           sender,
           timestamp: new Date().toISOString(),

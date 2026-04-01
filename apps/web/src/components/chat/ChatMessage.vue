@@ -7,15 +7,32 @@
     {{ message.content }}
   </div>
 
-  <!-- Trigger fired -->
+  <!-- Trigger fired (expandable if has message content) -->
   <div
     v-else-if="message.role === 'trigger'"
-    class="flex items-center gap-2 py-1.5 px-3 rounded-lg bg-amber/6 dark:bg-amber/8 border border-amber/15 dark:border-amber/20"
+    class="rounded-lg bg-amber/6 dark:bg-amber/8 border border-amber/15 dark:border-amber/20 overflow-hidden"
   >
-    <span class="w-1.5 h-1.5 rounded-full bg-amber shrink-0" />
-    <span class="text-xs text-amber-shadow dark:text-amber-light">
-      Triggered by <span class="font-semibold">{{ message.content }}</span>
-    </span>
+    <div
+      class="flex items-center gap-2 py-1.5 px-3"
+      :class="message.triggerContent ? 'cursor-pointer select-none' : ''"
+      @click="message.triggerContent && toggleTool('trig_' + message.id)"
+    >
+      <span class="w-1.5 h-1.5 rounded-full bg-amber shrink-0" />
+      <span class="text-xs text-amber-shadow dark:text-amber-light flex-1">
+        Triggered by <span class="font-semibold">{{ message.content }}</span>
+      </span>
+      <span
+        v-if="message.triggerContent"
+        class="i-carbon-chevron-down text-amber/50 text-[10px] transition-transform"
+        :class="{ 'rotate-180': expandedTools['trig_' + message.id] }"
+      />
+    </div>
+    <div
+      v-if="expandedTools['trig_' + message.id] && message.triggerContent"
+      class="px-3 py-2 border-t border-amber/10 dark:border-amber/15 text-xs max-h-32 overflow-y-auto"
+    >
+      <MarkdownRenderer :content="message.triggerContent" />
+    </div>
   </div>
 
   <!-- User message -->
