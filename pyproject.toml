@@ -21,6 +21,8 @@ dependencies = [
     "jinja2>=3.1.0",
     "aiofiles>=24.0.0",
     "python-dotenv>=1.0.0",
+    "kohakuvault>=0.7.0",
+    "textual>=3.0.0",
     "tomli>=2.0.0; python_version<'3.11'",
 ]
 urls = { "Homepage" = "https://github.com/KohakuBlueLeaf/KohakuTerrarium" }
@@ -29,9 +31,7 @@ urls = { "Homepage" = "https://github.com/KohakuBlueLeaf/KohakuTerrarium" }
 kt = "kohakuterrarium.__main__:main"
 
 [project.optional-dependencies]
-tui = [
-    "textual>=3.0.0",
-]
+tui = []
 web = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.34.0",
