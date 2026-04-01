@@ -1,0 +1,68 @@
+{
+  "name": "splitpanes",
+  "version": "4.0.4",
+  "description": "A Vue.js reliable, simple and touch-ready panes splitter / resizer",
+  "author": "Antoni Andre <antoniandre.web@gmail.com>",
+  "homepage": "https://antoniandre.github.io/splitpanes",
+  "repository": "https://github.com/antoniandre/splitpanes",
+  "license": "MIT",
+  "funding": "https://github.com/sponsors/antoniandre",
+  "main": "./dist/splitpanes.es.js",
+  "unpkg": "dist/splitpanes.umd.js",
+  "jsdelivr": "dist/splitpanes.umd.js",
+  "module": "./dist/splitpanes.es.js",
+  "files": [
+    "dist",
+    "src/components/splitpanes"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/splitpanes.es.js",
+      "require": "./dist/splitpanes.umd.js"
+    },
+    "./package.json": "./package.json",
+    "./dist/*": "./dist/*"
+  },
+  "type": "module",
+  "keywords": [
+    "splitpanes",
+    "split panes",
+    "panes resizer",
+    "vue",
+    "vue3",
+    "vuejs",
+    "ui"
+  ],
+  "devDependencies": {
+    "@eslint/js": "^9.27.0",
+    "@mdi/font": "^7.4.47",
+    "@vitejs/plugin-vue": "^5.2.4",
+    "autoprefixer": "^10.4.21",
+    "eslint": "^9.27.0",
+    "eslint-config-standard": "^17.1.0",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-n": "^17.18.0",
+    "eslint-plugin-promise": "^7.2.1",
+    "eslint-plugin-vue": "^9.33.0",
+    "globals": "^16.1.0",
+    "postcss": "^8.5.3",
+    "pug": "^3.0.3",
+    "rollup-plugin-delete": "^3.0.1",
+    "sass": "^1.89.0",
+    "simple-syntax-highlighter": "^3.1.1",
+    "vite": "^6.3.5",
+    "vue": "^3.5.14",
+    "vue-router": "^4.5.1",
+    "wave-ui": "^3.21.1"
+  },
+  "peerDependencies": {
+    "vue": "^3.2.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build --base /splitpanes/",
+    "build-bundle": "BUNDLE=true vite build",
+    "serve": "vite preview --base /splitpanes/",
+    "publish-doc": "npm run build && npm run build-bundle && git add . && git commit -m 'Publish documentation on Github.' && git push && git push --tag"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "name": "kohakuterrarium-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@vue-flow/background": "^1.3.0",
+    "@vue-flow/controls": "^1.1.0",
+    "@vue-flow/core": "^1.41.0",
+    "@vue-flow/minimap": "^1.5.0",
+    "axios": "^1.12.0",
+    "dagre": "^0.8.5",
+    "dayjs": "^1.11.0",
+    "element-plus": "^2.11.0",
+    "highlight.js": "^11.11.0",
+    "katex": "^0.16.44",
+    "markdown-it": "^14.0.0",
+    "markdown-it-katex": "^2.0.3",
+    "pinia": "^3.0.0",
+    "splitpanes": "^4.0.4",
+    "vue": "^3.5.0",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@iconify-json/carbon": "^1.2.0",
+    "@iconify-json/ep": "^1.2.0",
+    "@unocss/preset-attributify": "^66.0.0",
+    "@unocss/preset-icons": "^66.0.0",
+    "@unocss/preset-wind": "^66.0.0",
+    "@unocss/transformer-directives": "^66.0.0",
+    "@vitejs/plugin-vue": "^5.0.0",
+    "rolldown-vite": "latest",
+    "unocss": "^66.0.0",
+    "unplugin-auto-import": "^19.0.0",
+    "unplugin-vue-components": "^28.0.0",
+    "unplugin-vue-router": "^0.10.0"
+  }
+}
