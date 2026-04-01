@@ -14,7 +14,11 @@
 <script setup>
 import NavRail from "@/components/layout/NavRail.vue";
 import { useThemeStore } from "@/stores/theme";
+import { useInstancesStore } from "@/stores/instances";
 
 const theme = useThemeStore();
 theme.init();
+
+const instances = useInstancesStore();
+instances.fetchAll();
 </script>
