@@ -103,6 +103,9 @@ class StreamOutput(OutputModule):
                 "event_type",
                 "channel",
                 "sender",
+                "prompt_tokens",
+                "completion_tokens",
+                "total_tokens",
             ):
                 if k in metadata:
                     msg[k] = metadata[k]
