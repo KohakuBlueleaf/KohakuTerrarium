@@ -390,12 +390,7 @@ export const useChatStore = defineStore("chat", {
       const at = data.activity_type;
       const name = data.name || "unknown";
 
-      // Ensure we have a tab for this source
-      if (!this.messagesByTab[source]) return;
-
-      const msgs = this.messagesByTab[source];
-
-      // Token usage: update per-source usage stats
+      // Token usage: always track, even without open tab
       if (at === "token_usage") {
         const prev = this.tokenUsage[source] || {
           prompt: 0,
@@ -409,6 +404,10 @@ export const useChatStore = defineStore("chat", {
         };
         return;
       }
+
+      // Ensure we have a tab for this source (non-usage events need it)
+      if (!this.messagesByTab[source]) return;
+      const msgs = this.messagesByTab[source];
 
       // Trigger fired: show as a system message in the creature's chat
       if (at === "trigger_fired") {
