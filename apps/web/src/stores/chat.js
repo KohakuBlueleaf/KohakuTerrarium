@@ -511,9 +511,7 @@ export const useChatStore = defineStore("chat", {
             .reverse()
             .find(
               (p) =>
-                p.type === "tool" &&
-                p.kind === "subagent" &&
-                p.status === "running",
+                p.type === "tool" && p.kind === "subagent" && p.name === saName,
             );
           if (sa) {
             if (!sa.tools_used) sa.tools_used = [];
