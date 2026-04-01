@@ -187,6 +187,7 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             ctx = event.context or {}
             channel = ctx.get("channel", "")
             sender = ctx.get("sender", "")
+            raw_content = ctx.get("raw_content", "")
             detail = f"[{trigger_id}] channel={channel} sender={sender}"
             self.output_router.notify_activity(
                 "trigger_fired",
@@ -196,6 +197,7 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
                     "event_type": event.type,
                     "channel": channel,
                     "sender": sender,
+                    "content": raw_content[:2000] if raw_content else "",
                 },
             )
 

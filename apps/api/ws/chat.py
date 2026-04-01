@@ -103,6 +103,7 @@ class StreamOutput(OutputModule):
                 "event_type",
                 "channel",
                 "sender",
+                "content",
                 "prompt_tokens",
                 "completion_tokens",
                 "total_tokens",
