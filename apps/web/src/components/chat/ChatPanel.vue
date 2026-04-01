@@ -98,16 +98,21 @@
         class="px-4 pb-4 pt-2 border-t border-t-warm-100 dark:border-t-warm-800"
       >
         <div
-          class="flex items-center gap-2 px-3 py-2 rounded-xl bg-warm-50 dark:bg-warm-800 border border-warm-200 dark:border-warm-700 focus-within:border-iolite/40 dark:focus-within:border-iolite-light/30 transition-colors"
+          class="flex gap-2 px-3 py-1.5 rounded-xl bg-warm-50 dark:bg-warm-800 border border-warm-200 dark:border-warm-700 focus-within:border-iolite/40 dark:focus-within:border-iolite-light/30 transition-colors"
+          :class="inputText.includes('\n') ? 'items-end' : 'items-center'"
         >
-          <input
+          <textarea
+            ref="inputEl"
             v-model="inputText"
-            class="flex-1 bg-transparent border-none outline-none text-sm text-warm-800 dark:text-warm-200 placeholder-warm-400 dark:placeholder-warm-500"
+            rows="1"
+            class="flex-1 bg-transparent border-none outline-none text-sm text-warm-800 dark:text-warm-200 placeholder-warm-400 dark:placeholder-warm-500 resize-none max-h-32 leading-relaxed py-1"
+            style="min-height: 2em"
             :placeholder="inputPlaceholder"
-            @keydown.enter.exact.prevent="send"
+            @keydown="onInputKeydown"
+            @input="autoResize"
           />
           <button
-            class="w-8 h-8 flex items-center justify-center rounded-lg transition-all"
+            class="w-8 h-8 flex items-center justify-center rounded-lg transition-all shrink-0 mb-0.5"
             :class="
               inputText.trim()
                 ? 'bg-iolite text-white hover:bg-iolite-shadow shadow-sm shadow-iolite/20'
@@ -136,6 +141,7 @@ const props = defineProps({
 const chat = useChatStore();
 const inputText = ref("");
 const messagesEl = ref(null);
+const inputEl = ref(null);
 
 const inputPlaceholder = computed(() => {
   if (!chat.activeTab) return "Select a tab...";
@@ -159,11 +165,30 @@ function closeTab(tab) {
   }
 }
 
+function onInputKeydown(e) {
+  if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey) {
+    e.preventDefault();
+    send();
+  }
+  // Shift+Enter and Ctrl+Enter insert newline (default textarea behavior)
+}
+
+function autoResize() {
+  const el = inputEl.value;
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 128) + "px";
+}
+
 function send() {
   if (!inputText.value.trim()) return;
   chat.send(inputText.value);
   inputText.value = "";
+  // Reset textarea height
   nextTick(() => {
+    if (inputEl.value) {
+      inputEl.value.style.height = "auto";
+    }
     if (messagesEl.value) {
       messagesEl.value.scrollTop = messagesEl.value.scrollHeight;
     }
