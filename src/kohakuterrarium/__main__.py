@@ -21,6 +21,11 @@ import yaml
 
 from kohakuterrarium.core.agent import Agent
 from kohakuterrarium.llm.codex_auth import CodexTokens, oauth_login
+from kohakuterrarium.session.resume import (
+    detect_session_type,
+    resume_agent,
+    resume_terrarium,
+)
 from kohakuterrarium.session.store import SessionStore
 from kohakuterrarium.terrarium.cli import (
     add_terrarium_subparser,
@@ -75,6 +80,18 @@ def main() -> int:
     # Terrarium command group
     add_terrarium_subparser(subparsers)
 
+    # Resume command
+    resume_parser = subparsers.add_parser(
+        "resume", help="Resume from a .kt session file"
+    )
+    resume_parser.add_argument("session_path", help="Path to .kt session file")
+    resume_parser.add_argument("--pwd", help="Override working directory")
+    resume_parser.add_argument(
+        "--log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
+        default="INFO",
+    )
+
     # Login command
     login_parser = subparsers.add_parser("login", help="Authenticate with a provider")
     login_parser.add_argument(
@@ -87,6 +104,8 @@ def main() -> int:
 
     if args.command == "run":
         return run_agent_cli(args.agent_path, args.log_level, session=args.session)
+    elif args.command == "resume":
+        return resume_cli(args.session_path, args.pwd, args.log_level)
     elif args.command == "list":
         return list_agents_cli(args.path)
     elif args.command == "info":
@@ -146,6 +165,39 @@ def run_agent_cli(agent_path: str, log_level: str, session: str | None = None) -
             print(f"Session: {session_file}")
 
         asyncio.run(agent.run())
+        return 0
+    except KeyboardInterrupt:
+        print("\nInterrupted")
+        return 0
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+    finally:
+        if store:
+            store.close()
+
+
+def resume_cli(session_path: str, pwd_override: str | None, log_level: str) -> int:
+    """Resume an agent or terrarium from a .kt session file."""
+    set_level(log_level)
+
+    path = Path(session_path)
+    if not path.exists():
+        print(f"Error: Session file not found: {session_path}")
+        return 1
+
+    session_type = detect_session_type(path)
+    store = None
+
+    try:
+        if session_type == "terrarium":
+            runtime, store = resume_terrarium(path, pwd_override)
+            print(f"Resuming terrarium from {path}")
+            asyncio.run(runtime.run())
+        else:
+            agent, store = resume_agent(path, pwd_override)
+            print(f"Resuming agent from {path}")
+            asyncio.run(agent.run())
         return 0
     except KeyboardInterrupt:
         print("\nInterrupted")

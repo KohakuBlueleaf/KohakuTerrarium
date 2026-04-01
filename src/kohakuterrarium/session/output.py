@@ -67,11 +67,11 @@ class SessionOutput(OutputModule):
 
         self._record("processing_end", {})
 
-        # Save conversation snapshot
+        # Save conversation snapshot (raw messages list, not JSON)
         try:
             if self._agent and hasattr(self._agent, "controller"):
-                conv_json = self._agent.controller.conversation.to_json()
-                self._store.save_conversation(self._agent_name, conv_json)
+                messages = self._agent.controller.conversation.to_messages()
+                self._store.save_conversation(self._agent_name, messages)
         except Exception as e:
             logger.warning("Conversation snapshot failed", error=str(e))
 

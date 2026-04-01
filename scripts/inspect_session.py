@@ -147,20 +147,18 @@ def print_conversations(store: SessionStore) -> None:
     print("=== Conversation Snapshots ===")
     for key_bytes in sorted(store.conversation.keys()):
         key = key_bytes.decode() if isinstance(key_bytes, bytes) else key_bytes
-        conv = store.conversation[key_bytes]
-        conv_str = conv.decode() if isinstance(conv, bytes) else str(conv)
-        # Count messages
-        try:
-            data = json.loads(conv_str)
-            if isinstance(data, dict):
-                msgs = data.get("messages", [])
-            elif isinstance(data, list):
-                msgs = data
-            else:
-                msgs = []
-            print(f"  {key}: {len(msgs)} messages, {len(conv_str)} bytes")
-        except Exception:
-            print(f"  {key}: {len(conv_str)} bytes (unparseable)")
+        messages = store.load_conversation(key)
+        if messages:
+            print(f"  {key}: {len(messages)} messages")
+            for msg in messages[:3]:
+                role = msg.get("role", "?")
+                content = str(msg.get("content", ""))[:60]
+                tc = " [+tool_calls]" if msg.get("tool_calls") else ""
+                print(f"    [{role}]{tc} {content}")
+            if len(messages) > 3:
+                print(f"    ... ({len(messages) - 3} more)")
+        else:
+            print(f"  {key}: (empty)")
     print()
 
 

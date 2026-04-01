@@ -93,13 +93,9 @@ def populated_store(store):
         {"sender": "swe", "content": "Starting auth fix work", "msg_id": "m002"},
     )
 
-    # Conversation snapshots
-    store.save_conversation(
-        "root", '{"messages": [{"role": "user", "content": "Fix auth"}]}'
-    )
-    store.save_conversation(
-        "swe", '{"messages": [{"role": "user", "content": "triggered"}]}'
-    )
+    # Conversation snapshots (raw message lists)
+    store.save_conversation("root", [{"role": "user", "content": "Fix auth"}])
+    store.save_conversation("swe", [{"role": "user", "content": "triggered"}])
 
     # Scratchpad
     store.save_state("root", scratchpad={"plan": "dispatch to swe"}, turn_count=1)
@@ -262,15 +258,16 @@ class TestEvents:
 
 class TestConversation:
     def test_save_and_load(self, store):
-        store.save_conversation("root", '{"messages": []}')
+        store.save_conversation("root", [{"role": "user", "content": "hi"}])
         result = store.load_conversation("root")
-        assert result == '{"messages": []}'
+        assert isinstance(result, list)
+        assert result[0]["content"] == "hi"
 
     def test_overwrite(self, store):
-        store.save_conversation("root", '{"v": 1}')
-        store.save_conversation("root", '{"v": 2}')
+        store.save_conversation("root", [{"role": "user", "content": "v1"}])
+        store.save_conversation("root", [{"role": "user", "content": "v2"}])
         result = store.load_conversation("root")
-        assert '"v": 2' in result or result == '{"v": 2}'
+        assert result[0]["content"] == "v2"
 
     def test_load_missing(self, store):
         assert store.load_conversation("nonexistent") is None
@@ -280,8 +277,8 @@ class TestConversation:
         swe = populated_store.load_conversation("swe")
         assert root is not None
         assert swe is not None
-        assert "Fix auth" in root
-        assert "triggered" in swe
+        assert root[0]["content"] == "Fix auth"
+        assert swe[0]["content"] == "triggered"
 
 
 # ─── State Tests ─────────────────────────────────────────────────

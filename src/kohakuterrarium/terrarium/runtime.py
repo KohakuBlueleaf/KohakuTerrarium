@@ -18,6 +18,7 @@ from kohakuterrarium.terrarium.tool_manager import (
 )
 from kohakuterrarium.core.agent import Agent
 from kohakuterrarium.core.config import build_agent_config
+from kohakuterrarium.core.conversation import Conversation
 from kohakuterrarium.core.environment import Environment
 from kohakuterrarium.core.session import Session
 from kohakuterrarium.modules.trigger.channel import ChannelTrigger
@@ -34,6 +35,21 @@ from kohakuterrarium.terrarium.output_log import OutputLogCapture
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _build_conversation_from_messages(messages: list[dict]) -> Conversation:
+    """Build a Conversation from a list of message dicts (for resume)."""
+    conv = Conversation()
+    for msg in messages:
+        kwargs = {}
+        if msg.get("tool_calls"):
+            kwargs["tool_calls"] = msg["tool_calls"]
+        if msg.get("tool_call_id"):
+            kwargs["tool_call_id"] = msg["tool_call_id"]
+        if msg.get("name"):
+            kwargs["name"] = msg["name"]
+        conv.append(msg.get("role", "user"), msg.get("content", ""), **kwargs)
+    return conv
 
 
 class TerrariumRuntime(HotPlugMixin):
@@ -284,6 +300,29 @@ class TerrariumRuntime(HotPlugMixin):
                 return _cb
 
             ch.on_send(_make_cb(ch.name))
+
+        # Inject resume data if present (conversations + scratchpads)
+        if hasattr(self, "_pending_resume_data") and self._pending_resume_data:
+            for name, data in self._pending_resume_data.items():
+                agent = self.get_creature_agent(name)
+                if name == "root" and agent is None:
+                    agent = self._root_agent
+                if not agent:
+                    continue
+
+                saved_messages = data.get("conversation")
+                if saved_messages and isinstance(saved_messages, list):
+                    agent.controller.conversation = _build_conversation_from_messages(
+                        saved_messages
+                    )
+                    logger.info("Conversation restored", agent=name)
+
+                pad = data.get("scratchpad", {})
+                if pad and agent.session:
+                    for k, v in pad.items():
+                        agent.session.scratchpad.set(k, v)
+
+            self._pending_resume_data = None
 
         logger.info(
             "Session store attached to terrarium",

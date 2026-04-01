@@ -219,15 +219,35 @@ class SessionStore:
 
     # ─── Conversation Snapshots ─────────────────────────────────────
 
-    def save_conversation(self, agent: str, conv_json: str) -> None:
-        """Save a conversation snapshot (overwritten each time)."""
-        self.conversation[agent] = conv_json
+    def save_conversation(self, agent: str, messages: list[dict] | str) -> None:
+        """Save a conversation snapshot (overwritten each time).
 
-    def load_conversation(self, agent: str) -> str | None:
-        """Load the latest conversation snapshot for an agent."""
+        Accepts either a list of message dicts (preferred, stored via msgpack)
+        or a JSON string (legacy, stored as-is).
+        """
+        self.conversation[agent] = messages
+
+    def load_conversation(self, agent: str) -> list[dict] | None:
+        """Load the latest conversation snapshot for an agent.
+
+        Returns a list of message dicts (OpenAI format), or None if not found.
+        """
         try:
             val = self.conversation[agent]
-            return val.decode() if isinstance(val, bytes) else val
+            # msgpack auto-decode returns list directly
+            if isinstance(val, list):
+                return val
+            # Legacy: JSON string from older sessions
+            if isinstance(val, (str, bytes)):
+                import json
+
+                s = val.decode() if isinstance(val, bytes) else val
+                data = json.loads(s)
+                if isinstance(data, dict) and "messages" in data:
+                    return data["messages"]
+                if isinstance(data, list):
+                    return data
+            return None
         except KeyError:
             return None
 
