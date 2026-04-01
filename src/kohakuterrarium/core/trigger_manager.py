@@ -45,6 +45,8 @@ class TriggerManager:
         self._tasks: dict[str, asyncio.Task] = {}
         self._created_at: dict[str, datetime] = {}
         self._process_event = process_event
+        # Optional callback: (trigger_id, event) -> None
+        self.on_trigger_fired: Callable[[str, Any], None] | None = None
 
     async def add(
         self,
@@ -195,6 +197,11 @@ class TriggerManager:
                         trigger_id=trigger_id,
                         event_type=event.type,
                     )
+                    if self.on_trigger_fired:
+                        try:
+                            self.on_trigger_fired(trigger_id, event)
+                        except Exception:
+                            pass
                     await self._process_event(event)
             except asyncio.CancelledError:
                 break

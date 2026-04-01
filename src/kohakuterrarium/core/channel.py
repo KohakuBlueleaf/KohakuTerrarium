@@ -47,6 +47,29 @@ class BaseChannel(ABC):
         self.description = description
         self.history: list[ChannelMessage] = []
         self._max_history = max_history
+        self._on_send_callbacks: list[Any] = []
+
+    def on_send(self, callback: Any) -> None:
+        """Register a callback fired on every send (before queue consumption).
+
+        Callback signature: callback(channel_name: str, message: ChannelMessage)
+        Works for both queue and broadcast channels.
+        """
+        self._on_send_callbacks.append(callback)
+
+    def remove_on_send(self, callback: Any) -> None:
+        """Remove a send callback."""
+        self._on_send_callbacks = [
+            cb for cb in self._on_send_callbacks if cb is not callback
+        ]
+
+    def _fire_on_send(self, message: ChannelMessage) -> None:
+        """Fire all send callbacks."""
+        for cb in self._on_send_callbacks:
+            try:
+                cb(self.name, message)
+            except Exception:
+                pass
 
     @abstractmethod
     async def send(self, message: ChannelMessage) -> None: ...
@@ -85,6 +108,7 @@ class SubAgentChannel(BaseChannel):
         self.history.append(message)
         if len(self.history) > self._max_history:
             self.history = self.history[-self._max_history :]
+        self._fire_on_send(message)
         await self._queue.put(message)
         logger.debug(
             "Message sent on channel '%s' from '%s'",
@@ -211,6 +235,7 @@ class AgentChannel(BaseChannel):
         self.history.append(message)
         if len(self.history) > self._max_history:
             self.history = self.history[-self._max_history :]
+        self._fire_on_send(message)
         delivered = 0
         for sub_id, queue in self._subscribers.items():
             if sub_id == message.sender:

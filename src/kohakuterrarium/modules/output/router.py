@@ -183,6 +183,31 @@ class OutputRouter:
         """Add a secondary output that receives copies of all text output."""
         self._secondary_outputs.append(output)
 
+    def remove_secondary(self, output: OutputModule) -> None:
+        """Remove a secondary output."""
+        self._secondary_outputs = [
+            o for o in self._secondary_outputs if o is not output
+        ]
+
+    def notify_activity(
+        self, activity_type: str, detail: str, metadata: dict | None = None
+    ) -> None:
+        """Broadcast activity to default + all secondary outputs.
+
+        Args:
+            activity_type: Event type (tool_start, tool_done, subagent_start, etc.)
+            detail: Human-readable summary (truncated, for TUI/stdout)
+            metadata: Structured data (full args, job_id, tools_used, etc.)
+                      Only consumed by outputs that support it (e.g. WebSocket).
+        """
+        self.default_output.on_activity(activity_type, detail)
+        for secondary in self._secondary_outputs:
+            # Pass metadata if the output supports it
+            if metadata and hasattr(secondary, "on_activity_with_metadata"):
+                secondary.on_activity_with_metadata(activity_type, detail, metadata)
+            else:
+                secondary.on_activity(activity_type, detail)
+
     async def start(self) -> None:
         """Start the router and output modules."""
         await self.default_output.start()

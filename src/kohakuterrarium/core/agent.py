@@ -181,12 +181,42 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
 
         await self.input.start()
         await self.output_router.start()
+
+        # Wire trigger fired notification to output
+        def _on_trigger_fired(trigger_id, event):
+            ctx = event.context or {}
+            channel = ctx.get("channel", "")
+            sender = ctx.get("sender", "")
+            detail = f"[{trigger_id}] channel={channel} sender={sender}"
+            self.output_router.notify_activity(
+                "trigger_fired",
+                detail,
+                metadata={
+                    "trigger_id": trigger_id,
+                    "event_type": event.type,
+                    "channel": channel,
+                    "sender": sender,
+                },
+            )
+
+        self.trigger_manager.on_trigger_fired = _on_trigger_fired
+
         await self.trigger_manager.start_all()
 
         # Wire completion callbacks -> _process_event
         # Background tools and sub-agents deliver results as trigger events
         self.executor._on_complete = self._on_bg_complete
         self.subagent_manager._on_complete = self._on_bg_complete
+
+        # Wire sub-agent tool activity -> parent output
+        def _on_sa_tool_activity(sa_name, activity_type, tool_name, detail):
+            self.output_router.notify_activity(
+                f"subagent_{activity_type}",
+                f"[{sa_name}] [{tool_name}] {detail}",
+                metadata={"subagent": sa_name, "tool": tool_name, "detail": detail},
+            )
+
+        self.subagent_manager._on_tool_activity = _on_sa_tool_activity
 
         self._running = True
         self._shutdown_event.clear()
