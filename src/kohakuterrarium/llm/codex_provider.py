@@ -342,6 +342,12 @@ class CodexOAuthProvider(BaseLLMProvider):
                             resp = getattr(event, "response", None)
                             if resp:
                                 u = getattr(resp, "usage", None)
+                                logger.debug(
+                                    "Response completed",
+                                    has_response=resp is not None,
+                                    has_usage=u is not None,
+                                    usage_type=type(u).__name__ if u else "None",
+                                )
                                 if u:
                                     text_queue.put_nowait(
                                         (

@@ -41,6 +41,15 @@
         </button>
       </div>
 
+      <!-- Token usage for active tab -->
+      <div
+        v-if="activeTokens > 0"
+        class="flex items-center gap-1 px-2 py-2 -mb-px text-[10px] text-warm-400 font-mono"
+      >
+        <span class="i-carbon-meter text-amber" />
+        <span>{{ formatTokens(activeTokens) }}</span>
+      </div>
+
       <!-- Tab bar bottom border (bubble top border) -->
       <div class="flex-1 border-b border-b-warm-200 dark:border-b-warm-700" />
     </div>
@@ -142,6 +151,19 @@ const chat = useChatStore();
 const inputText = ref("");
 const messagesEl = ref(null);
 const inputEl = ref(null);
+
+const activeTokens = computed(() => {
+  const tab = chat.activeTab;
+  if (!tab) return 0;
+  const usage = chat.tokenUsage[tab];
+  return usage?.total || 0;
+});
+
+function formatTokens(n) {
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
+  if (n >= 1000) return (n / 1000).toFixed(1) + "K";
+  return String(n);
+}
 
 const inputPlaceholder = computed(() => {
   if (!chat.activeTab) return "Select a tab...";
