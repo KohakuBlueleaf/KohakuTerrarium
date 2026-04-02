@@ -78,7 +78,7 @@ async def run_terrarium_with_tui(runtime: TerrariumRuntime) -> None:
         tui._app.on_interrupt = root.interrupt
 
     # Start TUI app
-    app_task = asyncio.create_task(tui.run_app())
+    _app_task = asyncio.create_task(tui.run_app())  # noqa: F841
     await tui.wait_ready()
 
     # Update terrarium panel

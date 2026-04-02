@@ -235,9 +235,8 @@ class TUIOutput(BaseOutputModule):
         await self._tui.wait_ready()
 
         turns = _group_into_turns(events)
-        widgets = _build_resume_widgets(turns)
 
-        # Also collect token usage for session info
+        # Collect token usage for session info
         total_tokens = 0
         for _, data in _iter_all_steps(turns):
             if isinstance(data, dict) and data.get("type") == "token_usage":
