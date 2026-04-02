@@ -55,113 +55,125 @@ function _replayEvents(messages, events) {
   // If no events, fall back to conversation history
   if (!events?.length) return _convertHistory(messages);
 
-  // Events are already ordered by ts from the backend
+  // Events are already ordered by ts from the backend.
+  // Handles two event formats:
+  //   StreamOutput (live WS): {type: "activity", activity_type: "tool_start", ...}
+  //   SessionStore (persistent): {type: "tool_call", name: ..., args: ...}
   const result = [];
   let cur = null; // current assistant message being built
+  let _n = 0;
+
+  function ensureCur() {
+    if (!cur) {
+      cur = { id: "h_" + result.length, role: "assistant", parts: [], timestamp: "" };
+      result.push(cur);
+    }
+    return cur;
+  }
+
+  function appendText(content) {
+    const c = ensureCur();
+    const tail = c.parts.length ? c.parts[c.parts.length - 1] : null;
+    if (tail && tail.type === "text") {
+      tail.content += content;
+    } else {
+      c.parts.push({ type: "text", content });
+    }
+  }
+
+  function addTool(name, kind, args) {
+    const c = ensureCur();
+    const tail = c.parts.length ? c.parts[c.parts.length - 1] : null;
+    if (tail && tail.type === "text") tail._streaming = false;
+    c.parts.push({
+      type: "tool",
+      id: `tool_${_n++}`,
+      name,
+      kind,
+      args: args || {},
+      status: "done",
+      result: "",
+      tools_used: [],
+    });
+  }
+
+  function updateTool(name, result, opts) {
+    if (!cur) return;
+    const tc = [...cur.parts].reverse().find((p) => p.type === "tool" && p.name === name);
+    if (tc) {
+      tc.result = result || "";
+      if (opts?.error) tc.status = "error";
+      if (opts?.tools_used) tc.tools_used = opts.tools_used;
+    }
+  }
 
   for (const evt of events) {
-    if (evt.type === "user_input") {
-      cur = null;
-      result.push({
-        id: "h_" + result.length,
-        role: "user",
-        content: evt.content || "",
-        timestamp: "",
-      });
-    } else if (evt.type === "processing_start") {
-      cur = {
-        id: "h_" + result.length,
-        role: "assistant",
-        parts: [],
-        timestamp: "",
-      };
-      result.push(cur);
-    } else if (evt.type === "text") {
-      if (!cur) {
-        cur = {
-          id: "h_" + result.length,
-          role: "assistant",
-          parts: [],
-          timestamp: "",
-        };
-        result.push(cur);
-      }
-      const tail = cur.parts.length ? cur.parts[cur.parts.length - 1] : null;
-      if (tail && tail.type === "text") {
-        tail.content += evt.content;
-      } else {
-        cur.parts.push({ type: "text", content: evt.content });
-      }
-    } else if (evt.type === "activity") {
-      const at = evt.activity_type;
+    const t = evt.type;
 
-      // Trigger fired: standalone message, breaks current assistant
+    // ── Common types (both formats) ──
+    if (t === "user_input") {
+      cur = null;
+      result.push({ id: "h_" + result.length, role: "user", content: evt.content || "", timestamp: "" });
+    } else if (t === "processing_start") {
+      cur = { id: "h_" + result.length, role: "assistant", parts: [], timestamp: "" };
+      result.push(cur);
+    } else if (t === "text") {
+      appendText(evt.content || "");
+    } else if (t === "processing_end" || t === "idle") {
+      cur = null;
+
+    // ── StreamOutput format (live WS): type="activity" wrapper ──
+    } else if (t === "activity") {
+      const at = evt.activity_type;
       if (at === "trigger_fired") {
         cur = null;
-        const channel = evt.channel || "";
+        const ch = evt.channel || "";
         const sender = evt.sender || "";
-        const label = channel ? `channel: ${channel}` : evt.name;
-        const from = sender ? ` from ${sender}` : "";
         result.push({
-          id: "h_" + result.length,
-          role: "trigger",
-          content: `${label}${from}`,
-          triggerContent: evt.content || "",
-          channel,
-          sender,
-          timestamp: "",
+          id: "h_" + result.length, role: "trigger",
+          content: ch ? `channel: ${ch}${sender ? ` from ${sender}` : ""}` : evt.name,
+          triggerContent: evt.content || "", channel: ch, sender, timestamp: "",
         });
-        continue;
-      }
-
-      // Token usage: skip in replay (shown in header)
-      if (at === "token_usage" || at === "processing_complete") continue;
-
-      // Tool/subagent activity: attach to current assistant
-      if (!cur) {
-        cur = {
-          id: "h_" + result.length,
-          role: "assistant",
-          parts: [],
-          timestamp: "",
-        };
-        result.push(cur);
-      }
-
-      if (at === "tool_start" || at === "subagent_start") {
-        // Finalize trailing text part
-        const tail = cur.parts.length ? cur.parts[cur.parts.length - 1] : null;
-        if (tail && tail.type === "text") tail._streaming = false;
-
-        cur.parts.push({
-          type: "tool",
-          id: evt.id,
-          name: evt.name,
-          kind: at === "subagent_start" ? "subagent" : "tool",
-          args: evt.args || { info: evt.detail },
-          status: "done",
-          result: "",
-          tools_used: [],
-        });
+      } else if (at === "token_usage" || at === "processing_complete") {
+        // skip
+      } else if (at === "tool_start" || at === "subagent_start") {
+        addTool(evt.name, at === "subagent_start" ? "subagent" : "tool", evt.args || { info: evt.detail });
       } else if (at === "tool_done" || at === "subagent_done") {
-        const tc = [...cur.parts]
-          .reverse()
-          .find((p) => p.type === "tool" && p.name === evt.name);
-        if (tc) {
-          tc.result = evt.result || evt.detail || "";
-          if (evt.tools_used) tc.tools_used = evt.tools_used;
-        }
+        updateTool(evt.name, evt.result || evt.detail, { tools_used: evt.tools_used });
       } else if (at === "tool_error" || at === "subagent_error") {
-        const tc = [...cur.parts]
-          .reverse()
-          .find((p) => p.type === "tool" && p.name === evt.name);
-        if (tc) {
-          tc.status = "error";
-          tc.result = evt.detail || "";
-        }
+        updateTool(evt.name, evt.detail, { error: true });
       }
-    } else if (evt.type === "processing_end" || evt.type === "idle") {
+
+    // ── SessionStore format (persistent): direct type names ──
+    } else if (t === "trigger_fired") {
       cur = null;
+      const ch = evt.channel || "";
+      const sender = evt.sender || "";
+      result.push({
+        id: "h_" + result.length, role: "trigger",
+        content: ch ? `channel: ${ch}${sender ? ` from ${sender}` : ""}` : "",
+        triggerContent: evt.content || "", channel: ch, sender, timestamp: "",
+      });
+    } else if (t === "tool_call") {
+      addTool(evt.name, "tool", evt.args || {});
+    } else if (t === "tool_result") {
+      updateTool(evt.name, evt.output || "", { error: evt.error ? true : false });
+    } else if (t === "subagent_call") {
+      addTool(evt.name, "subagent", { task: evt.task || "" });
+    } else if (t === "subagent_result") {
+      updateTool(evt.name, evt.output || "", { tools_used: evt.tools_used });
+    } else if (t === "subagent_tool") {
+      // Sub-agent internal tool activity: show as nested tool
+      const toolName = evt.tool_name || evt.subagent || "";
+      if (evt.activity === "tool_start") {
+        addTool(toolName, "tool", { info: evt.detail || "" });
+      } else if (evt.activity === "tool_done") {
+        updateTool(toolName, evt.detail || "");
+      } else if (evt.activity === "tool_error") {
+        updateTool(toolName, evt.detail || "", { error: true });
+      }
+    } else if (t === "token_usage" || t === "processing_complete") {
+      // skip
     }
   }
 
