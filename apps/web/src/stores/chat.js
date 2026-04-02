@@ -61,6 +61,7 @@ function _replayEvents(messages, events) {
   //   SessionStore (persistent): {type: "tool_call", name: ..., args: ...}
   const result = [];
   let cur = null; // current assistant message being built
+  let curSubagent = null; // current sub-agent part (for nesting tools inside)
   let _n = 0;
 
   function ensureCur() {
@@ -85,7 +86,7 @@ function _replayEvents(messages, events) {
     const c = ensureCur();
     const tail = c.parts.length ? c.parts[c.parts.length - 1] : null;
     if (tail && tail.type === "text") tail._streaming = false;
-    c.parts.push({
+    const tool = {
       type: "tool",
       id: `tool_${_n++}`,
       name,
@@ -94,7 +95,38 @@ function _replayEvents(messages, events) {
       status: "done",
       result: "",
       tools_used: [],
-    });
+      children: [],
+    };
+    c.parts.push(tool);
+    if (kind === "subagent") curSubagent = tool;
+    return tool;
+  }
+
+  function addSubagentTool(name, args) {
+    // Add tool as a child of the current sub-agent, or top-level if no sub-agent
+    if (curSubagent) {
+      const tool = {
+        type: "tool", id: `tool_${_n++}`, name, kind: "tool",
+        args: args || {}, status: "done", result: "", tools_used: [],
+      };
+      if (!curSubagent.children) curSubagent.children = [];
+      curSubagent.children.push(tool);
+      return tool;
+    }
+    return addTool(name, "tool", args);
+  }
+
+  function updateSubagentTool(name, result, opts) {
+    // Find in current sub-agent's children first
+    if (curSubagent?.children?.length) {
+      const tc = [...curSubagent.children].reverse().find((p) => p.name === name);
+      if (tc) {
+        tc.result = result || "";
+        if (opts?.error) tc.status = "error";
+        return;
+      }
+    }
+    updateTool(name, result, opts);
   }
 
   function updateTool(name, result, opts) {
@@ -120,6 +152,12 @@ function _replayEvents(messages, events) {
     } else if (t === "text") {
       appendText(evt.content || "");
     } else if (t === "processing_end" || t === "idle") {
+      // Mark interrupted sub-agents (no subagent_result before processing_end)
+      if (curSubagent && curSubagent.status === "done" && !curSubagent.result) {
+        curSubagent.status = "interrupted";
+        curSubagent.result = "(interrupted)";
+      }
+      curSubagent = null;
       cur = null;
 
     // ── StreamOutput format (live WS): type="activity" wrapper ──
@@ -136,12 +174,31 @@ function _replayEvents(messages, events) {
         });
       } else if (at === "token_usage" || at === "processing_complete") {
         // skip
-      } else if (at === "tool_start" || at === "subagent_start") {
-        addTool(evt.name, at === "subagent_start" ? "subagent" : "tool", evt.args || { info: evt.detail });
-      } else if (at === "tool_done" || at === "subagent_done") {
+      } else if (at === "subagent_start") {
+        addTool(evt.name, "subagent", evt.args || { info: evt.detail });
+      } else if (at === "subagent_done") {
         updateTool(evt.name, evt.result || evt.detail, { tools_used: evt.tools_used });
-      } else if (at === "tool_error" || at === "subagent_error") {
+        curSubagent = null;
+      } else if (at === "subagent_error") {
         updateTool(evt.name, evt.detail, { error: true });
+        curSubagent = null;
+      } else if (at === "tool_start") {
+        addTool(evt.name, "tool", evt.args || { info: evt.detail });
+      } else if (at === "tool_done") {
+        updateTool(evt.name, evt.result || evt.detail, { tools_used: evt.tools_used });
+      } else if (at === "tool_error") {
+        updateTool(evt.name, evt.detail, { error: true });
+      } else if (at?.startsWith("subagent_tool_")) {
+        // Live WS sub-agent tool events
+        const subAct = at.replace("subagent_", "");
+        const toolName = evt.tool || evt.name || "";
+        if (subAct === "tool_start") {
+          addSubagentTool(toolName, { info: evt.detail || "" });
+        } else if (subAct === "tool_done") {
+          updateSubagentTool(toolName, evt.detail || "");
+        } else if (subAct === "tool_error") {
+          updateSubagentTool(toolName, evt.detail || "", { error: true });
+        }
       }
 
     // ── SessionStore format (persistent): direct type names ──
@@ -162,15 +219,16 @@ function _replayEvents(messages, events) {
       addTool(evt.name, "subagent", { task: evt.task || "" });
     } else if (t === "subagent_result") {
       updateTool(evt.name, evt.output || "", { tools_used: evt.tools_used });
+      curSubagent = null;
     } else if (t === "subagent_tool") {
-      // Sub-agent internal tool activity: show as nested tool
-      const toolName = evt.tool_name || evt.subagent || "";
+      // Sub-agent internal tool: nest inside current sub-agent
+      const toolName = evt.tool_name || "";
       if (evt.activity === "tool_start") {
-        addTool(toolName, "tool", { info: evt.detail || "" });
+        addSubagentTool(toolName, { info: evt.detail || "" });
       } else if (evt.activity === "tool_done") {
-        updateTool(toolName, evt.detail || "");
+        updateSubagentTool(toolName, evt.detail || "");
       } else if (evt.activity === "tool_error") {
-        updateTool(toolName, evt.detail || "", { error: true });
+        updateSubagentTool(toolName, evt.detail || "", { error: true });
       }
     } else if (t === "token_usage" || t === "processing_complete") {
       // skip

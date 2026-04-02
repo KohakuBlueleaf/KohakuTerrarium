@@ -50,9 +50,38 @@
       "
     >
       <template v-if="tc.kind === 'subagent'">
-        <!-- Sub-agent tools used -->
+        <!-- Sub-agent nested tool calls -->
         <div
-          v-if="tc.tools_used?.length"
+          v-if="tc.children?.length"
+          class="px-3 py-1.5 space-y-1 bg-taaffeite/3 dark:bg-taaffeite/5 border-b border-taaffeite/10 dark:border-taaffeite/15"
+        >
+          <div
+            v-for="(child, i) in tc.children"
+            :key="i"
+            class="flex items-center gap-1.5 text-[11px] font-mono"
+          >
+            <span
+              :class="
+                child.status === 'error'
+                  ? 'text-coral'
+                  : 'text-sage dark:text-sage-light'
+              "
+            >
+              {{ child.status === "error" ? "\u2717" : "\u2713" }}
+            </span>
+            <span class="text-iolite dark:text-iolite-light font-medium">{{
+              child.name
+            }}</span>
+            <span
+              v-if="child.args?.info"
+              class="text-warm-400 dark:text-warm-500 truncate"
+              >{{ child.args.info.slice(0, 60) }}</span
+            >
+          </div>
+        </div>
+        <!-- Sub-agent tools used (fallback when no children detail) -->
+        <div
+          v-else-if="tc.tools_used?.length"
           class="px-3 py-1.5 bg-taaffeite/4 dark:bg-taaffeite/6 border-b border-taaffeite/10 dark:border-taaffeite/15"
         >
           <span
@@ -67,12 +96,18 @@
           >
         </div>
         <!-- Sub-agent result as markdown, scrollable -->
-        <div v-if="tc.result" class="relative">
+        <div v-if="tc.result && tc.status !== 'interrupted'" class="relative">
           <div
             class="px-3 py-2 bg-taaffeite/3 dark:bg-taaffeite/5 text-xs max-h-48 overflow-y-auto scroll-smooth sa-result"
           >
             <MarkdownRenderer :content="tc.result" />
           </div>
+        </div>
+        <div
+          v-else-if="tc.status === 'interrupted'"
+          class="px-3 py-2 text-xs text-amber dark:text-amber-light"
+        >
+          (interrupted)
         </div>
         <div v-else class="px-3 py-2 text-xs text-warm-400">(running...)</div>
       </template>
@@ -103,6 +138,8 @@ const statusIcon = computed(() => {
     return { icon: "\u2699", class: "text-amber kohaku-pulse" };
   if (props.tc.status === "error")
     return { icon: "\u2717", class: "text-coral" };
+  if (props.tc.status === "interrupted")
+    return { icon: "\u25cb", class: "text-amber" };
   return { icon: "\u2713", class: "text-sage" };
 });
 
