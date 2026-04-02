@@ -169,7 +169,7 @@ class SessionOutput(OutputModule):
             {
                 "name": name,
                 "call_id": metadata.get("job_id", ""),
-                "output": detail,
+                "output": metadata.get("output", detail),
                 "exit_code": 0,
             },
         )
