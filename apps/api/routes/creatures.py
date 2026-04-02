@@ -57,7 +57,10 @@ async def interrupt_creature(
     """Interrupt a creature's current processing. Creature stays alive."""
     try:
         runtime = manager._get_runtime(terrarium_id)
-        agent = runtime.get_creature_agent(name)
+        if name == "root":
+            agent = runtime.root_agent
+        else:
+            agent = runtime.get_creature_agent(name)
         if not agent:
             raise HTTPException(404, f"Creature not found: {name}")
         agent.interrupt()
