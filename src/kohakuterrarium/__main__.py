@@ -87,10 +87,20 @@ def main() -> int:
 
     # Resume command
     resume_parser = subparsers.add_parser(
-        "resume", help="Resume from a .kohakutr session file"
+        "resume", help="Resume a session (by name, path, or list recent)"
     )
-    resume_parser.add_argument("session_path", help="Path to .kohakutr session file")
+    resume_parser.add_argument(
+        "session",
+        nargs="?",
+        default=None,
+        help="Session name/prefix, full path, or omit to list recent sessions",
+    )
     resume_parser.add_argument("--pwd", help="Override working directory")
+    resume_parser.add_argument(
+        "--last",
+        action="store_true",
+        help="Resume the most recent session",
+    )
     resume_parser.add_argument(
         "--log-level",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -111,7 +121,7 @@ def main() -> int:
         session = None if args.no_session else args.session
         return run_agent_cli(args.agent_path, args.log_level, session=session)
     elif args.command == "resume":
-        return resume_cli(args.session_path, args.pwd, args.log_level)
+        return resume_cli(args.session, args.pwd, args.log_level, last=args.last)
     elif args.command == "list":
         return list_agents_cli(args.path)
     elif args.command == "info":
@@ -190,13 +200,118 @@ def run_agent_cli(agent_path: str, log_level: str, session: str | None = None) -
             print(f"  kt resume {session_file}")
 
 
-def resume_cli(session_path: str, pwd_override: str | None, log_level: str) -> int:
+def _resolve_session(query: str | None, last: bool = False) -> Path | None:
+    """Resolve a session query to a file path.
+
+    Searches ~/.kohakuterrarium/sessions/ for matching files.
+    Accepts: full path, filename, name prefix, or None (list/pick).
+    """
+    # Full path provided
+    if query and Path(query).exists():
+        return Path(query)
+
+    # Search in default session directory
+    if not _SESSION_DIR.exists():
+        return None
+
+    sessions = sorted(
+        _SESSION_DIR.glob("*.kohakutr"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    # Also check legacy .kt files
+    sessions.extend(
+        sorted(
+            _SESSION_DIR.glob("*.kt"),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+    )
+
+    if not sessions:
+        return None
+
+    # --last: most recent
+    if last:
+        return sessions[0]
+
+    # No query: list recent and let user pick
+    if not query:
+        print("Recent sessions:")
+        shown = sessions[:10]
+        for i, s in enumerate(shown, 1):
+            meta = _session_preview(s)
+            print(f"  {i}. {s.name}  {meta}")
+        print()
+        try:
+            choice = input(f"Pick [1-{len(shown)}] or name prefix: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return None
+        if choice.isdigit():
+            idx = int(choice) - 1
+            if 0 <= idx < len(shown):
+                return shown[idx]
+            return None
+        query = choice
+
+    # Prefix match
+    matches = [s for s in sessions if s.stem.startswith(query) or query in s.stem]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        print(f"Multiple matches for '{query}':")
+        for i, s in enumerate(matches[:10], 1):
+            meta = _session_preview(s)
+            print(f"  {i}. {s.name}  {meta}")
+        print()
+        try:
+            choice = input(f"Pick [1-{len(matches[:10])}]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return None
+        if choice.isdigit():
+            idx = int(choice) - 1
+            if 0 <= idx < len(matches[:10]):
+                return matches[idx]
+        return None
+
+    # No match in session dir, try as path
+    p = Path(query)
+    if p.exists():
+        return p
+    # Try appending extension
+    for ext in (".kohakutr", ".kt"):
+        if (_SESSION_DIR / f"{query}{ext}").exists():
+            return _SESSION_DIR / f"{query}{ext}"
+
+    return None
+
+
+def _session_preview(path: Path) -> str:
+    """Get a short preview of session metadata."""
+    try:
+        store = SessionStore(path)
+        meta = store.load_meta()
+        store.close()
+        config_type = meta.get("config_type", "?")
+        config_path = meta.get("config_path", "")
+        name = Path(config_path).name if config_path else "?"
+        return f"({config_type}: {name})"
+    except Exception:
+        return ""
+
+
+def resume_cli(
+    query: str | None, pwd_override: str | None, log_level: str, last: bool = False
+) -> int:
     """Resume an agent or terrarium from a session file."""
     set_level(log_level)
 
-    path = Path(session_path)
-    if not path.exists():
-        print(f"Error: Session file not found: {session_path}")
+    path = _resolve_session(query, last=last)
+    if path is None:
+        if query:
+            print(f"No session found matching: {query}")
+        else:
+            print("No sessions found in ~/.kohakuterrarium/sessions/")
         return 1
 
     session_type = detect_session_type(path)
