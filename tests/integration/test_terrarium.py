@@ -195,12 +195,12 @@ class TestChannelTopologyPrompt:
         assert "(listen)" in prompt
 
     def test_channel_semantics_explained(self):
-        """Prompt explains that messages are information, not requests."""
+        """Prompt explains channel rules (send_message required, triggers automatic)."""
         channels = [ChannelConfig(name="ch", channel_type="queue")]
         config, creature = self._make_config(channels, creature_listen=["ch"])
         prompt = build_channel_topology_prompt(config, creature)
-        assert "information" in prompt.lower()
-        assert "not" in prompt.lower() and "reply" in prompt.lower()
+        assert "send_message" in prompt
+        assert "automatically" in prompt.lower() or "trigger" in prompt.lower()
 
 
 # ---------------------------------------------------------------------------

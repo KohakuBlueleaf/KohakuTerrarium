@@ -297,8 +297,6 @@ class EditTool(BaseTool):
                 await f.write(new_content)
 
             # Calculate stats
-            old_lines = original.count("\n")
-            new_lines = new_content.count("\n")
             added = sum(1 for h in hunks for l in h.lines if l.startswith("+"))
             removed = sum(1 for h in hunks for l in h.lines if l.startswith("-"))
 

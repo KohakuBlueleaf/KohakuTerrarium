@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from kohakuterrarium.llm.message import ContentPart, ImagePart, TextPart
+    from kohakuterrarium.llm.message import ContentPart
 
 
 class ExecutionMode(Enum):

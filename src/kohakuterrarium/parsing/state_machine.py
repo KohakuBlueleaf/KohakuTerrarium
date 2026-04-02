@@ -302,7 +302,6 @@ class StreamParser:
         """Handle character while reading inline attributes (XML mode)."""
         events: list[ParseEvent] = []
         ec = self._fmt.end_char
-        sc = self._fmt.start_char
 
         if char == "/":
             # Might be self-closing: <name attrs/>
@@ -330,7 +329,6 @@ class StreamParser:
         """Handle character after seeing / in attrs (expecting end_char for self-close)."""
         events: list[ParseEvent] = []
         ec = self._fmt.end_char
-        sc = self._fmt.start_char
 
         if char == ec:
             # Self-closing tag: <name attrs/>

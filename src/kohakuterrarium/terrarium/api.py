@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
-from kohakuterrarium.core.channel import AgentChannel, ChannelMessage, SubAgentChannel
+from kohakuterrarium.core.channel import AgentChannel, ChannelMessage
 from kohakuterrarium.utils.logging import get_logger
 
 if TYPE_CHECKING:

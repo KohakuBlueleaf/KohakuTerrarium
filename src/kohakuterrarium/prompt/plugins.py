@@ -5,7 +5,6 @@ Each plugin contributes a section to the final system prompt.
 Plugins are sorted by priority (lower = earlier in prompt).
 """
 
-import os
 import platform
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field

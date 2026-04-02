@@ -18,7 +18,7 @@ from kohakuterrarium.core.job import (
     JobType,
     generate_job_id,
 )
-from kohakuterrarium.modules.tool.base import BaseTool, Tool, ToolContext, ToolResult
+from kohakuterrarium.modules.tool.base import BaseTool, Tool, ToolContext
 from kohakuterrarium.parsing.events import ToolCallEvent
 from kohakuterrarium.utils.logging import get_logger
 

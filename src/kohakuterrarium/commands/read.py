@@ -18,7 +18,7 @@ from kohakuterrarium.builtin_skills import (
 from kohakuterrarium.commands.base import BaseCommand, CommandResult, parse_command_args
 
 if TYPE_CHECKING:
-    from kohakuterrarium.core.controller import ControllerContext
+    pass
 
 
 class ReadCommand(BaseCommand):

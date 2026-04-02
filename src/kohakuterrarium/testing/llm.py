@@ -4,7 +4,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import Any, AsyncIterator
 
-from kohakuterrarium.llm.base import ChatResponse, LLMProvider
+from kohakuterrarium.llm.base import ChatResponse
 from kohakuterrarium.llm.message import Message
 
 

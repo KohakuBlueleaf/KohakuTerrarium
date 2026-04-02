@@ -16,13 +16,8 @@ Also requires FFmpeg installed on system:
 """
 
 import asyncio
-import io
-import tempfile
 import threading
-import wave
-from collections import deque
-from dataclasses import dataclass, field
-from pathlib import Path
+from dataclasses import dataclass
 from queue import Empty, Queue
 from typing import Any
 

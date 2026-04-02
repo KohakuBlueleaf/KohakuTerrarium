@@ -19,7 +19,6 @@ from kohakuterrarium.llm.base import LLMProvider
 from kohakuterrarium.modules.subagent.base import SubAgent, SubAgentResult
 from kohakuterrarium.modules.subagent.config import (
     ContextUpdateMode,
-    OutputTarget,
     SubAgentConfig,
 )
 from kohakuterrarium.parsing import StreamParser, TextEvent, ToolCallEvent

@@ -8,9 +8,8 @@ import asyncio
 from typing import AsyncIterator
 from uuid import uuid4
 
-from kohakuterrarium.serving.events import OutputEvent
 from kohakuterrarium.core.agent import Agent
-from kohakuterrarium.core.config import AgentConfig, load_agent_config
+from kohakuterrarium.core.config import AgentConfig
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)

@@ -384,7 +384,6 @@ def list_agents_cli(agents_path: str) -> int:
 
                 with open(config_file) as f:
                     config = yaml.safe_load(f)
-                name = config.get("name", agent_dir.name)
                 desc = config.get("description", "")
                 print(f"  {agent_dir.name}")
                 if desc:
@@ -485,7 +484,7 @@ def _login_codex() -> int:
     print()
 
     try:
-        tokens = asyncio.run(oauth_login())
+        asyncio.run(oauth_login())
         print()
         print("Authentication successful!")
         print(f"Tokens saved to: ~/.kohakuterrarium/codex-auth.json")

@@ -75,7 +75,13 @@ class TestChannelDescriptions:
 
 
 class TestChannelPromptHints:
-    """Tests for _build_channel_hints in aggregator."""
+    """Tests for _build_channel_hints in aggregator.
+
+    The channel hints are for STANDALONE agents only (internal sub-agent
+    channels). When a ``channels`` list is provided in extra_context,
+    it means the terrarium topology prompt already covers channel docs,
+    so ``_build_channel_hints`` returns empty.
+    """
 
     def _registry_with_channel_tools(self) -> Registry:
         """Create registry with send_message and wait_channel tools."""
@@ -100,80 +106,35 @@ class TestChannelPromptHints:
         assert result == ""
 
     def test_hints_with_channel_tools(self):
-        """Channel section generated when channel tools registered."""
+        """Channel section generated when channel tools registered (no channels context)."""
         registry = self._registry_with_channel_tools()
         result = _build_channel_hints(registry, None)
 
-        assert "Channel Communication" in result
+        assert "Internal Channels" in result
         assert "send_message" in result
         assert "wait_channel" in result
 
-    def test_hints_with_queue_channels(self):
-        """Queue channels listed in prompt."""
+    def test_hints_empty_when_channels_provided(self):
+        """When channels are in extra_context, hints are empty (topology prompt handles it)."""
         registry = self._registry_with_channel_tools()
         channels = [
             {"name": "tasks", "type": "queue", "description": "Task dispatch"},
-            {"name": "results", "type": "queue", "description": "Task results"},
         ]
         result = _build_channel_hints(registry, {"channels": channels})
+        assert result == ""
 
-        assert "Queue channels" in result
-        assert "`tasks`" in result
-        assert "Task dispatch" in result
-        assert "`results`" in result
-
-    def test_hints_with_broadcast_channels(self):
-        """Broadcast channels listed in prompt."""
+    def test_aggregate_includes_channel_hints_standalone(self):
+        """aggregate_system_prompt includes channel section for standalone agents."""
         registry = self._registry_with_channel_tools()
-        channels = [
-            {
-                "name": "team_chat",
-                "type": "broadcast",
-                "description": "Group discussion",
-            },
-        ]
-        result = _build_channel_hints(registry, {"channels": channels})
 
-        assert "Broadcast channels" in result
-        assert "`team_chat`" in result
-        assert "Group discussion" in result
-
-    def test_hints_with_mixed_channels(self):
-        """Both channel types listed correctly."""
-        registry = self._registry_with_channel_tools()
-        channels = [
-            {"name": "tasks", "type": "queue", "description": "Work items"},
-            {"name": "events", "type": "broadcast", "description": "Status updates"},
-        ]
-        result = _build_channel_hints(registry, {"channels": channels})
-
-        assert "Queue channels" in result
-        assert "Broadcast channels" in result
-
-    def test_hints_no_channels_configured(self):
-        """When no channels configured, explains on-the-fly creation."""
-        registry = self._registry_with_channel_tools()
-        result = _build_channel_hints(registry, None)
-
-        assert "No channels are pre-configured" in result
-        assert "on-the-fly" in result
-
-    def test_aggregate_includes_channel_hints(self):
-        """aggregate_system_prompt includes channel section."""
-        registry = self._registry_with_channel_tools()
-        channels = [
-            {"name": "inbox", "type": "queue", "description": "Incoming tasks"},
-        ]
-
+        # No channels context = standalone agent, should get internal channel hints
         result = aggregate_system_prompt(
             "You are a test agent.",
             registry,
-            channels=channels,
         )
 
-        assert "Channel Communication" in result
-        assert "`inbox`" in result
-        assert "Incoming tasks" in result
+        assert "Internal Channels" in result
+        assert "send_message" in result
 
 
 # =============================================================================

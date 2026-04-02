@@ -103,9 +103,10 @@ class TestUnifiedCreatureConfig:
             assert isinstance(creature.config_data, dict)
             assert "base_config" in creature.config_data
 
-    def test_swe_team_no_root(self):
+    def test_swe_team_has_root(self):
         config = load_terrarium_config(SWE_TEAM_DIR)
-        assert config.root is None
+        assert config.root is not None
+        assert config.root.config_data.get("base_config") == "creatures/root"
 
     def test_managed_tui_has_root(self):
         config = load_terrarium_config(MANAGED_TUI_DIR)

@@ -11,7 +11,6 @@ from typing import Any, Callable
 
 from kohakuterrarium.core.events import create_tool_complete_event
 from kohakuterrarium.core.job import (
-    JobResult,
     JobState,
     JobStatus,
     JobStore,
