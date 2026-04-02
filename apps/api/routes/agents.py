@@ -52,9 +52,22 @@ def agent_history(agent_id: str, manager=Depends(get_manager)):
         session = manager._agents.get(agent_id)
         if not session:
             raise ValueError(f"Agent not found: {agent_id}")
+
+        # Prefer SessionStore events (persistent, works after resume)
+        events = []
+        agent = session.agent
+        if hasattr(agent, "session_store") and agent.session_store:
+            try:
+                events = agent.session_store.get_events(agent.config.name)
+            except Exception:
+                pass
+
+        if not events:
+            events = get_event_log(f"agent:{agent_id}")
+
         return {
             "messages": session.agent.conversation_history,
-            "events": get_event_log(f"agent:{agent_id}"),
+            "events": events,
         }
     except ValueError as e:
         raise HTTPException(404, str(e))

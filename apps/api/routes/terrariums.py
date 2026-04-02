@@ -61,15 +61,33 @@ def terrarium_history(terrarium_id: str, target: str, manager=Depends(get_manage
 
     target: "root" for root agent, or creature name.
     Returns conversation messages + event log.
+
+    Events are read from the SessionStore (persistent, survives resume)
+    with fallback to the in-memory event log (for instances without
+    session persistence).
     """
     from apps.api.ws.chat import get_event_log
 
     try:
         session = manager.terrarium_mount(terrarium_id, target)
         mount_key = f"{terrarium_id}:{target}"
+
+        # Prefer SessionStore events (persistent, works after resume)
+        events = []
+        agent = session.agent
+        if hasattr(agent, "session_store") and agent.session_store:
+            try:
+                events = agent.session_store.get_events(target)
+            except Exception:
+                pass
+
+        # Fall back to in-memory event log
+        if not events:
+            events = get_event_log(mount_key)
+
         return {
             "messages": session.agent.conversation_history,
-            "events": get_event_log(mount_key),
+            "events": events,
         }
     except ValueError as e:
         raise HTTPException(404, str(e))
