@@ -14,6 +14,7 @@ from kohakuterrarium.modules.tool.base import (
     ExecutionMode,
     ToolResult,
 )
+from kohakuterrarium.utils.file_guard import is_binary_file
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -27,6 +28,8 @@ class GrepTool(BaseTool):
     Supports regex patterns and file type filtering.
     """
 
+    needs_context = True
+
     @property
     def tool_name(self) -> str:
         return "grep"
@@ -39,8 +42,10 @@ class GrepTool(BaseTool):
     def execution_mode(self) -> ExecutionMode:
         return ExecutionMode.DIRECT
 
-    async def _execute(self, args: dict[str, Any]) -> ToolResult:
+    async def _execute(self, args: dict[str, Any], **kwargs: Any) -> ToolResult:
         """Search files for pattern."""
+        context = kwargs.get("context")
+
         pattern = args.get("pattern", "")
         if not pattern:
             return ToolResult(error="No pattern provided")
@@ -48,6 +53,12 @@ class GrepTool(BaseTool):
         # Get base path
         base_path = args.get("path", ".")
         base = Path(base_path).expanduser().resolve()
+
+        # Path boundary guard
+        if context and context.path_guard:
+            msg = context.path_guard.check(str(base))
+            if msg:
+                return ToolResult(error=msg)
 
         if not base.exists():
             return ToolResult(error=f"Path not found: {base_path}")
@@ -66,6 +77,7 @@ class GrepTool(BaseTool):
 
         try:
             matches = []
+            total_matches = 0
             files_searched = 0
 
             # Find files to search
@@ -78,13 +90,8 @@ class GrepTool(BaseTool):
                 if not file_path.is_file():
                     continue
 
-                # Skip binary files (quick sync check is fine)
-                try:
-                    async with aiofiles.open(file_path, "rb") as f:
-                        chunk = await f.read(1024)
-                        if b"\x00" in chunk:
-                            continue
-                except Exception:
+                # Skip binary files
+                if is_binary_file(file_path):
                     continue
 
                 files_searched += 1
@@ -97,26 +104,28 @@ class GrepTool(BaseTool):
                         async for line in f:
                             line_num += 1
                             if regex.search(line):
-                                try:
-                                    rel_path = file_path.relative_to(base)
-                                except ValueError:
-                                    rel_path = file_path
+                                total_matches += 1
 
-                                matches.append(
-                                    {
-                                        "file": str(rel_path),
-                                        "line": line_num,
-                                        "content": line.rstrip(),
-                                    }
-                                )
+                                if len(matches) < limit:
+                                    content = line.rstrip()
+                                    # Truncate long lines
+                                    if len(content) > 2000:
+                                        content = content[:2000] + " ... (truncated)"
 
-                                if len(matches) >= limit:
-                                    break
+                                    try:
+                                        rel_path = file_path.relative_to(base)
+                                    except ValueError:
+                                        rel_path = file_path
+
+                                    matches.append(
+                                        {
+                                            "file": str(rel_path),
+                                            "line": line_num,
+                                            "content": content,
+                                        }
+                                    )
                 except Exception:
                     continue
-
-                if len(matches) >= limit:
-                    break
 
             # Format output
             output_lines = []
@@ -127,17 +136,18 @@ class GrepTool(BaseTool):
 
             output = "\n".join(output_lines)
 
-            if len(matches) >= limit:
+            if total_matches > limit:
                 output += (
-                    f"\n\n... (limit {limit} reached, {files_searched} files searched)"
+                    f"\n\nShowing first {limit} of {total_matches} matches. "
+                    "Narrow your pattern or use glob first."
                 )
             else:
-                output += f"\n\n({len(matches)} matches in {files_searched} files)"
+                output += f"\n\n({total_matches} matches in {files_searched} files)"
 
             logger.debug(
                 "Grep search",
                 pattern=pattern,
-                matches=len(matches),
+                matches=total_matches,
                 files=files_searched,
             )
 

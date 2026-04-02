@@ -18,6 +18,7 @@ from kohakuterrarium.core.config import AgentConfig
 from kohakuterrarium.core.controller import Controller, ControllerConfig
 from kohakuterrarium.core.executor import Executor
 from kohakuterrarium.core.loader import ModuleLoader
+from kohakuterrarium.utils.file_guard import FileReadState, PathBoundaryGuard
 from kohakuterrarium.core.registry import Registry
 from kohakuterrarium.core.session import get_session
 from kohakuterrarium.modules.input.base import InputModule
@@ -96,6 +97,17 @@ class AgentInitMixin:
                 self.executor._memory_path = (
                     self.config.agent_path / memory_config["path"]
                 )
+
+        # File safety guards
+        self._file_read_state = FileReadState()
+        self.executor._file_read_state = self._file_read_state
+
+        pwd_guard_mode = getattr(self.config, "pwd_guard", "warn")
+        self._path_guard = PathBoundaryGuard(
+            cwd=self.executor._working_dir,
+            mode=pwd_guard_mode,
+        )
+        self.executor._path_guard = self._path_guard
 
     def _init_subagents(self) -> None:
         """Initialize sub-agent manager and register sub-agents."""

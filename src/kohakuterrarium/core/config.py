@@ -124,7 +124,9 @@ class AgentConfig:
     max_tokens: int | None = None  # None = let the API decide
     reasoning_effort: str = "medium"  # none/minimal/low/medium/high/xhigh
     service_tier: str | None = None  # None/priority/flex
-    extra_body: dict[str, Any] = field(default_factory=dict)  # extra fields merged into API request body
+    extra_body: dict[str, Any] = field(
+        default_factory=dict
+    )  # extra fields merged into API request body
 
     # System prompt (loaded from file or inline)
     system_prompt: str = "You are a helpful assistant."
@@ -565,9 +567,7 @@ def _construct_agent_config(
         service_tier=controller_data.get(
             "service_tier", config_data.get("service_tier", None)
         ),
-        extra_body=controller_data.get(
-            "extra_body", config_data.get("extra_body", {})
-        ),
+        extra_body=controller_data.get("extra_body", config_data.get("extra_body", {})),
         system_prompt=config_data.get("system_prompt", "You are a helpful assistant."),
         system_prompt_file=config_data.get("system_prompt_file"),
         prompt_context_files=config_data.get("prompt_context_files", {}),

@@ -148,6 +148,8 @@ class TreeTool(BaseTool):
     Useful for discovering memory structure and understanding file contents.
     """
 
+    needs_context = True
+
     @property
     def tool_name(self) -> str:
         return "tree"
@@ -160,11 +162,19 @@ class TreeTool(BaseTool):
     def execution_mode(self) -> ExecutionMode:
         return ExecutionMode.DIRECT
 
-    async def _execute(self, args: dict[str, Any]) -> ToolResult:
+    async def _execute(self, args: dict[str, Any], **kwargs: Any) -> ToolResult:
         """List directory tree with frontmatter summaries."""
+        context = kwargs.get("context")
+
         # Get path (body content or path attribute)
         path_str = args.get("path") or args.get("_body", ".").strip() or "."
         path = Path(path_str).expanduser().resolve()
+
+        # Path boundary guard
+        if context and context.path_guard:
+            msg = context.path_guard.check(str(path))
+            if msg:
+                return ToolResult(error=msg)
 
         if not path.exists():
             return ToolResult(error=f"Path not found: {path_str}")

@@ -289,9 +289,7 @@ class TestOpenAIProviderConfig:
 
     def test_extra_body_stored(self):
         """Test that extra_body is stored on the provider."""
-        provider = self._make_provider(
-            extra_body={"reasoning": {"enabled": True}}
-        )
+        provider = self._make_provider(extra_body={"reasoning": {"enabled": True}})
         assert provider.extra_body == {"reasoning": {"enabled": True}}
 
     def test_extra_body_defaults_empty(self):
@@ -315,7 +313,5 @@ class TestOpenAIProviderConfig:
 
     def test_custom_base_url(self):
         """Test that custom base_url is passed to the client."""
-        provider = self._make_provider(
-            base_url="https://openrouter.ai/api/v1"
-        )
+        provider = self._make_provider(base_url="https://openrouter.ai/api/v1")
         assert "openrouter" in str(provider._client.base_url)

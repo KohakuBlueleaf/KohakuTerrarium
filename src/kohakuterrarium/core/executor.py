@@ -76,6 +76,8 @@ class Executor:
         self._environment: Any = None  # Environment, set by agent during init
         self._working_dir: Path = Path.cwd()
         self._memory_path: Path | None = None
+        self._file_read_state: Any = None  # FileReadState, set by agent
+        self._path_guard: Any = None  # PathBoundaryGuard, set by agent
 
     def register_tool(self, tool: Tool) -> None:
         """Register a tool for execution."""
@@ -247,6 +249,8 @@ class Executor:
             environment=self._environment,
             tool_format=self._tool_format,
             agent=self._agent,
+            file_read_state=self._file_read_state,
+            path_guard=self._path_guard,
         )
 
     async def wait_for(

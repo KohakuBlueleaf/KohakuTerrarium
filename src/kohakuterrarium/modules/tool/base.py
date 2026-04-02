@@ -58,6 +58,8 @@ class ToolContext:
     environment: Any = None  # Environment - shared state (None for standalone agents)
     tool_format: str = "native"  # "native", "bracket", "xml", or custom
     agent: Any = None  # Agent instance - for trigger_manager access, etc.
+    file_read_state: Any = None  # FileReadState - tracks which files the model has read
+    path_guard: Any = None  # PathBoundaryGuard - warns/blocks access outside cwd
 
     @property
     def channels(self) -> Any:

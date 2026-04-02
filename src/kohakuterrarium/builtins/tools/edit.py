@@ -1,10 +1,15 @@
 """
-Edit tool - apply unified diff patches to files.
+Edit tool - modify files via unified diff or search/replace.
 
-Accepts standard unified diff format for precise file modifications.
+Supports two modes (auto-detected from arguments):
+- **Unified diff**: ``path`` + ``diff`` args. Multi-hunk, context-aware.
+- **Search/replace**: ``path`` + ``old_string`` + ``new_string`` args.
+  Simple single-string replacement with optional ``replace_all``.
 """
 
+import os
 import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -17,6 +22,7 @@ from kohakuterrarium.modules.tool.base import (
     ExecutionMode,
     ToolResult,
 )
+from kohakuterrarium.utils.file_guard import check_read_before_write, is_binary_file
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -212,38 +218,166 @@ class EditTool(BaseTool):
     - Lines starting with ' ' for context
     """
 
+    needs_context = True
+
     @property
     def tool_name(self) -> str:
         return "edit"
 
     @property
     def description(self) -> str:
-        return "Edit file using unified diff format"
+        return "Edit file using unified diff or search/replace"
 
     @property
     def execution_mode(self) -> ExecutionMode:
         return ExecutionMode.DIRECT
 
-    async def _execute(self, args: dict[str, Any]) -> ToolResult:
-        """Apply diff to file."""
+    async def _execute(self, args: dict[str, Any], **kwargs: Any) -> ToolResult:
+        """Edit a file using unified diff or search/replace.
+
+        Mode is auto-detected from arguments:
+        - ``diff`` present: unified diff mode
+        - ``old_string`` present: search/replace mode
+        """
+        context = kwargs.get("context")
         path = args.get("path", "")
-        diff = args.get("diff", "")
 
         if not path:
             return ToolResult(
-                error="No path provided. The edit tool requires:\n"
-                "- path: file to edit\n"
-                "- diff: unified diff content\n\n"
-                "Diff format:\n"
-                "@@ -10,2 +10,3 @@\n"
-                " context line\n"
-                "+new line"
+                error="No path provided. The edit tool supports two modes:\n\n"
+                "1. Unified diff: path + diff\n"
+                "2. Search/replace: path + old_string + new_string\n"
             )
-        if not diff:
-            return ToolResult(error="No diff provided")
 
-        # Resolve path
+        # Detect mode from args
+        has_diff = bool(args.get("diff"))
+        has_old_string = "old_string" in args
+
+        if has_old_string:
+            return await self._execute_search_replace(path, args, context)
+        if has_diff:
+            return await self._execute_unified_diff(path, args, context)
+
+        return ToolResult(
+            error="Missing edit content. Provide either:\n"
+            "- diff: unified diff content, OR\n"
+            "- old_string + new_string: search/replace"
+        )
+
+    def _check_guards(self, file_path: Path, context: Any) -> ToolResult | None:
+        """Run all pre-edit guards. Returns ToolResult on failure, None on success."""
+        if is_binary_file(file_path):
+            return ToolResult(
+                error=f"Binary file detected ({file_path.suffix}). "
+                "Use bash with xxd, file, or other tools to inspect binary files."
+            )
+        if context and context.path_guard:
+            msg = context.path_guard.check(str(file_path))
+            if msg:
+                return ToolResult(error=msg)
+        msg = check_read_before_write(
+            context.file_read_state if context else None, str(file_path)
+        )
+        if msg:
+            return ToolResult(error=msg)
+        return None
+
+    def _update_read_state(self, file_path: Path, context: Any) -> None:
+        """Update file read state after a successful edit."""
+        if context and context.file_read_state:
+            mtime_ns = os.stat(file_path).st_mtime_ns
+            context.file_read_state.record_read(
+                str(file_path), mtime_ns, False, time.time()
+            )
+
+    async def _execute_search_replace(
+        self, path: str, args: dict[str, Any], context: Any
+    ) -> ToolResult:
+        """Search/replace mode: find old_string in file, replace with new_string."""
+        old_string = args.get("old_string", "")
+        new_string = args.get("new_string", "")
+        replace_all = args.get("replace_all", False)
+
+        if not old_string:
+            return ToolResult(
+                error="old_string is empty. Provide the exact text to find."
+            )
+
         file_path = Path(path).expanduser().resolve()
+
+        guard = self._check_guards(file_path, context)
+        if guard:
+            return guard
+
+        if not file_path.exists():
+            return ToolResult(error=f"File not found: {path}")
+        if not file_path.is_file():
+            return ToolResult(error=f"Not a file: {path}")
+
+        try:
+            async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
+                original = await f.read()
+
+            count = original.count(old_string)
+            if count == 0:
+                return ToolResult(
+                    error="old_string not found in file. "
+                    "Make sure it matches the file content exactly "
+                    "(including whitespace and indentation)."
+                )
+
+            if count > 1 and not replace_all:
+                return ToolResult(
+                    error=f"Found {count} occurrences of old_string. "
+                    "Provide more surrounding context to uniquely identify "
+                    "the target, or set replace_all=true to replace all."
+                )
+
+            if replace_all:
+                new_content = original.replace(old_string, new_string)
+            else:
+                new_content = original.replace(old_string, new_string, 1)
+
+            if new_content == original:
+                return ToolResult(
+                    output="No changes made (old_string equals new_string)",
+                    exit_code=0,
+                )
+
+            async with aiofiles.open(file_path, "w", encoding="utf-8") as f:
+                await f.write(new_content)
+
+            replaced = count if replace_all else 1
+            logger.debug(
+                "File edited (search/replace)",
+                file_path=str(file_path),
+                replacements=replaced,
+            )
+
+            self._update_read_state(file_path, context)
+
+            return ToolResult(
+                output=(f"Edited {file_path}\n" f"  {replaced} replacement(s) made"),
+                exit_code=0,
+            )
+
+        except PermissionError:
+            return ToolResult(error=f"Permission denied: {path}")
+        except Exception as e:
+            logger.error("Edit (search/replace) failed", error=str(e))
+            return ToolResult(error=str(e))
+
+    async def _execute_unified_diff(
+        self, path: str, args: dict[str, Any], context: Any
+    ) -> ToolResult:
+        """Unified diff mode: apply hunks from a standard diff."""
+        diff = args.get("diff", "")
+
+        file_path = Path(path).expanduser().resolve()
+
+        guard = self._check_guards(file_path, context)
+        if guard:
+            return guard
 
         if not file_path.exists():
             return ToolResult(error=f"File not found: {path}")
@@ -308,6 +442,8 @@ class EditTool(BaseTool):
                 removed=removed,
             )
 
+            self._update_read_state(file_path, context)
+
             return ToolResult(
                 output=(
                     f"Edited {file_path}\n"
@@ -326,19 +462,28 @@ class EditTool(BaseTool):
     def get_full_documentation(self, tool_format: str = "native") -> str:
         return """# edit
 
-Edit file using unified diff format.
+Edit a file. Supports two modes (auto-detected from arguments).
 
-## Arguments
+## Mode 1: Search/Replace
 
 | Arg | Type | Description |
 |-----|------|-------------|
 | path | string | Path to file (required) |
-| diff | string | Unified diff content |
+| old_string | string | Exact text to find (required) |
+| new_string | string | Replacement text (required) |
+| replace_all | bool | Replace all occurrences (default: false) |
 
-## Diff Format
+If old_string appears multiple times and replace_all is false,
+provide more surrounding context to make it unique.
 
-Standard unified diff with hunk headers:
+## Mode 2: Unified Diff
 
+| Arg | Type | Description |
+|-----|------|-------------|
+| path | string | Path to file (required) |
+| diff | string | Unified diff content (required) |
+
+Diff format:
 ```
 @@ -start,count +start,count @@
 -line to remove
@@ -346,15 +491,8 @@ Standard unified diff with hunk headers:
  context line (unchanged)
 ```
 
-- Lines starting with `-` are removed
-- Lines starting with `+` are added
-- Lines starting with ` ` (space) are context (must match the file exactly)
+## Safety
 
-## Tips
-
-- Read the file first to see exact line numbers and content.
-- Include context lines (space-prefixed) to anchor changes precisely.
-- Line numbers in @@ headers are 1-indexed.
-- Multiple hunks can appear in a single diff.
-- Hunks are applied in reverse order to preserve line numbers.
+- You MUST read the file before editing it.
+- If the file was modified since your last read, you must re-read it.
 """

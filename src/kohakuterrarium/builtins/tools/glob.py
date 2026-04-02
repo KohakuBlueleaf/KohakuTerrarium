@@ -25,6 +25,8 @@ class GlobTool(BaseTool):
     Supports glob patterns like **/*.py
     """
 
+    needs_context = True
+
     @property
     def tool_name(self) -> str:
         return "glob"
@@ -37,8 +39,10 @@ class GlobTool(BaseTool):
     def execution_mode(self) -> ExecutionMode:
         return ExecutionMode.DIRECT
 
-    async def _execute(self, args: dict[str, Any]) -> ToolResult:
+    async def _execute(self, args: dict[str, Any], **kwargs: Any) -> ToolResult:
         """Find files matching pattern."""
+        context = kwargs.get("context")
+
         pattern = args.get("pattern", "")
         if not pattern:
             return ToolResult(error="No pattern provided")
@@ -46,6 +50,12 @@ class GlobTool(BaseTool):
         # Get base path
         base_path = args.get("path", ".")
         base = Path(base_path).expanduser().resolve()
+
+        # Path boundary guard
+        if context and context.path_guard:
+            msg = context.path_guard.check(str(base))
+            if msg:
+                return ToolResult(error=msg)
 
         if not base.exists():
             return ToolResult(error=f"Path not found: {base_path}")

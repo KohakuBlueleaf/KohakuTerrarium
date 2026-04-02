@@ -188,7 +188,9 @@ class OpenAIProvider(BaseLLMProvider):
                         if tc_delta.function.name:
                             pending_calls[idx]["name"] = tc_delta.function.name
                         if tc_delta.function.arguments:
-                            pending_calls[idx]["arguments"] += tc_delta.function.arguments
+                            pending_calls[idx][
+                                "arguments"
+                            ] += tc_delta.function.arguments
 
             # Yield text content
             if delta.content:

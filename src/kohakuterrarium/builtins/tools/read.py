@@ -2,6 +2,8 @@
 Read tool - read file contents.
 """
 
+import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +15,7 @@ from kohakuterrarium.modules.tool.base import (
     ExecutionMode,
     ToolResult,
 )
+from kohakuterrarium.utils.file_guard import is_binary_file
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -26,6 +29,8 @@ class ReadTool(BaseTool):
     Supports reading entire files or specific line ranges.
     """
 
+    needs_context = True
+
     @property
     def tool_name(self) -> str:
         return "read"
@@ -38,14 +43,29 @@ class ReadTool(BaseTool):
     def execution_mode(self) -> ExecutionMode:
         return ExecutionMode.DIRECT
 
-    async def _execute(self, args: dict[str, Any]) -> ToolResult:
+    async def _execute(self, args: dict[str, Any], **kwargs: Any) -> ToolResult:
         """Read file contents."""
+        context = kwargs.get("context")
+
         path = args.get("path", "")
         if not path:
             return ToolResult(error="No path provided")
 
         # Resolve path
         file_path = Path(path).expanduser().resolve()
+
+        # Binary file guard
+        if is_binary_file(file_path):
+            return ToolResult(
+                error=f"Binary file detected ({file_path.suffix}). "
+                "Use bash with xxd, file, or other tools to inspect binary files."
+            )
+
+        # Path boundary guard
+        if context and context.path_guard:
+            msg = context.path_guard.check(str(file_path))
+            if msg:
+                return ToolResult(error=msg)
 
         if not file_path.exists():
             return ToolResult(error=f"File not found: {path}")
@@ -56,6 +76,9 @@ class ReadTool(BaseTool):
         # Get optional parameters
         offset = int(args.get("offset", 0))
         limit = int(args.get("limit", 0))
+
+        # Configurable output truncation
+        max_output_bytes = int(self.config.extra.get("max_output_bytes", 200000))
 
         try:
             async with aiofiles.open(
@@ -79,6 +102,13 @@ class ReadTool(BaseTool):
                 line_num = start_line + i
                 # Remove trailing newline for cleaner output
                 line_content = line.rstrip("\n\r")
+                # Truncate individual long lines
+                if len(line_content) > 2000:
+                    total_chars = len(line_content)
+                    line_content = (
+                        line_content[:2000]
+                        + f" ... (line truncated, {total_chars} chars)"
+                    )
                 output_lines.append(f"{line_num:6}→{line_content}")
 
             output = "\n".join(output_lines)
@@ -87,11 +117,26 @@ class ReadTool(BaseTool):
             if limit > 0 and offset + limit < total_lines:
                 output += f"\n\n... (showing lines {offset + 1}-{offset + len(lines)} of {total_lines})"
 
+            # Truncate total output if it exceeds max bytes
+            if max_output_bytes > 0 and len(output.encode("utf-8")) > max_output_bytes:
+                output = output.encode("utf-8")[:max_output_bytes].decode(
+                    "utf-8", errors="ignore"
+                )
+                output += f"\n\n[Output truncated at {max_output_bytes} bytes. Use offset/limit to read specific sections.]"
+
             logger.debug(
                 "File read",
                 file_path=str(file_path),
                 lines_read=len(lines),
             )
+
+            # Record read to file_read_state
+            if context and context.file_read_state:
+                mtime_ns = os.stat(file_path).st_mtime_ns
+                partial = bool(args.get("offset") or args.get("limit"))
+                context.file_read_state.record_read(
+                    str(file_path), mtime_ns, partial, time.time()
+                )
 
             return ToolResult(output=output, exit_code=0)
 

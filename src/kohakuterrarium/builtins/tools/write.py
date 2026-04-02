@@ -2,6 +2,8 @@
 Write tool - write content to files.
 """
 
+import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +15,7 @@ from kohakuterrarium.modules.tool.base import (
     ExecutionMode,
     ToolResult,
 )
+from kohakuterrarium.utils.file_guard import check_read_before_write
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -26,6 +29,8 @@ class WriteTool(BaseTool):
     Creates parent directories if needed.
     """
 
+    needs_context = True
+
     @property
     def tool_name(self) -> str:
         return "write"
@@ -38,8 +43,10 @@ class WriteTool(BaseTool):
     def execution_mode(self) -> ExecutionMode:
         return ExecutionMode.DIRECT
 
-    async def _execute(self, args: dict[str, Any]) -> ToolResult:
+    async def _execute(self, args: dict[str, Any], **kwargs: Any) -> ToolResult:
         """Write content to file."""
+        context = kwargs.get("context")
+
         path = args.get("path", "")
         content = args.get("content", "")
 
@@ -48,6 +55,19 @@ class WriteTool(BaseTool):
 
         # Resolve path
         file_path = Path(path).expanduser().resolve()
+
+        # Path boundary guard
+        if context and context.path_guard:
+            msg = context.path_guard.check(str(file_path))
+            if msg:
+                return ToolResult(error=msg)
+
+        # Read-before-write guard
+        msg = check_read_before_write(
+            context.file_read_state if context else None, str(file_path)
+        )
+        if msg:
+            return ToolResult(error=msg)
 
         try:
             # Create parent directories if needed
@@ -69,6 +89,13 @@ class WriteTool(BaseTool):
                 action=action.lower(),
                 lines=lines,
             )
+
+            # Update file_read_state with new mtime
+            if context and context.file_read_state:
+                mtime_ns = os.stat(file_path).st_mtime_ns
+                context.file_read_state.record_read(
+                    str(file_path), mtime_ns, False, time.time()
+                )
 
             return ToolResult(
                 output=f"{action} {file_path} ({lines} lines, {len(content)} bytes)",
