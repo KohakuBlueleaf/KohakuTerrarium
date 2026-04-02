@@ -74,6 +74,27 @@ class KohakuManager:
         else:
             raise ValueError("Must provide config_path or config")
         self._agents[session.agent_id] = session
+
+        # Auto-attach session store for persistence
+        if self._session_dir:
+            try:
+                session_path = (
+                    Path(self._session_dir)
+                    / f"{session.agent_id}.kohakutr"
+                )
+                store = SessionStore(session_path)
+                store.init_meta(
+                    session_id=session.agent_id,
+                    config_type="agent",
+                    config_path=config_path or "",
+                    pwd=os.getcwd(),
+                    agents=[session.agent.config.name],
+                )
+                session.agent.attach_session_store(store)
+                self._session_stores[session.agent_id] = store
+            except Exception as e:
+                logger.warning("Session store creation failed", error=str(e))
+
         logger.info("Agent created", agent_id=session.agent_id)
         return session.agent_id
 
@@ -190,7 +211,7 @@ class KohakuManager:
         # Prepare session store before run (auto-attached after start inside run)
         if self._session_dir:
             try:
-                session_path = Path(self._session_dir) / f"{terrarium_id}.kt"
+                session_path = Path(self._session_dir) / f"{terrarium_id}.kohakutr"
                 store = SessionStore(session_path)
                 store.init_meta(
                     session_id=terrarium_id,
