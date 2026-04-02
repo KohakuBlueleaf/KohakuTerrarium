@@ -79,17 +79,14 @@ def build_root_agent(
 
     root_session = root_env.get_session("root")
 
-    # Force TUI I/O for the root agent (terrarium controls the TUI)
-    from kohakuterrarium.builtins.inputs import create_builtin_input
-    from kohakuterrarium.builtins.outputs import create_builtin_output
-
-    tui_input = create_builtin_input("tui", {"session_key": "root"})
-    tui_output = create_builtin_output("tui", {"session_key": "root"})
+    # Root agent uses NoneInput by default (terrarium TUI handles I/O).
+    # If running headless (web API), this is correct.
+    # If running with TUI, the terrarium CLI creates the TUI separately.
+    from kohakuterrarium.builtins.inputs.none import NoneInput
 
     agent = Agent(
         agent_config,
-        input_module=tui_input,
-        output_module=tui_output,
+        input_module=NoneInput(),
         session=root_session,
         environment=root_env,
     )
