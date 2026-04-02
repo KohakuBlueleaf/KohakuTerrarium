@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api.deps import get_manager
-from apps.api.routes import agents, channels, configs, creatures, terrariums
+from apps.api.routes import agents, channels, configs, creatures, sessions, terrariums
 from apps.api.ws import agents as ws_agents, channels as ws_channels, chat as ws_chat
 
 
@@ -59,6 +59,7 @@ def create_app(
     )
     app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
     app.include_router(configs.router, prefix="/api/configs", tags=["configs"])
+    app.include_router(sessions.router, prefix="/api/sessions", tags=["sessions"])
 
     # WebSocket routes
     app.include_router(ws_channels.router, tags=["ws"])

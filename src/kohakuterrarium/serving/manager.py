@@ -77,6 +77,15 @@ class KohakuManager:
         logger.info("Agent created", agent_id=session.agent_id)
         return session.agent_id
 
+    async def register_agent(self, agent: Any, store: Any = None) -> str:
+        """Register a pre-built agent (e.g. from resume). Returns agent_id."""
+        session = await AgentSession.from_agent(agent)
+        self._agents[session.agent_id] = session
+        if store:
+            self._session_stores[session.agent_id] = store
+        logger.info("Agent registered", agent_id=session.agent_id)
+        return session.agent_id
+
     async def agent_stop(self, agent_id: str) -> None:
         """Stop and cleanup an agent."""
         session = self._agents.pop(agent_id, None)
@@ -223,6 +232,22 @@ class KohakuManager:
         await asyncio.sleep(0.5)
 
         logger.info("Terrarium created", terrarium_id=terrarium_id)
+        return terrarium_id
+
+    async def register_terrarium(
+        self, runtime: TerrariumRuntime, store: Any = None
+    ) -> str:
+        """Register a pre-built terrarium (e.g. from resume). Returns terrarium_id."""
+        terrarium_id = f"terrarium_{uuid4().hex[:8]}"
+        self._terrariums[terrarium_id] = runtime
+        if store:
+            self._session_stores[terrarium_id] = store
+
+        task = asyncio.create_task(runtime.run())
+        self._terrarium_tasks[terrarium_id] = task
+        await asyncio.sleep(0.5)
+
+        logger.info("Terrarium registered (resumed)", terrarium_id=terrarium_id)
         return terrarium_id
 
     async def terrarium_stop(self, terrarium_id: str) -> None:

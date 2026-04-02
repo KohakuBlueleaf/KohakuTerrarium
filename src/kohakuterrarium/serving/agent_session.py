@@ -37,6 +37,17 @@ class AgentSession:
         self._output_queue.put_nowait(text)
 
     @classmethod
+    async def from_agent(cls, agent: Agent) -> "AgentSession":
+        """Create session from a pre-built agent (e.g. from resume).
+
+        Does NOT call start() since the agent may already be configured
+        for resume. The caller should start it separately.
+        """
+        session = cls(agent)
+        await session.start()
+        return session
+
+    @classmethod
     async def from_path(cls, config_path: str) -> "AgentSession":
         """Create session from agent config path."""
         agent = Agent.from_path(config_path)
