@@ -79,9 +79,17 @@ def build_root_agent(
 
     root_session = root_env.get_session("root")
 
-    # Root agent uses its own I/O from its creature config
+    # Force TUI I/O for the root agent (terrarium controls the TUI)
+    from kohakuterrarium.builtins.inputs import create_builtin_input
+    from kohakuterrarium.builtins.outputs import create_builtin_output
+
+    tui_input = create_builtin_input("tui", {"session_key": "root"})
+    tui_output = create_builtin_output("tui", {"session_key": "root"})
+
     agent = Agent(
         agent_config,
+        input_module=tui_input,
+        output_module=tui_output,
         session=root_session,
         environment=root_env,
     )
