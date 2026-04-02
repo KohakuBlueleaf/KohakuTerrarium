@@ -76,6 +76,18 @@ output, and termination.
 Framework-wide magic numbers: tool result truncation limits, status preview
 lengths, and sub-agent output caps.
 
+### Environment (`environment.py`)
+
+Isolated execution context for multi-session support. An `Environment` holds
+shared state per user request (inter-creature channels, config overrides),
+while `Session` holds private state per creature.
+
+### TriggerManager (`trigger_manager.py`)
+
+Centralized trigger lifecycle management. Owns all trigger instances and their
+async tasks, providing the event loop for each trigger. Tools can add and
+remove triggers at runtime via the agent's trigger_manager.
+
 ### Supporting Files
 
 | File | Purpose |

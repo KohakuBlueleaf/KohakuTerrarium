@@ -162,7 +162,7 @@ The recording uses `SessionOutput`, an `OutputModule` added as a secondary outpu
 
 ## Unified WebSocket Architecture
 
-Each terrarium instance uses a single WebSocket connection that carries ALL creature output and ALL channel messages. This is implemented in `apps/api/ws/chat.py`:
+Each terrarium instance uses a single WebSocket connection that carries ALL creature output and ALL channel messages. The shared event log and `StreamOutput` class live in `apps/api/events.py`, which both REST routes and WebSocket handlers depend on. The WebSocket transport is implemented in `apps/api/ws/chat.py`:
 
 - `/ws/terrariums/{id}`: single WS carrying all events for a terrarium
 - `/ws/creatures/{id}`: per-creature WS for standalone agents

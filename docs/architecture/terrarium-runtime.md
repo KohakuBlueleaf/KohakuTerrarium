@@ -40,19 +40,27 @@ class ChannelConfig:
 
 ### TerrariumRuntime (`terrarium/runtime.py`)
 
-The runtime orchestrator. On `start()` it:
+The runtime orchestrator, focused on lifecycle management. On `start()` it:
 
 1. **Creates shared session** - all creatures share one `Session` with a single `ChannelRegistry`, so channels are visible across creatures.
 2. **Pre-creates declared channels** - each channel from the config is created in the shared registry with the correct type and description.
-3. **Builds creatures** - for each creature:
-   - Loads the standalone agent config via `load_agent_config()`
-   - Points the agent at the shared session key
-   - Overrides input to `NoneInput` (creatures receive work via channel triggers, not stdin)
-   - Injects `ChannelTrigger` instances for each listen channel
-   - Injects channel topology into the system prompt
+3. **Delegates creature building** to `factory.build_creature()` and `factory.build_root_agent()` (see below).
 4. **Starts all creature agents** - calls `agent.start()` on each creature.
 
 On `run()`, each creature runs its event loop as a concurrent `asyncio.Task`. The runtime waits for all tasks to finish (or handles cancellation).
+
+### Factory (`terrarium/factory.py`)
+
+Pure functions for building Agent instances from terrarium config. Extracted from runtime.py to keep the runtime focused on lifecycle.
+
+- `build_root_agent(config, environment)` - builds the root agent with terrarium management tools force-registered
+- `build_creature(creature_config, environment, channel_registry)` - builds a creature agent: loads standalone config, overrides input to `NoneInput`, injects `ChannelTrigger` instances for listen channels, injects channel topology into the system prompt, wraps output with `OutputLogCapture` if configured
+
+Both functions import from `builtins.tool_catalog` (not `builtins.tools`) to look up terrarium tools, avoiding the old import cycle.
+
+### Tool Registration (`terrarium/tool_registration.py`)
+
+Registers a deferred loader with `tool_catalog` so that terrarium tools (terrarium_create, terrarium_status, etc.) are loaded on first demand. The actual `builtins.tools.terrarium_tools` module is only imported when the catalog encounters a cache miss and invokes the loader. This replaces the old `_ensure_terrarium_tools()` mechanism in `builtins/tools/registry.py`.
 
 ### CreatureHandle (`terrarium/creature.py`)
 
@@ -117,15 +125,17 @@ Each creature runs its own event loop, which:
 }
 ```
 
-### Session Persistence
+### Session Persistence (`terrarium/persistence.py`)
 
-The runtime supports attaching a `SessionStore` via `attach_session_store(store, resume_data=None)`. When attached:
+Session persistence helpers are extracted into `terrarium/persistence.py`. The runtime delegates to `attach_session_store(runtime, store, resume_data=None)`. When attached:
 
 1. A `SessionOutput` is added as a secondary output on each creature, recording events to the store
 2. `on_send` callbacks are registered on all channels to capture channel messages
 3. If `resume_data` is provided, conversation and scratchpad state are injected into each creature before event loops start
 
-The `root_agent` property and `get_creature_agent(name)` method provide direct access to agent instances for resume injection.
+`persistence.py` also provides `build_conversation_from_messages()` for rebuilding Conversation objects from saved message dicts during resume.
+
+The `root_agent` property and `get_creature_agent(name)` method on `TerrariumRuntime` provide direct access to agent instances for resume injection.
 
 ## API Layer
 

@@ -60,3 +60,7 @@ Output modules deliver agent output to destinations.
 - `OutputRouter` (`router.py`): State machine that routes parse events to the
   correct output module. Handles normal text, tool blocks (suppressed), and
   named output targets (`[/output_name]...[output_name/]`).
+- `MultiOutputRouter` (`router.py`): Router variant that dispatches to multiple
+  output modules simultaneously.
+- `OutputState` (`router.py`): Enum tracking the router's current state
+  (normal, inside tool block, inside output block).

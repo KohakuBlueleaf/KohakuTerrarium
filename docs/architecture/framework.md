@@ -10,8 +10,7 @@ The top-level orchestrator that wires all components together.
 
 **Responsibilities:**
 - Load configuration from folder
-- Initialize LLM provider, controller, executor, registry
-- Load tools, sub-agents, triggers from config
+- Delegate component initialization to `bootstrap/` factories
 - Build system prompt via aggregation
 - Process events through controller
 - Track job status and completion
@@ -25,6 +24,20 @@ await agent.run()                            # Main event loop
 await agent.stop()                           # Cleanup
 ```
 
+### Bootstrap Package (`bootstrap/`)
+
+Agent initialization is split into focused factory modules that each create one subsystem from an `AgentConfig`. This reduces the import fan-out of `agent_init.py` and keeps each factory independently testable.
+
+| Module | Responsibility |
+|--------|---------------|
+| `bootstrap/llm.py` | Create LLM provider from config |
+| `bootstrap/tools.py` | Load and register tools (builtin + custom) |
+| `bootstrap/io.py` | Create input and output modules |
+| `bootstrap/subagents.py` | Load sub-agent configs and create manager |
+| `bootstrap/triggers.py` | Create trigger modules from config |
+
+`agent_init.py` calls these factories in sequence during `Agent.start()`.
+
 ### Controller (`core/controller.py`)
 
 The LLM conversation loop with event queue management.
@@ -37,11 +50,12 @@ The LLM conversation loop with event queue management.
 - Manage job tracking and status
 
 **Key method - `run_once()`:**
-1. Wait for event from queue
-2. Add event content to conversation
-3. Stream LLM response
-4. Parse response for tool calls, commands, output blocks
-5. Yield ParseEvents to caller
+1. Add event content to conversation
+2. Stream LLM response via `_run_internal()`
+3. Parse response for tool calls, commands, output blocks
+4. Yield ParseEvents to caller
+
+`run_once()` handles the outer conversation setup and result packaging, while `_run_internal()` owns the streaming loop and parse-event dispatch.
 
 **Command handling:**
 Commands like `[/info]bash[info/]` are handled inline during streaming - the result is converted to a TextEvent and yielded.
@@ -117,7 +131,15 @@ Agents with the same `session_key` share the same Session instance. See [Environ
 
 ### Registry (`core/registry.py`)
 
-Central registration for tools, sub-agents, and commands. Supports both programmatic registration and decorator-based registration (`@tool("name")`, `@command("name")`).
+Per-agent registration for tools, sub-agents, and commands. Supports both programmatic registration and decorator-based registration (`@tool("name")`, `@command("name")`).
+
+### Tool Catalog (`builtins/tool_catalog.py`)
+
+Global registry of builtin tool classes. A leaf module with zero side effects: individual tool modules use `@register_builtin` to register themselves at import time, but the catalog never imports any tool module itself. Supports deferred loaders for lazy registration of tool groups (e.g., terrarium tools are only loaded on first demand). Internal code (core, terrarium) should import from `tool_catalog`, not from `builtins.tools`, to avoid pulling in all tool modules and their transitive dependencies.
+
+### Sub-Agent Catalog (`builtins/subagent_catalog.py`)
+
+Global registry of builtin sub-agent configurations. Same leaf-module pattern as `tool_catalog`.
 
 ## Module System
 
@@ -261,7 +283,7 @@ The `_processing_lock` (asyncio.Lock) ensures only one `_process_event` runs at 
 
 ## Processing Loop
 
-`_process_event_with_controller()` handles ONE event and all its direct tool calls:
+`_process_event_with_controller()` (in `core/agent_handlers.py`) handles ONE event and all its direct tool calls:
 
 ```
 Phase 1: Reset router, prepare tracking
@@ -352,7 +374,16 @@ src/kohakuterrarium/
 |   +-- template.py          # Jinja2 rendering
 |   +-- plugins.py           # Extensible plugins
 |
++-- bootstrap/               # Agent initialization factories
+|   +-- llm.py              # LLM provider creation
+|   +-- tools.py            # Tool loading and registration
+|   +-- io.py               # Input/output module creation
+|   +-- subagents.py        # Sub-agent config loading
+|   +-- triggers.py         # Trigger module creation
+|
 +-- builtins/                # Built-in implementations
+|   +-- tool_catalog.py     # Global builtin tool registry (leaf module)
+|   +-- subagent_catalog.py # Global builtin sub-agent registry (leaf module)
 |   +-- tools/               # 18 general + 8 terrarium tools
 |   +-- inputs/              # cli, whisper, none
 |   +-- outputs/             # stdout, tts

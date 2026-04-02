@@ -3,7 +3,7 @@
 Ready-to-use tools, sub-agents, inputs, and outputs that ship with the framework.
 Agents reference these by name in their `config.yaml`.
 
-## Tools (16)
+## Tools (20)
 
 | Name | Description |
 |------|-------------|
@@ -23,6 +23,10 @@ Agents reference these by name in their `config.yaml`.
 | `json_write` | Modify JSON files with path expressions |
 | `send_message` | Send a message to a named channel |
 | `wait_channel` | Wait for a message on a named channel |
+| `info` | Load full documentation for a tool or sub-agent on demand |
+| `list_triggers` | Introspect active triggers on the agent |
+| `stop_task` | Cancel a running background tool or sub-agent |
+| `terrarium_tools` | Terrarium management tools for the root agent (lazily registered) |
 
 ## Sub-agents (10)
 
@@ -57,11 +61,21 @@ Shared terminal UI with coordinated input and output via the session registry.
 
 Both modules attach to the same `TUISession` instance via `get_session()`, enabling coordinated terminal access.
 
+## Catalogs
+
+Tool and sub-agent registration logic lives in catalog modules at the
+builtins root, separate from the implementation subdirectories:
+
+| File | Purpose |
+|------|---------|
+| `tool_catalog.py` | Tool registry: `register_builtin`, `get_builtin_tool`, `list_builtin_tools`, `is_builtin_tool` |
+| `subagent_catalog.py` | Sub-agent registry: `get_builtin_subagent_config`, `list_builtin_subagents` |
+
 ## Usage
 
 ```python
-from kohakuterrarium.builtins.tools import get_builtin_tool
-from kohakuterrarium.builtins.subagents import get_builtin_subagent_config
+from kohakuterrarium.builtins.tool_catalog import get_builtin_tool
+from kohakuterrarium.builtins.subagent_catalog import get_builtin_subagent_config
 
 tool = get_builtin_tool("bash")           # Returns BaseTool instance
 config = get_builtin_subagent_config("explore")  # Returns SubAgentConfig
@@ -72,7 +86,7 @@ config = get_builtin_subagent_config("explore")  # Returns SubAgentConfig
 Register new tools with `@register_builtin("name")`:
 
 ```python
-from kohakuterrarium.builtins.tools import register_builtin
+from kohakuterrarium.builtins.tool_catalog import register_builtin
 from kohakuterrarium.modules.tool.base import BaseTool, ToolResult
 
 @register_builtin("my_tool")
@@ -89,7 +103,9 @@ class MyTool(BaseTool):
 
 ```
 builtins/
-├── tools/       # 16 tool implementations + registry
+├── tool_catalog.py      # Tool registry (canonical location)
+├── subagent_catalog.py  # Sub-agent registry (canonical location)
+├── tools/       # 20 tool implementations
 ├── subagents/   # 10 sub-agent configs
 ├── inputs/      # CLI, Whisper, and None input modules
 ├── outputs/     # Stdout and TTS output modules

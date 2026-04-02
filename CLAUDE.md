@@ -154,6 +154,21 @@ src/kohakuterrarium/
 │   ├── config.py            # Config loading
 │   └── registry.py          # Module registration
 │
+├── bootstrap/               # Agent initialization factories
+│   ├── llm.py              # LLM provider creation
+│   ├── tools.py            # Tool loading and registration
+│   ├── io.py               # Input/output module creation
+│   ├── subagents.py        # Sub-agent config loading
+│   └── triggers.py         # Trigger module creation
+│
+├── builtins/                # Built-in implementations
+│   ├── tool_catalog.py     # Global builtin tool lookup (leaf module, deferred loaders)
+│   ├── subagent_catalog.py # Global builtin sub-agent lookup (leaf module)
+│   ├── tools/              # 18 general + 8 terrarium tool classes
+│   ├── inputs/             # cli, whisper, none
+│   ├── outputs/            # stdout, tts
+│   └── subagents/          # Sub-agent configs
+│
 ├── modules/                 # Plugin API for devs
 │   ├── input/               # Produces TriggerEvent(type="user_input")
 │   ├── trigger/             # Produces TriggerEvent(type=...)
@@ -171,7 +186,10 @@ src/kohakuterrarium/
 │   └── agent_session.py     # AgentSession - streaming chat wrapper
 │
 ├── terrarium/               # Multi-agent runtime
-│   ├── runtime.py           # TerrariumRuntime - creature lifecycle + channels
+│   ├── runtime.py           # TerrariumRuntime - lifecycle orchestration
+│   ├── factory.py           # Creature/root agent construction
+│   ├── persistence.py       # Session store attachment + resume helpers
+│   ├── tool_registration.py # Deferred terrarium tool loading
 │   ├── config.py            # Terrarium config loading + topology prompt
 │   └── hotplug.py           # Add/remove creatures and channels at runtime
 │
@@ -183,6 +201,7 @@ src/kohakuterrarium/
 
 apps/
 ├── api/                     # FastAPI HTTP API (18 REST + 4 WebSocket)
+│   └── events.py           # Shared event log + StreamOutput (used by REST + WS)
 └── web/                     # Vue 3 frontend (Vite + Element Plus + Vue Flow)
 ```
 

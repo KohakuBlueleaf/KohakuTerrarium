@@ -143,6 +143,12 @@ await env.inject("Please help me")
 ### Session Resume (`test_session_resume.py`) - Resume Roundtrips
 - Agent session roundtrip, terrarium multi-agent roundtrip, conversation injection, tool_calls preservation via msgpack, multiple resume cycles, empty conversation/scratchpad edge cases, session type detection
 
+### Bootstrap (`test_bootstrap.py`) - Agent Initialization Factories
+- LLM provider creation, tool loading/registration, input/output module creation, sub-agent config loading, trigger creation
+
+### Terrarium Modules (`test_terrarium_modules.py`) - Terrarium Subsystem Tests
+- Factory functions (build_creature, build_root_agent), persistence helpers, tool_registration deferred loading, events.py StreamOutput and event log
+
 ---
 
 ## Integration Test Coverage
