@@ -95,7 +95,9 @@ class AgentTUI(App):
                 if self._terrarium_tabs:
                     with TabbedContent(id="chat-tabs"):
                         for tab_name in self._terrarium_tabs:
-                            label = tab_name if not tab_name.startswith("#") else tab_name
+                            label = (
+                                tab_name if not tab_name.startswith("#") else tab_name
+                            )
                             with TabPane(label, id=f"tab-{_safe_id(tab_name)}"):
                                 yield VerticalScroll(
                                     id=f"chat-{_safe_id(tab_name)}",
@@ -247,8 +249,8 @@ class TUISession:
         self.running = False
         self._app: AgentTUI | None = None
         self._stop_event = asyncio.Event()
-        self._streaming_widget: StreamingText | None = None
-        self._current_subagent: SubAgentBlock | None = None
+        self._streaming_widgets: dict[str, StreamingText] = {}  # target -> widget
+        self._current_subagents: dict[str, SubAgentBlock] = {}  # target -> block
         # Terrarium mode
         self._terrarium_tabs: list[str] | None = None
         self._active_target: str = ""  # which tab output is currently targeting
@@ -310,19 +312,27 @@ class TUISession:
     def add_user_message(self, text: str, target: str = "") -> None:
         self._safe_mount(UserMessage(text), target=target)
 
-    def add_trigger_message(self, label: str, content: str = "", target: str = "") -> None:
+    def add_trigger_message(
+        self, label: str, content: str = "", target: str = ""
+    ) -> None:
         self._safe_mount(TriggerMessage(label, content), target=target)
 
     def add_tool_block(
-        self, tool_name: str, args_preview: str = "", tool_id: str = "",
+        self,
+        tool_name: str,
+        args_preview: str = "",
+        tool_id: str = "",
         target: str = "",
     ) -> ToolBlock | None:
-        if self._current_subagent:
+        sa = self._current_subagents.get(target or "_default")
+        if sa:
+
             def _do():
                 try:
-                    self._current_subagent.add_tool_line(tool_name, args_preview)
+                    sa.add_tool_line(tool_name, args_preview)
                 except Exception:
                     pass
+
             self._safe_call(_do)
             return None
         block = ToolBlock(tool_name, args_preview, tool_id)
@@ -330,25 +340,30 @@ class TUISession:
         return block
 
     def update_tool_block(
-        self, tool_name: str, output: str = "", error: str | None = None,
-        tool_id: str = "", target: str = "",
+        self,
+        tool_name: str,
+        output: str = "",
+        error: str | None = None,
+        tool_id: str = "",
+        target: str = "",
     ) -> None:
         if not self._app or not self._app.is_running:
             return
         scroll_id = self._get_chat_scroll_id(target)
+        sa = self._current_subagents.get(target or "_default")
 
         def _do():
             try:
-                if self._current_subagent:
-                    self._current_subagent.update_tool_line(
-                        tool_name, done=not error, error=bool(error)
-                    )
+                if sa:
+                    sa.update_tool_line(tool_name, done=not error, error=bool(error))
                     return
                 chat = self._app.query_one(f"#{scroll_id}", VerticalScroll)
                 for child in reversed(list(chat.children)):
                     if not isinstance(child, ToolBlock) or child.state != "running":
                         continue
-                    if (tool_id and child.tool_id == tool_id) or child.tool_name == tool_name:
+                    if (
+                        tool_id and child.tool_id == tool_id
+                    ) or child.tool_name == tool_name:
                         if error:
                             child.mark_error(error)
                         else:
@@ -360,46 +375,62 @@ class TUISession:
         self._safe_call(_do)
 
     def add_subagent_block(
-        self, agent_name: str, task: str = "", agent_id: str = "",
+        self,
+        agent_name: str,
+        task: str = "",
+        agent_id: str = "",
         target: str = "",
     ) -> SubAgentBlock:
         block = SubAgentBlock(agent_name, sa_task=task, agent_id=agent_id)
-        self._current_subagent = block
+        self._current_subagents[target or "_default"] = block
         self._safe_mount(block, target=target)
         return block
 
     def end_subagent_block(
-        self, output: str = "", tools_used: list[str] | None = None,
-        turns: int = 0, duration: float = 0, error: str | None = None,
+        self,
+        output: str = "",
+        tools_used: list[str] | None = None,
+        turns: int = 0,
+        duration: float = 0,
+        error: str | None = None,
+        target: str = "",
     ) -> None:
-        if not self._current_subagent:
+        key = target or "_default"
+        sa = self._current_subagents.get(key)
+        if not sa:
             return
         if error:
-            self._current_subagent.mark_error(error)
+            sa.mark_error(error)
         else:
-            self._current_subagent.mark_done(output, tools_used, turns, duration)
-        self._current_subagent = None
+            sa.mark_done(output, tools_used, turns, duration)
+        self._current_subagents.pop(key, None)
 
-    def interrupt_subagent(self) -> None:
-        if self._current_subagent:
-            self._current_subagent.mark_interrupted()
-            self._current_subagent = None
+    def interrupt_subagent(self, target: str = "") -> None:
+        key = target or "_default"
+        sa = self._current_subagents.get(key)
+        if sa:
+            sa.mark_interrupted()
+            self._current_subagents.pop(key, None)
 
     # ── Streaming text ──────────────────────────────────────────
 
     def begin_streaming(self, target: str = "") -> None:
-        self._streaming_widget = StreamingText()
-        self._safe_mount(self._streaming_widget, target=target)
+        key = target or "_default"
+        widget = StreamingText()
+        self._streaming_widgets[key] = widget
+        self._safe_mount(widget, target=target)
 
     def append_stream(self, chunk: str, target: str = "") -> None:
-        if not self._streaming_widget:
+        key = target or "_default"
+        if key not in self._streaming_widgets:
             self.begin_streaming(target=target)
+        widget = self._streaming_widgets.get(key)
         scroll_id = self._get_chat_scroll_id(target)
 
         def _do():
             try:
-                if self._streaming_widget:
-                    self._streaming_widget.append(chunk)
+                if widget:
+                    widget.append(chunk)
                     chat = self._app.query_one(f"#{scroll_id}", VerticalScroll)
                     chat.scroll_end(animate=False)
             except Exception:
@@ -407,11 +438,11 @@ class TUISession:
 
         self._safe_call(_do)
 
-    def end_streaming(self) -> None:
-        if not self._streaming_widget:
+    def end_streaming(self, target: str = "") -> None:
+        key = target or "_default"
+        widget = self._streaming_widgets.pop(key, None)
+        if not widget:
             return
-        widget = self._streaming_widget
-        self._streaming_widget = None
 
         def _do():
             try:
@@ -459,19 +490,25 @@ class TUISession:
 
         def _do():
             try:
-                self._app.query_one("#scratchpad-panel", ScratchpadPanel).update_data(data)
+                self._app.query_one("#scratchpad-panel", ScratchpadPanel).update_data(
+                    data
+                )
             except Exception:
                 pass
 
         self._safe_call(_do)
 
-    def update_session_info(self, session_id: str = "", model: str = "", tokens: int = 0) -> None:
+    def update_session_info(
+        self, session_id: str = "", model: str = "", tokens: int = 0
+    ) -> None:
         if not self._app or not self._app.is_running:
             return
 
         def _do():
             try:
-                self._app.query_one("#session-panel", SessionInfoPanel).set_info(session_id, model, tokens)
+                self._app.query_one("#session-panel", SessionInfoPanel).set_info(
+                    session_id, model, tokens
+                )
             except Exception:
                 pass
 
@@ -483,7 +520,9 @@ class TUISession:
 
         def _do():
             try:
-                self._app.query_one("#session-panel", SessionInfoPanel).add_tokens(count)
+                self._app.query_one("#session-panel", SessionInfoPanel).add_tokens(
+                    count
+                )
             except Exception:
                 pass
 

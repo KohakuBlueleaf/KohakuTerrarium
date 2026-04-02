@@ -4,11 +4,18 @@ import argparse
 import asyncio
 from pathlib import Path
 
+from kohakuterrarium.builtins.tui.output import TUIOutput
+from kohakuterrarium.builtins.tui.session import TUISession
 from kohakuterrarium.session.store import SessionStore
 from kohakuterrarium.terrarium.config import load_terrarium_config
 from kohakuterrarium.terrarium.observer import ChannelObserver
 from kohakuterrarium.terrarium.runtime import TerrariumRuntime
-from kohakuterrarium.utils.logging import get_logger, set_level
+from kohakuterrarium.utils.logging import (
+    get_logger,
+    restore_logging,
+    set_level,
+    suppress_logging,
+)
 
 logger = get_logger(__name__)
 
@@ -44,21 +51,14 @@ async def run_terrarium_with_tui(runtime: TerrariumRuntime) -> None:
         tui_tabs.append(f"#{ch_info['name']}")
 
     # Create terrarium-level TUI
-    from kohakuterrarium.builtins.tui.session import TUISession
-
     terrarium_name = getattr(runtime.config, "name", "terrarium")
     tui = TUISession(agent_name=terrarium_name)
     tui.set_terrarium_tabs(tui_tabs)
     await tui.start()
 
-    # Suppress logging
-    from kohakuterrarium.utils.logging import suppress_logging
-
     suppress_logging()
 
     # Wire root agent output to TUI "root" tab
-    from kohakuterrarium.builtins.tui.output import TUIOutput
-
     tui_output = TUIOutput(session_key="root")
     tui_output._tui = tui
     tui_output._running = True
@@ -101,12 +101,15 @@ async def run_terrarium_with_tui(runtime: TerrariumRuntime) -> None:
         def _make_ch_cb(channel_name: str):
             def _cb(cn: str, message) -> None:
                 sender = message.sender if hasattr(message, "sender") else ""
-                content = message.content if hasattr(message, "content") else str(message)
+                content = (
+                    message.content if hasattr(message, "content") else str(message)
+                )
                 tui.add_trigger_message(
                     f"[{channel_name}] {sender}",
                     str(content)[:500],
                     target=f"#{channel_name}",
                 )
+
             return _cb
 
         ch.on_send(_make_ch_cb(ch_name))
@@ -137,7 +140,8 @@ async def run_terrarium_with_tui(runtime: TerrariumRuntime) -> None:
                     sender = msg.get("sender", "")
                     content = msg.get("content", "")
                     tui.add_trigger_message(
-                        f"[{ch_name}] {sender}", str(content)[:500],
+                        f"[{ch_name}] {sender}",
+                        str(content)[:500],
                         target=tab_target,
                     )
 
@@ -167,8 +171,6 @@ async def run_terrarium_with_tui(runtime: TerrariumRuntime) -> None:
     except (KeyboardInterrupt, asyncio.CancelledError):
         pass
     finally:
-        from kohakuterrarium.utils.logging import restore_logging
-
         restore_logging()
         runtime_task.cancel()
         try:
