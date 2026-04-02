@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-import pytest
 
 from kohakuterrarium.terrarium.config import CreatureConfig
 from kohakuterrarium.terrarium.creature import CreatureHandle

@@ -1,7 +1,6 @@
 """Tests for SessionStore - persistent session storage."""
 
 import time
-from pathlib import Path
 
 import pytest
 
@@ -11,7 +10,7 @@ from kohakuterrarium.session.store import SessionStore
 @pytest.fixture
 def store(tmp_path):
     """Create a fresh SessionStore in a temp directory."""
-    s = SessionStore(tmp_path / "test_session.kt")
+    s = SessionStore(tmp_path / "test_session.kohakutr")
     yield s
     s.close()
 
@@ -417,7 +416,7 @@ class TestSearch:
 
 class TestCounterRestoration:
     def test_event_counter_survives_reopen(self, tmp_path):
-        path = tmp_path / "counter_test.kt"
+        path = tmp_path / "counter_test.kohakutr"
 
         # Write some events
         s1 = SessionStore(path)
@@ -436,7 +435,7 @@ class TestCounterRestoration:
         s2.close()
 
     def test_channel_counter_survives_reopen(self, tmp_path):
-        path = tmp_path / "ch_counter_test.kt"
+        path = tmp_path / "ch_counter_test.kohakutr"
 
         s1 = SessionStore(path)
         s1.save_channel_message("tasks", {"content": "msg1"})
@@ -449,7 +448,7 @@ class TestCounterRestoration:
         s2.close()
 
     def test_subagent_counter_survives_reopen(self, tmp_path):
-        path = tmp_path / "sa_counter_test.kt"
+        path = tmp_path / "sa_counter_test.kohakutr"
 
         s1 = SessionStore(path)
         s1.save_subagent("swe", "explore", 0, meta={"task": "run0"})
@@ -467,7 +466,7 @@ class TestCounterRestoration:
 
 class TestLifecycle:
     def test_close_sets_paused(self, tmp_path):
-        path = tmp_path / "lifecycle.kt"
+        path = tmp_path / "lifecycle.kohakutr"
         s = SessionStore(path)
         s.init_meta(
             session_id="s1",
@@ -486,7 +485,7 @@ class TestLifecycle:
 
     def test_repr(self, store):
         assert "SessionStore" in repr(store)
-        assert "test_session.kt" in repr(store)
+        assert "test_session.kohakutr" in repr(store)
 
     def test_flush(self, store):
         store.append_event("root", "text", {"content": "cached"})

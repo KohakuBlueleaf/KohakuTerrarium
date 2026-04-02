@@ -11,14 +11,12 @@ Tests for:
 These tests run offline without API keys.
 """
 
-import textwrap
 from pathlib import Path
 
 import pytest
 import yaml
 
 from kohakuterrarium.core.config import (
-    AgentConfig,
     _merge_configs,
     _resolve_base_config_path,
     load_agent_config,

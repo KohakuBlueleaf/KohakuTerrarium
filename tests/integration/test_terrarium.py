@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from kohakuterrarium.core.session import Session, remove_session
+from kohakuterrarium.core.session import remove_session
 from kohakuterrarium.modules.trigger.channel import ChannelTrigger
 from kohakuterrarium.terrarium.config import (
     ChannelConfig,

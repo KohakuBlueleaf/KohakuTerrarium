@@ -1,14 +1,11 @@
 """Integration tests for output routing and isolation."""
 
-import pytest
-
 from kohakuterrarium.modules.output.router import OutputRouter, OutputState
 from kohakuterrarium.parsing import (
     BlockEndEvent,
     BlockStartEvent,
     OutputEvent,
     TextEvent,
-    ToolCallEvent,
 )
 from kohakuterrarium.testing import OutputRecorder
 

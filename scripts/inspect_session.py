@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Inspect a .kt session file.
+"""Inspect a .kohakutr session file.
 
 Usage:
-    python scripts/inspect_session.py path/to/session.kt [--events AGENT] [--channels] [--search QUERY]
+    python scripts/inspect_session.py path/to/session.kohakutr [--events AGENT] [--channels] [--search QUERY]
 """
 
 import argparse
@@ -212,8 +212,8 @@ def print_summary(store: SessionStore) -> None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Inspect a .kt session file")
-    parser.add_argument("path", help="Path to .kt session file")
+    parser = argparse.ArgumentParser(description="Inspect a .kohakutr session file")
+    parser.add_argument("path", help="Path to .kohakutr session file")
     parser.add_argument(
         "--events",
         nargs="?",

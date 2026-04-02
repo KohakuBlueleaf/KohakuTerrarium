@@ -25,7 +25,6 @@ from kohakuterrarium.modules.subagent.interactive import (
     ContextUpdate,
     InteractiveOutput,
 )
-from kohakuterrarium.modules.trigger.base import BaseTrigger, TriggerModule
 from kohakuterrarium.modules.trigger.context import ContextUpdateTrigger
 from kohakuterrarium.modules.trigger.timer import TimerTrigger
 

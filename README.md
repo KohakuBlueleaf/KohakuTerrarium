@@ -39,7 +39,7 @@ kt run examples/agent-apps/swe_agent_tui
 kt terrarium run terrariums/swe_team/
 
 # Resume a previous session
-kt resume .kohaku/sessions/swe_agent_*.kt
+kt resume .kohaku/sessions/swe_agent_*.kohakutr
 ```
 
 **Other providers:** Set `OPENROUTER_API_KEY` and override `controller.model` / `controller.base_url` in your creature config to use any OpenAI-compatible API.
@@ -164,8 +164,8 @@ The root agent delegates work, watches for results, and reports back. It never d
         +-->| Trigger |-->|    Controller    |-->| Sub Agents |
 User input  | System  |   |    (Main LLM)    |<--| with tools |
             +---------+   +------------------+   +------------+
-                ^             |          ^
-                |             v          |
+                ^             |          |
+                |             v          v
                 |         +--------+  +------+
                 +---------|Channels|  |Output|
                  Receive  +--------+  +------+
@@ -189,18 +189,18 @@ A processing lock serializes all three. Direct tools return results in the same 
 
 ## Session Persistence & Resume
 
-Every session can be saved to a `.kt` file (SQLite via KohakuVault) and resumed later.
+Every session can be saved to a `.kohakutr` file (SQLite via KohakuVault) and resumed later.
 
 ```bash
 # Start with session recording
 kt run examples/agent-apps/swe_agent --session
 
 # Resume right where you left off
-kt resume .kohaku/sessions/swe_agent_*.kt
+kt resume .kohaku/sessions/swe_agent_*.kohakutr
 
 # Inspect a session
-python scripts/inspect_session.py session.kt --all
-python scripts/inspect_session.py session.kt --search "auth bug"
+python scripts/inspect_session.py session.kohakutr --all
+python scripts/inspect_session.py session.kohakutr --search "auth bug"
 ```
 
 What gets saved: conversation history (with full tool_calls metadata), event log, scratchpad state, token usage, sub-agent conversations, channel messages. Everything stored as native Python objects via msgpack, no JSON serialization layer.
@@ -260,7 +260,7 @@ Features: terrarium topology graph, multi-tab chat (root + creatures + channels)
 - **Any LLM provider**: OpenAI, OpenRouter, Codex OAuth (ChatGPT subscription). Any OpenAI-compatible API.
 - **Native tool calling**: OpenAI function calling API with automatic format-aware prompts. Also supports bracket and XML formats.
 - **Config inheritance**: `base_config` field merges tools, concatenates prompts, overrides scalars. Multi-level inheritance supported.
-- **Session persistence**: `.kt` files store full conversation history, tool calls, sub-agent internals, channel messages. Resume anytime.
+- **Session persistence**: `.kohakutr` files store full conversation history, tool calls, sub-agent internals, channel messages. Resume anytime.
 - **Trigger system**: Timer, channel, context, and custom triggers. Tools can set up persistent triggers at runtime via TriggerManager.
 - **Background tools**: Tools declaring BACKGROUND mode run asynchronously. Results delivered as trigger events. Agent stays responsive.
 - **Hot-plug**: Add/remove creatures and channels to running terrariums.

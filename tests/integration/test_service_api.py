@@ -348,8 +348,8 @@ class TestKohakuManagerShutdown:
 
         mgr = KohakuManager()
 
-        agent_id = await mgr.agent_create(config_path=SWE_AGENT_DIR)
-        tid = await mgr.terrarium_create(config_path=NOVEL_TERRARIUM_DIR)
+        await mgr.agent_create(config_path=SWE_AGENT_DIR)
+        await mgr.terrarium_create(config_path=NOVEL_TERRARIUM_DIR)
 
         # Verify they exist
         assert len(mgr.agent_list()) >= 1

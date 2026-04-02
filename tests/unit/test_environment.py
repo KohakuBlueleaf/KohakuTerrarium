@@ -7,8 +7,6 @@ Covers:
 - Channel isolation (private vs shared, cross-session visibility)
 """
 
-import pytest
-
 from kohakuterrarium.core.channel import ChannelRegistry
 from kohakuterrarium.core.environment import Environment
 from kohakuterrarium.core.session import Session

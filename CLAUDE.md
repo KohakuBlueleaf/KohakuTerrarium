@@ -177,9 +177,9 @@ src/kohakuterrarium/
 │   └── subagent/            # Sub-agent lifecycle management
 │
 ├── session/                 # Session persistence (KohakuVault-backed)
-│   ├── store.py             # SessionStore - 9 tables in one .kt file
+│   ├── store.py             # SessionStore - 9 tables in one .kohakutr file
 │   ├── output.py            # SessionOutput - captures events via OutputModule
-│   └── resume.py            # Resume agent/terrarium from .kt file
+│   └── resume.py            # Resume agent/terrarium from .kohakutr file
 │
 ├── serving/                 # HTTP API serving layer
 │   ├── manager.py           # KohakuManager - agent/terrarium lifecycle
@@ -264,14 +264,14 @@ From specification:
 ## Current Focus
 
 Core framework complete. Current work areas:
-1. **Session persistence** - `.kt` files via KohakuVault, full event recording, resume (`kt resume`)
+1. **Session persistence** - `.kohakutr` files via KohakuVault, full event recording, resume (`kt resume`)
 2. **Web dashboard** - Vue 3 frontend with real-time terrarium UI, topology graph, multi-agent chat
 3. **Context compaction** - Non-blocking compact with RAG memory (planned, see `plans/compact-design.md`)
 4. **Memory system** - KohakuVault-backed searchable memory with FTS5 + vector search (planned)
 
 ## Session System
 
-Sessions store everything in a `.kt` file (SQLite via KohakuVault):
+Sessions store everything in a `.kohakutr` file (SQLite via KohakuVault):
 - Conversation snapshots (raw message dicts via msgpack, preserves tool_calls)
 - Append-only event log (every text chunk, tool call, trigger, token usage)
 - Sub-agent conversation capture (saved before destruction)

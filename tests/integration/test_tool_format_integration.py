@@ -7,15 +7,13 @@ Tests that tool_format config values flow correctly through:
 Only tests that can run without API keys or external services.
 """
 
-import tempfile
 from pathlib import Path
 
-import pytest
 
 from kohakuterrarium.core.config import AgentConfig, load_agent_config
 from kohakuterrarium.parsing.format import BRACKET_FORMAT, XML_FORMAT, ToolCallFormat
 from kohakuterrarium.parsing.patterns import ParserConfig
-from kohakuterrarium.parsing.state_machine import StreamParser, parse_full
+from kohakuterrarium.parsing.state_machine import parse_full
 
 
 def _write_yaml_config(tmpdir: Path, yaml_content: str) -> Path:

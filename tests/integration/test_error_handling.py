@@ -4,7 +4,6 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
-import pytest
 
 from kohakuterrarium.core.events import create_tool_complete_event
 from kohakuterrarium.core.session import Session
@@ -15,9 +14,6 @@ from kohakuterrarium.modules.tool.base import (
     ToolResult,
 )
 from kohakuterrarium.testing import (
-    OutputRecorder,
-    ScriptedLLM,
-    ScriptEntry,
     TestAgentBuilder,
 )
 
@@ -304,7 +300,6 @@ class TestSubAgentErrorFeedback:
         #
         # We verify the convention directly: an error_-prefixed job_id is
         # treated as an error in the status cleanup.
-        from kohakuterrarium.core.agent_handlers import AgentHandlersMixin
 
         # The error prefix convention is: job_id.startswith("error_")
         # This means the sub-agent spawn failed. The status line should

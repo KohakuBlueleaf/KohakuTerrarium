@@ -600,7 +600,7 @@ class CodexProvider(BaseLLMProvider):
 
 ```python
 class SessionStore:
-    """Persistent session storage backed by KohakuVault (.kt files)."""
+    """Persistent session storage backed by KohakuVault (.kohakutr files)."""
     def __init__(self, path: str | Path) -> None: ...
 
     # Event log

@@ -9,10 +9,6 @@ Tests for:
 - Agent tag parsing
 """
 
-import asyncio
-
-import pytest
-
 from kohakuterrarium.builtins.subagents import (
     BUILTIN_SUBAGENTS,
     get_builtin_subagent_config,
@@ -33,7 +29,6 @@ from kohakuterrarium.parsing import (
     SubAgentCallEvent,
     extract_subagent_calls,
     is_subagent_tag,
-    parse_complete,
 )
 
 

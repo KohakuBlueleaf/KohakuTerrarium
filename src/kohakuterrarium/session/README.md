@@ -1,7 +1,7 @@
 # session/
 
 Session persistence backed by KohakuVault. Stores everything needed to
-resume an agent or terrarium in a single `.kt` file (SQLite): conversation
+resume an agent or terrarium in a single `.kohakutr` file (SQLite): conversation
 snapshots, append-only event logs, channel message history, sub-agent
 conversations, scratchpad state, token usage, and full-text search indexes.
 `SessionOutput` is an output module that captures all agent events without
@@ -15,7 +15,7 @@ from saved state.
 | `__init__.py` | Re-exports `SessionStore` |
 | `store.py` | `SessionStore`: persistent storage with 8 table groups (meta, state, events, channels, subagents, jobs, conversation, fts) via KohakuVault |
 | `output.py` | `SessionOutput`: output module that records text chunks, tool activity, and processing state to the store |
-| `resume.py` | `resume_agent`, `resume_terrarium`: rebuild from `.kt` file, inject saved conversation and scratchpad |
+| `resume.py` | `resume_agent`, `resume_terrarium`: rebuild from `.kohakutr` file, inject saved conversation and scratchpad |
 
 ## Dependencies
 

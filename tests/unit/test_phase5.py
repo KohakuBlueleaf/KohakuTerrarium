@@ -16,8 +16,6 @@ import pytest
 
 from kohakuterrarium.core.config import (
     AgentConfig,
-    InputConfig,
-    OutputConfig,
     ToolConfigItem,
     load_agent_config,
 )
