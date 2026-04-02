@@ -10,8 +10,6 @@ Tests for:
 - Controller (basic, without LLM)
 """
 
-from datetime import datetime
-
 import pytest
 
 from kohakuterrarium.commands import CommandResult, parse_command_args
@@ -25,7 +23,6 @@ from kohakuterrarium.core.job import (
 )
 from kohakuterrarium.core.registry import Registry
 from kohakuterrarium.modules.tool import (
-    BaseTool,
     ExecutionMode,
     ToolConfig,
     ToolResult,

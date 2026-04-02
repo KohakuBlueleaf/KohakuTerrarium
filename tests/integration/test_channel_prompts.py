@@ -4,15 +4,12 @@ Tests that the prompt aggregator correctly generates channel communication
 hints and that tools provide helpful errors for non-existent channels.
 """
 
-import asyncio
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
 
 from kohakuterrarium.core.channel import (
     AgentChannel,
-    ChannelMessage,
     ChannelRegistry,
     SubAgentChannel,
 )

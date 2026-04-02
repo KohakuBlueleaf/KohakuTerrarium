@@ -1,7 +1,7 @@
 """
 SessionStore - persistent session storage backed by KohakuVault.
 
-Single .kt file (SQLite) containing:
+Single .kohakutr file (SQLite) containing:
   - meta:       Session metadata, config snapshots
   - state:      Per-agent scratchpad, counters, token usage
   - events:     Append-only ordered event log (everything)
@@ -473,7 +473,7 @@ class SessionStore:
 
     @property
     def path(self) -> str:
-        """Path to the .kt file."""
+        """Path to the .kohakutr file."""
         return self._path
 
     def flush(self) -> None:

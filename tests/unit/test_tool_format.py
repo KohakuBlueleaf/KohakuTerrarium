@@ -10,7 +10,6 @@ These tests run offline without API keys.
 """
 
 from dataclasses import FrozenInstanceError
-from unittest.mock import MagicMock
 
 import pytest
 

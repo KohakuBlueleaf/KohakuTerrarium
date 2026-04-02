@@ -51,11 +51,11 @@ kt run examples/agent-apps/swe_agent
 # Run with TUI for a richer terminal experience
 kt run examples/agent-apps/swe_agent_tui
 
-# Run with session recording (saves to .kt file)
+# Run with session recording (saves to .kohakutr file)
 kt run examples/agent-apps/swe_agent --session
 
 # Resume a previous session
-kt resume .kohaku/sessions/swe_agent_*.kt
+kt resume .kohaku/sessions/swe_agent_*.kohakutr
 ```
 
 You'll see output like:
@@ -359,18 +359,18 @@ See [Terrarium](../concept/terrarium.md) for the concepts and [Configuration Ref
 
 ## Session Persistence and Resume
 
-Every session can be saved to a `.kt` file (SQLite via KohakuVault) and resumed later.
+Every session can be saved to a `.kohakutr` file (SQLite via KohakuVault) and resumed later.
 
 ```bash
 # Start with session recording
 kt run examples/agent-apps/swe_agent --session
 
 # Resume right where you left off
-kt resume .kohaku/sessions/swe_agent_*.kt
+kt resume .kohaku/sessions/swe_agent_*.kohakutr
 
 # Inspect a session
-python scripts/inspect_session.py session.kt --all
-python scripts/inspect_session.py session.kt --search "auth bug"
+python scripts/inspect_session.py session.kohakutr --all
+python scripts/inspect_session.py session.kohakutr --search "auth bug"
 ```
 
 What gets saved: conversation history (with full tool_calls metadata), event log, scratchpad state, token usage, sub-agent conversations, channel messages.

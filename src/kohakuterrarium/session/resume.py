@@ -1,5 +1,5 @@
 """
-Resume agents and terrariums from .kt session files.
+Resume agents and terrariums from .kohakutr session files.
 
 Rebuilds from config, injects saved conversation + scratchpad,
 re-attaches session store for continued recording.

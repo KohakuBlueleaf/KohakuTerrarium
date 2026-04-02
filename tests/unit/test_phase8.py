@@ -9,12 +9,10 @@ Tests for:
 
 import asyncio
 import tempfile
-from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncIterator
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
-import pytest
 
 from kohakuterrarium.core.registry import Registry
 from kohakuterrarium.llm.base import LLMProvider
@@ -25,7 +23,6 @@ from kohakuterrarium.modules.subagent.base import (
 )
 from kohakuterrarium.modules.subagent.config import (
     ContextUpdateMode,
-    OutputTarget,
     SubAgentConfig,
 )
 from kohakuterrarium.modules.tool.base import Tool, ToolConfig, ToolResult
@@ -593,8 +590,8 @@ from kohakuterrarium.core.controller import (
     ControllerConfig,
     ControllerContext,
 )
-from kohakuterrarium.core.events import TriggerEvent, create_user_input_event
-from kohakuterrarium.parsing import TextEvent, ToolCallEvent
+from kohakuterrarium.core.events import create_user_input_event
+from kohakuterrarium.parsing import TextEvent
 
 
 class TestControllerConfig:
@@ -1162,7 +1159,6 @@ class TestBuildFullToolDocs:
     def test_build_full_docs_with_tools(self):
         """Test with registered tools."""
         from kohakuterrarium.core.registry import Registry
-        from kohakuterrarium.modules.tool.base import ToolInfo
         from kohakuterrarium.prompt.aggregator import _build_full_tool_docs
 
         registry = Registry()

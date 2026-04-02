@@ -1,8 +1,5 @@
 """Tests for session resume functionality."""
 
-import json
-from pathlib import Path
-
 import pytest
 
 from kohakuterrarium.core.conversation import Conversation
@@ -12,8 +9,8 @@ from kohakuterrarium.session.store import SessionStore
 
 @pytest.fixture
 def agent_session(tmp_path):
-    """Create a populated agent session .kt file."""
-    kt_path = tmp_path / "agent_session.kt"
+    """Create a populated agent session .kohakutr file."""
+    kt_path = tmp_path / "agent_session.kohakutr"
     store = SessionStore(kt_path)
 
     store.init_meta(
@@ -61,8 +58,8 @@ def agent_session(tmp_path):
 
 @pytest.fixture
 def terrarium_session(tmp_path):
-    """Create a populated terrarium session .kt file."""
-    kt_path = tmp_path / "terrarium_session.kt"
+    """Create a populated terrarium session .kohakutr file."""
+    kt_path = tmp_path / "terrarium_session.kohakutr"
     store = SessionStore(kt_path)
 
     store.init_meta(
@@ -243,7 +240,7 @@ class TestConversationInjection:
 class TestResumeEdgeCases:
     def test_resume_empty_conversation(self, tmp_path):
         """Resume with no saved conversation should work (fresh start)."""
-        kt_path = tmp_path / "empty.kt"
+        kt_path = tmp_path / "empty.kohakutr"
         store = SessionStore(kt_path)
         store.init_meta(
             session_id="empty",
@@ -271,7 +268,7 @@ class TestResumeEdgeCases:
 
     def test_multiple_resume_cycles(self, tmp_path):
         """Simulate multiple save/resume cycles."""
-        kt_path = tmp_path / "multi.kt"
+        kt_path = tmp_path / "multi.kohakutr"
 
         # Cycle 1: create and save
         store = SessionStore(kt_path)

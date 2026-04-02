@@ -47,7 +47,7 @@ Start an agent from a config folder and enter the interactive event loop.
 | Flag | Values | Default | Description |
 |------|--------|---------|-------------|
 | `--log-level` | `DEBUG`, `INFO`, `WARNING`, `ERROR` | `INFO` | Logging verbosity |
-| `--session` | flag | off | Enable session recording to `.kt` file |
+| `--session` | flag | off | Enable session recording to `.kohakutr` file |
 
 **Examples:**
 
@@ -73,25 +73,25 @@ The agent folder must contain a `config.yaml` or `config.yml` file.
 kt resume <session_path>
 ```
 
-Resume a previously saved session from a `.kt` file. Restores conversation history, scratchpad state, and event log.
+Resume a previously saved session from a `.kohakutr` file. Restores conversation history, scratchpad state, and event log.
 
 **Arguments:**
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `session_path` | Yes | Path to `.kt` session file |
+| `session_path` | Yes | Path to `.kohakutr` session file |
 
 **Examples:**
 
 ```bash
 # Resume a specific session
-kt resume .kohaku/sessions/swe_agent_20260401_120000.kt
+kt resume .kohaku/sessions/swe_agent_20260401_120000.kohakutr
 
 # Resume with glob (shell expansion)
-kt resume .kohaku/sessions/swe_agent_*.kt
+kt resume .kohaku/sessions/swe_agent_*.kohakutr
 ```
 
-The `.kt` file contains all state needed for resume: conversation (with tool_calls metadata), scratchpad, event log, and session metadata. Both standalone agent sessions and terrarium sessions are supported.
+The `.kohakutr` file contains all state needed for resume: conversation (with tool_calls metadata), scratchpad, event log, and session metadata. Both standalone agent sessions and terrarium sessions are supported.
 
 ### `list` - List Available Agents
 
@@ -149,7 +149,7 @@ Start a terrarium from a config folder. All creatures run concurrently.
 | Flag | Values | Default | Description |
 |------|--------|---------|-------------|
 | `--log-level` | `DEBUG`, `INFO`, `WARNING`, `ERROR` | `INFO` | Logging verbosity |
-| `--session` | flag | off | Enable session recording to `.kt` file |
+| `--session` | flag | off | Enable session recording to `.kohakutr` file |
 | `--seed` | string | (prompt) | Seed prompt to inject on startup |
 | `--seed-channel` | string | `seed` | Channel to send the seed prompt to |
 | `--observe` | channel names | all | Channels to observe (space-separated) |

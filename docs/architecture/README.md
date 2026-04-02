@@ -50,7 +50,7 @@ KohakuTerrarium is organized into four layers:
 | Layer | Location | Purpose | Docs |
 |-------|----------|---------|------|
 | **Agent Framework** | `src/kohakuterrarium/core/`, `modules/`, `parsing/`, `prompt/`, `builtins/` | Single-agent runtime: controller, tools, sub-agents, parsing, prompts | [Framework Internals](framework.md) |
-| **Session Persistence** | `src/kohakuterrarium/session/` | Store everything, resume anytime: SessionStore (.kt files), SessionOutput, resume | [Execution Model](execution-model.md) |
+| **Session Persistence** | `src/kohakuterrarium/session/` | Store everything, resume anytime: SessionStore (.kohakutr files), SessionOutput, resume | [Execution Model](execution-model.md) |
 | **Terrarium Runtime** | `src/kohakuterrarium/terrarium/` | Multi-agent orchestration: config, wiring, lifecycle, observer, hot-plug | [Terrarium Runtime](terrarium-runtime.md) |
 | **Serving Layer** | `src/kohakuterrarium/serving/` | Transport-agnostic API: KohakuManager, AgentSession, event streaming | [Serving Layer](serving.md) |
 

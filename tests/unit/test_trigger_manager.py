@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 from kohakuterrarium.core.events import TriggerEvent
-from kohakuterrarium.core.trigger_manager import TriggerManager, TriggerInfo
+from kohakuterrarium.core.trigger_manager import TriggerManager
 from kohakuterrarium.modules.trigger.base import BaseTrigger
 
 

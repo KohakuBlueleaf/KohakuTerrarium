@@ -8,14 +8,13 @@ from unittest.mock import patch
 import pytest
 
 from kohakuterrarium.core.channel import AgentChannel, ChannelMessage, SubAgentChannel
-from kohakuterrarium.core.session import Session, remove_session
-from kohakuterrarium.terrarium.api import TerrariumAPI
+from kohakuterrarium.core.session import remove_session
 from kohakuterrarium.terrarium.config import (
     ChannelConfig,
     CreatureConfig,
     TerrariumConfig,
 )
-from kohakuterrarium.terrarium.observer import ChannelObserver, ObservedMessage
+from kohakuterrarium.terrarium.observer import ObservedMessage
 from kohakuterrarium.terrarium.runtime import TerrariumRuntime
 
 SWE_AGENT_DIR = (

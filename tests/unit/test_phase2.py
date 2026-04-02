@@ -30,7 +30,6 @@ from kohakuterrarium.parsing import (
     extract_tool_calls,
     is_action_event,
     is_text_event,
-    parse_complete,
     parse_opening_tag,
     parse_closing_tag,
     parse_attributes,

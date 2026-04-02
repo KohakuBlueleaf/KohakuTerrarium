@@ -74,7 +74,7 @@ class TestToolRegistration:
             with patch.dict(
                 "sys.modules",
                 {"kohakuterrarium.builtins.tools.terrarium_tools": MagicMock()},
-            ) as mock_modules:
+            ):
                 # Calling when already registered should NOT re-import
                 reg.ensure_terrarium_tools_registered()
                 assert reg._REGISTERED is True

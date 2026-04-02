@@ -7,7 +7,7 @@ These tests cover offline functionality only (no browser auth, no network).
 import json
 import time
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -16,7 +16,6 @@ from kohakuterrarium.llm.codex_auth import (
     CLIENT_ID,
     CODEX_CLI_TOKEN_PATH,
     DEFAULT_TOKEN_PATH,
-    REDIRECT_URI,
     CodexTokens,
     _build_auth_url,
     _generate_pkce,

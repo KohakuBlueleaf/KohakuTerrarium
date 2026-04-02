@@ -167,13 +167,13 @@ This means sub-agent channels stay private automatically, terrarium channels are
 
 ## Session Persistence
 
-Sessions can be persisted to `.kt` files (SQLite via KohakuVault) for later resume. The `SessionStore` records conversation history, scratchpad state, event log, token usage, and channel messages. When resuming, the stored state is injected back into agents.
+Sessions can be persisted to `.kohakutr` files (SQLite via KohakuVault) for later resume. The `SessionStore` records conversation history, scratchpad state, event log, token usage, and channel messages. When resuming, the stored state is injected back into agents.
 
 ```python
 from kohakuterrarium.session import SessionStore
 
 # Record a session
-store = SessionStore("session.kt")
+store = SessionStore("session.kohakutr")
 store.init_meta(session_id="sess_001", config_type="agent", ...)
 store.save_conversation("my_agent", messages)
 store.save_state("my_agent", scratchpad={"plan": "step 1"})

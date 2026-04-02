@@ -7,19 +7,11 @@ Tests that the conversation format is correct when using native tool calling:
 - run_in_background flag controls direct vs background
 """
 
-import os
-from unittest.mock import patch
-
-import pytest
-
 from kohakuterrarium.core.controller import Controller, ControllerConfig
-from kohakuterrarium.core.events import create_user_input_event
 from kohakuterrarium.core.executor import Executor
 from kohakuterrarium.core.registry import Registry
-from kohakuterrarium.llm.base import NativeToolCall
 from kohakuterrarium.llm.message import Message
 from kohakuterrarium.modules.tool.base import BaseTool, ExecutionMode, ToolResult
-from kohakuterrarium.parsing import TextEvent, ToolCallEvent
 from kohakuterrarium.testing import ScriptedLLM
 
 

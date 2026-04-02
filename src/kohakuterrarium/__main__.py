@@ -233,7 +233,7 @@ def _resolve_session(query: str | None, last: bool = False) -> Path | None:
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
-    # Also check legacy .kt files
+    # Also check legacy .kt files (pre-.kohakutr extension)
     sessions.extend(
         sorted(
             _SESSION_DIR.glob("*.kt"),

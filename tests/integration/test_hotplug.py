@@ -18,14 +18,11 @@ from unittest.mock import patch
 import pytest
 
 from kohakuterrarium.core.agent import Agent
-from kohakuterrarium.core.channel import ChannelMessage, SubAgentChannel
+from kohakuterrarium.core.channel import ChannelMessage
 from kohakuterrarium.core.config import load_agent_config
 from kohakuterrarium.core.session import (
-    Session,
     remove_session,
-    set_session,
 )
-from kohakuterrarium.modules.trigger.base import BaseTrigger
 from kohakuterrarium.modules.trigger.channel import ChannelTrigger
 from kohakuterrarium.terrarium.config import (
     ChannelConfig,
@@ -78,7 +75,7 @@ class TestAgentHotPlugTriggers:
 
         # Create a channel and trigger
         session = agent.session
-        channel = session.channels.get_or_create("hotplug_inbox", channel_type="queue")
+        session.channels.get_or_create("hotplug_inbox", channel_type="queue")
         trigger = ChannelTrigger(
             channel_name="hotplug_inbox",
             subscriber_id="test_agent",

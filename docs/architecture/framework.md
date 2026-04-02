@@ -358,9 +358,9 @@ src/kohakuterrarium/
 |   +-- subagent/            # SubAgent system (session-aware, tool activity tracking)
 |
 +-- session/                 # Session persistence
-|   +-- store.py             # SessionStore (9 KohakuVault tables in .kt file)
+|   +-- store.py             # SessionStore (9 KohakuVault tables in .kohakutr file)
 |   +-- output.py            # SessionOutput (OutputModule that records to store)
-|   +-- resume.py            # Resume agent/terrarium from .kt file
+|   +-- resume.py            # Resume agent/terrarium from .kohakutr file
 |
 +-- parsing/                 # Stream parsing
 |   +-- state_machine.py     # StreamParser

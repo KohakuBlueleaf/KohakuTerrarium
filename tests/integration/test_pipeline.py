@@ -1,7 +1,5 @@
 """Integration tests for agent pipeline using test infrastructure."""
 
-import pytest
-
 from kohakuterrarium.testing import (
     OutputRecorder,
     ScriptedLLM,
