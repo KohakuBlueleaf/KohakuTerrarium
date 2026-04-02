@@ -1,27 +1,8 @@
 """
 TUI session: full-screen Textual app for agent interaction.
 
-Layout:
-  +--- KohakuTerrarium -----------------------------------------------+
-  | [Chat]                            | Running / Scratchpad / Session |
-  +-----------------------------------+-------------------------------+
-  |                                   | +-- Running ----------------+ |
-  | +- You ----------------------+   | | (idle)                    | |
-  | | Fix the auth bug           |   | +---------------------------+ |
-  | +----------------------------+   |                               |
-  |                                   | +-- Scratchpad -------------+ |
-  | I'll investigate the module.      | | (empty)                   | |
-  |                                   | +---------------------------+ |
-  | [+] read src/auth/middleware.py   |                               |
-  |                                   | +-- Session ----------------+ |
-  | The issue is on line 42...        | | Runtime: 2m 31s           | |
-  |                                   | +---------------------------+ |
-  | KohakUwU  o Idle                  |                               |
-  +-----------------------------------+                               |
-  | > _                               |                               |
-  +-----------------------------------+-------------------------------+
-  | Esc: interrupt  Ctrl+C: quit  Ctrl+L: clear             F1: help |
-  +-------------------------------------------------------------------+
+Standalone mode: single chat area.
+Terrarium mode: tabbed chat (root + creatures + channels) + terrarium panel.
 """
 
 import asyncio
@@ -33,7 +14,7 @@ from rich.markdown import Markdown as RichMarkdown
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import Footer, Header, Input, Static
+from textual.widgets import Footer, Header, Input, Static, TabbedContent, TabPane
 
 from kohakuterrarium.builtins.tui.widgets import (
     RunningPanel,
@@ -41,6 +22,7 @@ from kohakuterrarium.builtins.tui.widgets import (
     SessionInfoPanel,
     StreamingText,
     SubAgentBlock,
+    TerrariumPanel,
     ToolBlock,
     TriggerMessage,
     UserMessage,
@@ -74,9 +56,12 @@ class AgentTUI(App):
     #left-panel { width: 2fr; }
     #right-panel { width: 1fr; min-width: 30; }
     #chat-scroll { height: 1fr; border: solid $primary-background; padding: 0 1; }
+    #chat-tabs { height: 1fr; }
     #quick-status { height: 1; color: $kohaku-amber; padding: 0 1; }
     #input-box { dock: bottom; height: 3; }
     #right-status-panel { height: 1fr; overflow-y: auto; padding: 1; }
+
+    .chat-tab-scroll { height: 1fr; padding: 0 1; }
     """
 
     BINDINGS = [
@@ -85,9 +70,16 @@ class AgentTUI(App):
         Binding("escape", "interrupt", "Interrupt", show=True),
     ]
 
-    def __init__(self, agent_name: str = "agent", **kwargs: Any):
+    def __init__(
+        self,
+        agent_name: str = "agent",
+        terrarium_tabs: list[str] | None = None,
+        **kwargs: Any,
+    ):
         super().__init__(**kwargs)
         self.agent_name = agent_name
+        # Terrarium tabs: ["root", "swe", "reviewer", "#tasks", "#review"]
+        self._terrarium_tabs = terrarium_tabs
         self._input_ready = asyncio.Event()
         self._input_value: str = ""
         self._stop_event = asyncio.Event()
@@ -100,7 +92,17 @@ class AgentTUI(App):
         yield Header()
         with Horizontal(id="main-container"):
             with Vertical(id="left-panel"):
-                yield VerticalScroll(id="chat-scroll")
+                if self._terrarium_tabs:
+                    with TabbedContent(id="chat-tabs"):
+                        for tab_name in self._terrarium_tabs:
+                            label = tab_name if not tab_name.startswith("#") else tab_name
+                            with TabPane(label, id=f"tab-{_safe_id(tab_name)}"):
+                                yield VerticalScroll(
+                                    id=f"chat-{_safe_id(tab_name)}",
+                                    classes="chat-tab-scroll",
+                                )
+                else:
+                    yield VerticalScroll(id="chat-scroll")
                 yield Static("", id="quick-status")
                 yield Input(placeholder="Type a message...", id="input-box")
             with Vertical(id="right-panel"):
@@ -108,6 +110,8 @@ class AgentTUI(App):
                     yield RunningPanel(id="running-panel")
                     yield ScratchpadPanel(id="scratchpad-panel")
                     yield SessionInfoPanel(id="session-panel")
+                    if self._terrarium_tabs:
+                        yield TerrariumPanel(id="terrarium-panel")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -119,19 +123,49 @@ class AgentTUI(App):
         text = event.value.strip()
         if not text:
             return
-        chat = self.query_one("#chat-scroll", VerticalScroll)
-        chat.mount(UserMessage(text))
-        chat.scroll_end(animate=False)
+        chat = self._get_active_chat()
+        if chat:
+            chat.mount(UserMessage(text))
+            chat.scroll_end(animate=False)
         event.input.clear()
         self._input_value = text
         self._input_ready.set()
+
+    def _get_active_chat(self) -> VerticalScroll | None:
+        """Get the currently visible chat scroll widget."""
+        try:
+            if self._terrarium_tabs:
+                tabs = self.query_one("#chat-tabs", TabbedContent)
+                active = tabs.active
+                # active is like "tab-root", extract the id suffix
+                if active:
+                    scroll_id = active.replace("tab-", "chat-")
+                    return self.query_one(f"#{scroll_id}", VerticalScroll)
+            return self.query_one("#chat-scroll", VerticalScroll)
+        except Exception:
+            return None
+
+    def get_active_tab_name(self) -> str:
+        """Get the active tab name (e.g. 'root', 'swe', '#tasks')."""
+        if not self._terrarium_tabs:
+            return ""
+        try:
+            tabs = self.query_one("#chat-tabs", TabbedContent)
+            active_id = tabs.active  # "tab-root"
+            if active_id:
+                return _id_to_name(active_id.replace("tab-", ""))
+        except Exception:
+            pass
+        return self._terrarium_tabs[0] if self._terrarium_tabs else ""
 
     def action_interrupt(self) -> None:
         if self.on_interrupt:
             self.on_interrupt()
 
     def action_clear_output(self) -> None:
-        self.query_one("#chat-scroll", VerticalScroll).remove_children()
+        chat = self._get_active_chat()
+        if chat:
+            chat.remove_children()
 
     def action_quit(self) -> None:
         self._input_value = ""
@@ -179,13 +213,34 @@ class AgentTUI(App):
             pass
 
 
+# ── Helpers ─────────────────────────────────────────────────────
+
+
+def _safe_id(name: str) -> str:
+    """Convert tab name to CSS-safe ID. '#tasks' -> 'ch_tasks'."""
+    if name.startswith("#"):
+        return "ch_" + name[1:].replace("-", "_")
+    return name.replace("-", "_")
+
+
+def _id_to_name(safe: str) -> str:
+    """Reverse of _safe_id. 'ch_tasks' -> '#tasks'."""
+    if safe.startswith("ch_"):
+        return "#" + safe[3:]
+    return safe
+
+
 # ────────────────────────────────────────────────────────────────
 # TUISession
 # ────────────────────────────────────────────────────────────────
 
 
 class TUISession:
-    """Shared TUI state between input and output modules."""
+    """Shared TUI state between input and output modules.
+
+    In terrarium mode, each tab (root, creature, channel) has its own
+    chat scroll. Widgets are routed to the correct tab via `target`.
+    """
 
     def __init__(self, agent_name: str = "agent"):
         self.agent_name = agent_name
@@ -194,6 +249,27 @@ class TUISession:
         self._stop_event = asyncio.Event()
         self._streaming_widget: StreamingText | None = None
         self._current_subagent: SubAgentBlock | None = None
+        # Terrarium mode
+        self._terrarium_tabs: list[str] | None = None
+        self._active_target: str = ""  # which tab output is currently targeting
+
+    def set_terrarium_tabs(self, tabs: list[str]) -> None:
+        """Configure terrarium mode before start()."""
+        self._terrarium_tabs = tabs
+        if tabs:
+            self._active_target = tabs[0]
+
+    def set_active_target(self, target: str) -> None:
+        """Set which tab receives new output widgets."""
+        self._active_target = target
+
+    def get_active_tab(self) -> str:
+        """Get the user's currently visible tab."""
+        if self._app:
+            return self._app.get_active_tab_name()
+        return self._active_target
+
+    # ── Safe widget operations ──────────────────────────────────
 
     def _safe_call(self, fn: Any, *args: Any) -> None:
         if not self._app or not self._app.is_running:
@@ -206,13 +282,21 @@ class TUISession:
             except Exception:
                 pass
 
-    def _safe_mount(self, widget: Any, scroll: bool = True) -> None:
+    def _get_chat_scroll_id(self, target: str = "") -> str:
+        """Get the chat scroll widget ID for a target."""
+        if not self._terrarium_tabs:
+            return "chat-scroll"
+        t = target or self._active_target
+        return f"chat-{_safe_id(t)}" if t else "chat-scroll"
+
+    def _safe_mount(self, widget: Any, scroll: bool = True, target: str = "") -> None:
         if not self._app or not self._app.is_running:
             return
+        scroll_id = self._get_chat_scroll_id(target)
 
         def _do():
             try:
-                chat = self._app.query_one("#chat-scroll", VerticalScroll)
+                chat = self._app.query_one(f"#{scroll_id}", VerticalScroll)
                 chat.mount(widget)
                 if scroll:
                     chat.scroll_end(animate=False)
@@ -223,14 +307,15 @@ class TUISession:
 
     # ── Chat area ───────────────────────────────────────────────
 
-    def add_user_message(self, text: str) -> None:
-        self._safe_mount(UserMessage(text))
+    def add_user_message(self, text: str, target: str = "") -> None:
+        self._safe_mount(UserMessage(text), target=target)
 
-    def add_trigger_message(self, label: str, content: str = "") -> None:
-        self._safe_mount(TriggerMessage(label, content))
+    def add_trigger_message(self, label: str, content: str = "", target: str = "") -> None:
+        self._safe_mount(TriggerMessage(label, content), target=target)
 
     def add_tool_block(
-        self, tool_name: str, args_preview: str = "", tool_id: str = ""
+        self, tool_name: str, args_preview: str = "", tool_id: str = "",
+        target: str = "",
     ) -> ToolBlock | None:
         if self._current_subagent:
             def _do():
@@ -241,15 +326,16 @@ class TUISession:
             self._safe_call(_do)
             return None
         block = ToolBlock(tool_name, args_preview, tool_id)
-        self._safe_mount(block)
+        self._safe_mount(block, target=target)
         return block
 
     def update_tool_block(
         self, tool_name: str, output: str = "", error: str | None = None,
-        tool_id: str = "",
+        tool_id: str = "", target: str = "",
     ) -> None:
         if not self._app or not self._app.is_running:
             return
+        scroll_id = self._get_chat_scroll_id(target)
 
         def _do():
             try:
@@ -258,7 +344,7 @@ class TUISession:
                         tool_name, done=not error, error=bool(error)
                     )
                     return
-                chat = self._app.query_one("#chat-scroll", VerticalScroll)
+                chat = self._app.query_one(f"#{scroll_id}", VerticalScroll)
                 for child in reversed(list(chat.children)):
                     if not isinstance(child, ToolBlock) or child.state != "running":
                         continue
@@ -274,11 +360,12 @@ class TUISession:
         self._safe_call(_do)
 
     def add_subagent_block(
-        self, agent_name: str, task: str = "", agent_id: str = ""
+        self, agent_name: str, task: str = "", agent_id: str = "",
+        target: str = "",
     ) -> SubAgentBlock:
         block = SubAgentBlock(agent_name, sa_task=task, agent_id=agent_id)
         self._current_subagent = block
-        self._safe_mount(block)
+        self._safe_mount(block, target=target)
         return block
 
     def end_subagent_block(
@@ -300,9 +387,9 @@ class TUISession:
 
     # ── Streaming text ──────────────────────────────────────────
 
-    def begin_streaming(self) -> None:
+    def begin_streaming(self, target: str = "") -> None:
         self._streaming_widget = StreamingText()
-        self._safe_mount(self._streaming_widget)
+        self._safe_mount(self._streaming_widget, target=target)
 
     def append_stream(self, chunk: str) -> None:
         if not self._streaming_widget:
@@ -312,7 +399,8 @@ class TUISession:
             try:
                 if self._streaming_widget:
                     self._streaming_widget.append(chunk)
-                    chat = self._app.query_one("#chat-scroll", VerticalScroll)
+                    scroll_id = self._get_chat_scroll_id()
+                    chat = self._app.query_one(f"#{scroll_id}", VerticalScroll)
                     chat.scroll_end(animate=False)
             except Exception:
                 pass
@@ -401,8 +489,22 @@ class TUISession:
 
         self._safe_call(_do)
 
+    def update_terrarium(self, creatures: list[dict], channels: list[dict]) -> None:
+        """Update the terrarium overview panel."""
+        if not self._app or not self._app.is_running:
+            return
+
+        def _do():
+            try:
+                panel = self._app.query_one("#terrarium-panel", TerrariumPanel)
+                panel.set_topology(creatures, channels)
+            except Exception:
+                pass
+
+        self._safe_call(_do)
+
     def write_log(self, text: str) -> None:
-        pass  # Logs go to session DB now
+        pass  # Logs go to session DB
 
     # ── Processing animation ────────────────────────────────────
 
@@ -439,7 +541,10 @@ class TUISession:
             return False
 
     async def start(self, prompt: str = "You: ") -> None:
-        self._app = AgentTUI(agent_name=self.agent_name)
+        self._app = AgentTUI(
+            agent_name=self.agent_name,
+            terrarium_tabs=self._terrarium_tabs,
+        )
         self.running = True
         self._stop_event.clear()
 

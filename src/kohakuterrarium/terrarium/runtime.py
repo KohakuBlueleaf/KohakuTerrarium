@@ -204,8 +204,20 @@ class TerrariumRuntime(HotPlugMixin):
                 )
                 self._creature_tasks.append(task)
 
-            # If root agent is present, run it as the user-facing loop
+            # If root agent is present, configure TUI tabs and run
             if self._root_agent is not None:
+                # Build tab list for TUI: root + creatures + channels
+                tui_tabs = ["root"]
+                tui_tabs.extend(h.name for h in self._creatures.values())
+                for ch_info in self.list_channels():
+                    tui_tabs.append(f"#{ch_info['name']}")
+                self._root_agent._terrarium_tui_tabs = tui_tabs
+                self._root_agent._terrarium_runtime = self
+                # Also store on the session for TUIInput to read
+                if self._root_agent.session:
+                    self._root_agent.session.extra["terrarium_tui_tabs"] = tui_tabs
+                    self._root_agent.session.extra["terrarium_runtime"] = self
+
                 root_task = asyncio.create_task(
                     self._root_agent.run(),
                     name="root_agent",

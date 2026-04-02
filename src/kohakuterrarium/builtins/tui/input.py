@@ -57,6 +57,11 @@ class TUIInput(BaseInputModule):
             )
         self._tui = session.tui
 
+        # Configure terrarium tabs if available
+        terrarium_tabs = session.extra.get("terrarium_tui_tabs")
+        if terrarium_tabs:
+            self._tui.set_terrarium_tabs(terrarium_tabs)
+
         # Suppress framework logs (captured by SessionOutput to session DB)
         suppress_logging()
 

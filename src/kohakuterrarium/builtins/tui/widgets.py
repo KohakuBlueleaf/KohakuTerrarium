@@ -513,6 +513,64 @@ class SessionInfoPanel(Static):
 # ── Helpers ─────────────────────────────────────────────────────
 
 
+class TerrariumPanel(Static):
+    """Creature and channel overview for terrarium mode."""
+
+    DEFAULT_CSS = """
+    TerrariumPanel {
+        height: auto;
+        max-height: 16;
+        padding: 0 1;
+        border: round #A57EAE;
+        border-title-color: #A57EAE;
+        border-title-align: left;
+    }
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__("", **kwargs)
+        self.border_title = "Terrarium"
+        self._creatures: list[dict] = []
+        self._channels: list[dict] = []
+
+    def set_topology(
+        self, creatures: list[dict], channels: list[dict]
+    ) -> None:
+        """Update creature/channel display.
+
+        creatures: [{"name": "swe", "running": True, "listen": [...], "send": [...]}]
+        channels: [{"name": "tasks", "type": "queue", "description": "..."}]
+        """
+        self._creatures = creatures
+        self._channels = channels
+        self._refresh()
+
+    def _refresh(self) -> None:
+        lines = []
+        if self._creatures:
+            lines.append("Creatures:")
+            for c in self._creatures:
+                icon = "\u25cf" if c.get("running") else "\u25cb"
+                listen = ", ".join(c.get("listen", []))
+                send = ", ".join(c.get("send", []))
+                lines.append(f"  {icon} {c['name']}")
+                if listen:
+                    lines.append(f"    listen: {listen}")
+                if send:
+                    lines.append(f"    send: {send}")
+        if self._channels:
+            if lines:
+                lines.append("")
+            lines.append("Channels:")
+            for ch in self._channels:
+                ctype = ch.get("type", "queue")
+                lines.append(f"  {ch['name']}  ({ctype})")
+        self.update("\n".join(lines) if lines else "(no topology)")
+
+
+# ── Helpers ─────────────────────────────────────────────────────
+
+
 def _summarize_output(output: str) -> str:
     if not output:
         return ""
