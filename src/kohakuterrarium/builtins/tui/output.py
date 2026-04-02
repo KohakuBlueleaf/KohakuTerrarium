@@ -3,6 +3,10 @@
 import asyncio
 from typing import Any
 
+from rich.markdown import Markdown as RichMarkdown
+from textual.containers import VerticalScroll
+
+from kohakuterrarium.builtins.tui.session import TUISession
 from kohakuterrarium.builtins.tui.widgets import (
     StreamingText,
     SubAgentBlock,
@@ -42,8 +46,6 @@ class TUIOutput(BaseOutputModule):
         return self._default_target
 
     async def _on_start(self) -> None:
-        from kohakuterrarium.builtins.tui.session import TUISession
-
         session = get_session(self._session_key)
         if session.tui is None:
             session.tui = TUISession(
@@ -54,7 +56,7 @@ class TUIOutput(BaseOutputModule):
 
     async def _on_stop(self) -> None:
         if self._tui:
-            self._tui.end_streaming()
+            self._tui.end_streaming(target=self._target)
         logger.debug("TUI output stopped")
 
     # ── Processing lifecycle ────────────────────────────────────
@@ -66,7 +68,7 @@ class TUIOutput(BaseOutputModule):
 
     async def on_processing_end(self) -> None:
         if self._tui:
-            self._tui.end_streaming()
+            self._tui.end_streaming(target=self._target)
             self._tui.stop_thinking()
             self._tui.set_idle()
         self._turn_started = False
@@ -94,7 +96,7 @@ class TUIOutput(BaseOutputModule):
 
     def reset(self) -> None:
         if self._tui:
-            self._tui.end_streaming()
+            self._tui.end_streaming(target=self._target)
         self._turn_started = False
 
     def _ensure_turn(self) -> None:
@@ -127,7 +129,7 @@ class TUIOutput(BaseOutputModule):
             # ── Tool lifecycle (single Collapsible, updated in-place) ──
 
             case "tool_start":
-                self._tui.end_streaming()
+                self._tui.end_streaming(target=self._target)
                 self._turn_started = False
                 args_preview = _format_args_preview(name, args) or rest[:60]
                 self._tui.add_tool_block(name, args_preview, job_id, target=t)
@@ -136,7 +138,9 @@ class TUIOutput(BaseOutputModule):
 
             case "tool_done":
                 output = metadata.get("output", rest)
-                self._tui.update_tool_block(name, output=output, tool_id=job_id, target=t)
+                self._tui.update_tool_block(
+                    name, output=output, tool_id=job_id, target=t
+                )
                 self._tui.update_running(job_id or name, name, remove=True)
 
             case "tool_error":
@@ -146,7 +150,7 @@ class TUIOutput(BaseOutputModule):
             # ── Sub-agent lifecycle ──────────────────────────────
 
             case "subagent_start":
-                self._tui.end_streaming()
+                self._tui.end_streaming(target=self._target)
                 self._turn_started = False
                 task = metadata.get("task", rest)
                 self._tui.add_subagent_block(name, task, job_id, target=t)
@@ -158,11 +162,12 @@ class TUIOutput(BaseOutputModule):
                     tools_used=metadata.get("tools_used"),
                     turns=metadata.get("turns", 0),
                     duration=metadata.get("duration", 0),
+                    target=t,
                 )
                 self._tui.update_running(job_id or name, name, remove=True)
 
             case "subagent_error":
-                self._tui.end_subagent_block(error=rest)
+                self._tui.end_subagent_block(error=rest, target=t)
                 self._tui.update_running(job_id or name, name, remove=True)
 
             # ── Sub-agent internal tools (nested) ───────────────
@@ -186,7 +191,7 @@ class TUIOutput(BaseOutputModule):
             # ── Trigger fired ───────────────────────────────────
 
             case "trigger_fired":
-                self._tui.end_streaming()
+                self._tui.end_streaming(target=self._target)
                 self._turn_started = False
                 channel = metadata.get("channel", "")
                 sender = metadata.get("sender", "")
@@ -204,8 +209,8 @@ class TUIOutput(BaseOutputModule):
             # ── Interrupt ───────────────────────────────────────
 
             case "interrupt":
-                self._tui.end_streaming()
-                self._tui.interrupt_subagent()
+                self._tui.end_streaming(target=self._target)
+                self._tui.interrupt_subagent(target=t)
                 self._tui.clear_running()
                 self._turn_started = False
 
@@ -252,8 +257,6 @@ class TUIOutput(BaseOutputModule):
             def _do_build_and_mount():
                 async def _inner():
                     try:
-                        from textual.containers import VerticalScroll
-
                         ws = _build_resume_widgets(turns)
                         chat = app.query_one(f"#{scroll_id}", VerticalScroll)
                         await chat.mount_all(ws)
@@ -387,8 +390,6 @@ def _iter_all_steps(turns: list[dict]):
 
 def _build_resume_widgets(turns: list[dict]) -> list:
     """Build all resume widgets synchronously (no mounting, no deferral)."""
-    from rich.markdown import Markdown as RichMarkdown
-
     widgets = []
     current_subagent: SubAgentBlock | None = None
     pending_tools: dict[str, str] = {}
