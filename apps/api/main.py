@@ -32,9 +32,17 @@ app = create_app(
 )
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="KohakuTerrarium API server")
+    parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument("--port", type=int, default=8001)
+    parser.add_argument("--reload", action="store_true", help="Auto-reload on code changes (dev only)")
+    args = parser.parse_args()
+
     uvicorn.run(
         "apps.api.main:app",
-        host="0.0.0.0",
-        port=8001,
-        reload=True,
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
     )
