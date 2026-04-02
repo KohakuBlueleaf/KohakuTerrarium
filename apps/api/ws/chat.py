@@ -284,7 +284,10 @@ async def ws_terrarium(websocket: WebSocket, terrarium_id: str):
                 ch.remove_on_send(cb)
             except Exception:
                 pass
-        await websocket.close()
+        try:
+            await websocket.close()
+        except RuntimeError:
+            pass  # Already closed
 
 
 # ── /ws/creatures/{agent_id} ────────────────────────────────────────
@@ -344,4 +347,7 @@ async def ws_creature(websocket: WebSocket, agent_id: str):
             session.agent.output_router.remove_secondary(out)
         except Exception:
             pass
-        await websocket.close()
+        try:
+            await websocket.close()
+        except RuntimeError:
+            pass  # Already closed
