@@ -38,6 +38,7 @@ class ChannelTrigger(BaseTrigger):
         subscriber_id: str | None = None,
         prompt: str | None = None,
         filter_sender: str | None = None,
+        ignore_sender: str | None = None,
         registry: ChannelRegistry | None = None,
         session: Any | None = None,
         **options: Any,
@@ -49,7 +50,8 @@ class ChannelTrigger(BaseTrigger):
             channel_name: Name of the channel to listen on
             subscriber_id: Subscriber ID for broadcast channels (auto-generated if None)
             prompt: Prompt template to include in event (supports {content} substitution)
-            filter_sender: Only fire for messages from this sender
+            filter_sender: Only fire for messages from this sender (whitelist)
+            ignore_sender: Skip messages from this sender (blacklist, for self-filtering)
             registry: Optional channel registry (defaults to global singleton)
             session: Optional session whose channel registry to use
             **options: Additional options
@@ -58,6 +60,7 @@ class ChannelTrigger(BaseTrigger):
         self.channel_name = channel_name
         self.subscriber_id = subscriber_id
         self.filter_sender = filter_sender
+        self.ignore_sender = ignore_sender
         self._registry = registry
         self._session = session
         self._subscription: ChannelSubscription | None = None
@@ -100,6 +103,9 @@ class ChannelTrigger(BaseTrigger):
 
             # Filter by sender if configured
             if self.filter_sender and msg.sender != self.filter_sender:
+                continue
+            # Skip messages from self (prevent self-triggering)
+            if self.ignore_sender and msg.sender == self.ignore_sender:
                 continue
 
             # Build content string

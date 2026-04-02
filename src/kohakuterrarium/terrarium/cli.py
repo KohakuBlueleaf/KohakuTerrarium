@@ -149,13 +149,23 @@ def _run_terrarium_cli(args: argparse.Namespace) -> int:
             if store:
                 runtime._pending_session_store = store
 
-            # Start the runtime (builds creatures + root, starts creatures)
-            await runtime.start()
+            # Run runtime as background task (canonical path, same as backend).
+            # runtime.run() calls start(), starts creatures, runs root agent.
+            # Root agent has NoneInput so its run() blocks on get_input() forever,
+            # but inject_input() bypasses that (same as WebSocket handler does).
+            runtime_task = asyncio.create_task(runtime.run())
 
-            # Attach pending session store
-            if hasattr(runtime, "_pending_session_store") and runtime._pending_session_store:
-                runtime.attach_session_store(runtime._pending_session_store)
-                runtime._pending_session_store = None
+            # Wait for runtime to be fully started
+            for _ in range(20):
+                await asyncio.sleep(0.25)
+                if runtime.is_running and runtime.root_agent:
+                    break
+
+            root = runtime.root_agent
+            if not root:
+                runtime_task.cancel()
+                print("Error: root agent not available")
+                return
 
             # Build tab list
             tui_tabs = ["root"]
@@ -170,32 +180,33 @@ def _run_terrarium_cli(args: argparse.Namespace) -> int:
             tui.set_terrarium_tabs(tui_tabs)
             await tui.start()
 
-            # Suppress logging (logs go to session DB)
+            # Suppress logging
             from kohakuterrarium.utils.logging import suppress_logging
             suppress_logging()
 
-            # Start root agent (initializes controller, tools, etc.)
-            root = runtime.root_agent
-            if root:
-                await root.start()
+            # Wire root agent output to TUI "root" tab
+            from kohakuterrarium.builtins.tui.output import TUIOutput
 
-            if root:
-                from kohakuterrarium.builtins.tui.output import TUIOutput
+            tui_output = TUIOutput(session_key="root")
+            tui_output._tui = tui
+            tui_output._running = True
+            root.output_router.default_output = tui_output
 
-                # Replace root's default output with a TUI output targeting "root" tab
-                tui_output = TUIOutput(session_key="root")
-                tui_output._tui = tui
-                await tui_output.start()
-                root.output_router.default_output = tui_output
+            # Wire each creature's output to its TUI tab
+            for name, handle in runtime.creatures.items():
+                creature_out = TUIOutput(session_key=name)
+                creature_out._tui = tui
+                creature_out._running = True
+                # Set active target so output routes to the creature's tab
+                creature_out._default_target = name
+                handle.agent.output_router.default_output = creature_out
 
-                # Wire Escape interrupt
-                if tui._app:
-                    tui._app.on_interrupt = root.interrupt
+            # Wire Escape interrupt
+            if tui._app:
+                tui._app.on_interrupt = root.interrupt
 
-            # Start TUI app as background task
+            # Start TUI app
             app_task = asyncio.create_task(tui.run_app())
-
-            # Wait for TUI to be ready
             await tui.wait_ready()
 
             # Update terrarium panel
@@ -207,20 +218,9 @@ def _run_terrarium_cli(args: argparse.Namespace) -> int:
                     "listen": handle.listen_channels,
                     "send": handle.send_channels,
                 })
-            channel_info = runtime.list_channels()
-            tui.update_terrarium(creature_info, channel_info)
+            tui.update_terrarium(creature_info, runtime.list_channels())
 
-            # Start creature event loops
-            creature_tasks = []
-            for handle in runtime.creatures.values():
-                task = asyncio.create_task(
-                    runtime._run_creature(handle),
-                    name=f"creature_{handle.name}",
-                )
-                creature_tasks.append(task)
-                runtime._creature_tasks.append(task)
-
-            # Main loop: read user input from TUI, inject into root agent
+            # Main loop: TUI input -> root agent via inject_input
             try:
                 while True:
                     text = await tui.get_input()
@@ -229,20 +229,18 @@ def _run_terrarium_cli(args: argparse.Namespace) -> int:
                     if text.lower() in ("exit", "quit", "/exit", "/quit"):
                         break
 
-                    # Get active tab to determine target
                     active_tab = tui.get_active_tab()
 
-                    if root and (not active_tab or active_tab == "root"):
-                        # Send to root agent
+                    if not active_tab or active_tab == "root":
                         tui.set_active_target("root")
                         await root.inject_input(text, source="tui")
-                    elif active_tab and active_tab.startswith("#"):
-                        # Send to channel
+                    elif active_tab.startswith("#"):
                         ch_name = active_tab[1:]
                         tui.add_user_message(text, target=active_tab)
-                        await runtime.api.send_to_channel(ch_name, text, sender="human")
-                    elif active_tab and root:
-                        # Send to a creature via root's terrarium_send
+                        await runtime.api.send_to_channel(
+                            ch_name, text, sender="human"
+                        )
+                    else:
                         tui.set_active_target(active_tab)
                         await root.inject_input(
                             f"Send this to {active_tab}: {text}", source="tui"
@@ -252,6 +250,11 @@ def _run_terrarium_cli(args: argparse.Namespace) -> int:
             finally:
                 from kohakuterrarium.utils.logging import restore_logging
                 restore_logging()
+                runtime_task.cancel()
+                try:
+                    await runtime_task
+                except (asyncio.CancelledError, Exception):
+                    pass
                 await runtime.stop()
                 tui.stop()
 

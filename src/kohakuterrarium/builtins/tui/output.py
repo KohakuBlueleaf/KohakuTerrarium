@@ -35,6 +35,7 @@ class TUIOutput(BaseOutputModule):
         self._session_key = session_key
         self._tui = None  # TUISession, set in _on_start
         self._turn_started = False
+        self._default_target: str = ""  # Override target tab (for creature outputs)
 
     async def _on_start(self) -> None:
         from kohakuterrarium.builtins.tui.session import TUISession
