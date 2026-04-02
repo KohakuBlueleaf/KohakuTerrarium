@@ -37,6 +37,10 @@ class TUIOutput(BaseOutputModule):
         self._turn_started = False
         self._default_target: str = ""  # Override target tab (for creature outputs)
 
+    @property
+    def _target(self) -> str:
+        return self._default_target
+
     async def _on_start(self) -> None:
         from kohakuterrarium.builtins.tui.session import TUISession
 
@@ -78,12 +82,12 @@ class TUIOutput(BaseOutputModule):
     async def write(self, content: str) -> None:
         if self._tui and content:
             self._ensure_turn()
-            self._tui.append_stream(content)
+            self._tui.append_stream(content, target=self._target)
 
     async def write_stream(self, chunk: str) -> None:
         if self._tui and chunk:
             self._ensure_turn()
-            self._tui.append_stream(chunk)
+            self._tui.append_stream(chunk, target=self._target)
 
     async def flush(self) -> None:
         pass
@@ -95,7 +99,7 @@ class TUIOutput(BaseOutputModule):
 
     def _ensure_turn(self) -> None:
         if not self._turn_started and self._tui:
-            self._tui.begin_streaming()
+            self._tui.begin_streaming(target=self._target)
             self._turn_started = True
 
     # ── Activity rendering ──────────────────────────────────────
@@ -117,6 +121,7 @@ class TUIOutput(BaseOutputModule):
         name, rest = _parse_detail(name_detail)
         args = metadata.get("args", {})
         job_id = metadata.get("job_id", "")
+        t = self._target  # target tab for this output
 
         match activity_type:
             # ── Tool lifecycle (single Collapsible, updated in-place) ──
@@ -125,18 +130,17 @@ class TUIOutput(BaseOutputModule):
                 self._tui.end_streaming()
                 self._turn_started = False
                 args_preview = _format_args_preview(name, args) or rest[:60]
-                self._tui.add_tool_block(name, args_preview, job_id)
-                # Only background tools go in the Running panel
+                self._tui.add_tool_block(name, args_preview, job_id, target=t)
                 if metadata.get("background"):
                     self._tui.update_running(job_id or name, name)
 
             case "tool_done":
                 output = metadata.get("output", rest)
-                self._tui.update_tool_block(name, output=output, tool_id=job_id)
+                self._tui.update_tool_block(name, output=output, tool_id=job_id, target=t)
                 self._tui.update_running(job_id or name, name, remove=True)
 
             case "tool_error":
-                self._tui.update_tool_block(name, error=rest, tool_id=job_id)
+                self._tui.update_tool_block(name, error=rest, tool_id=job_id, target=t)
                 self._tui.update_running(job_id or name, name, remove=True)
 
             # ── Sub-agent lifecycle ──────────────────────────────
@@ -145,7 +149,7 @@ class TUIOutput(BaseOutputModule):
                 self._tui.end_streaming()
                 self._turn_started = False
                 task = metadata.get("task", rest)
-                self._tui.add_subagent_block(name, task, job_id)
+                self._tui.add_subagent_block(name, task, job_id, target=t)
                 self._tui.update_running(job_id or name, f"[sub] {name}")
 
             case "subagent_done":
@@ -173,11 +177,11 @@ class TUIOutput(BaseOutputModule):
                         _format_args_preview(tool_name, metadata.get("args", {}))
                         or sub_detail[:60]
                     )
-                    self._tui.add_tool_block(tool_name, sub_args)
+                    self._tui.add_tool_block(tool_name, sub_args, target=t)
                 elif sub_activity == "tool_done":
-                    self._tui.update_tool_block(tool_name, output=sub_detail)
+                    self._tui.update_tool_block(tool_name, output=sub_detail, target=t)
                 elif sub_activity == "tool_error":
-                    self._tui.update_tool_block(tool_name, error=sub_detail)
+                    self._tui.update_tool_block(tool_name, error=sub_detail, target=t)
 
             # ── Trigger fired ───────────────────────────────────
 
@@ -188,7 +192,7 @@ class TUIOutput(BaseOutputModule):
                 sender = metadata.get("sender", "")
                 content = metadata.get("content", "")
                 label = f"[{channel}] {sender}" if channel else name
-                self._tui.add_trigger_message(label, content[:500])
+                self._tui.add_trigger_message(label, content[:500], target=t)
 
             # ── Token usage ─────────────────────────────────────
 

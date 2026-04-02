@@ -396,6 +396,7 @@ class TerrariumObserveTool(BaseTool):
             trigger = ChannelTrigger(
                 channel_name=channel_name,
                 subscriber_id=f"root_{channel_name}",
+                ignore_sender=context.agent_name,
                 registry=runtime.environment.shared_channels,
             )
             await context.agent.trigger_manager.add(trigger, trigger_id=trigger_id)
