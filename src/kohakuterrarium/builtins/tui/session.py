@@ -391,15 +391,15 @@ class TUISession:
         self._streaming_widget = StreamingText()
         self._safe_mount(self._streaming_widget, target=target)
 
-    def append_stream(self, chunk: str) -> None:
+    def append_stream(self, chunk: str, target: str = "") -> None:
         if not self._streaming_widget:
-            self.begin_streaming()
+            self.begin_streaming(target=target)
+        scroll_id = self._get_chat_scroll_id(target)
 
         def _do():
             try:
                 if self._streaming_widget:
                     self._streaming_widget.append(chunk)
-                    scroll_id = self._get_chat_scroll_id()
                     chat = self._app.query_one(f"#{scroll_id}", VerticalScroll)
                     chat.scroll_end(animate=False)
             except Exception:
