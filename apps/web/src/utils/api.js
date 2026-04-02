@@ -76,6 +76,13 @@ export const terrariumAPI = {
     const { data } = await api.get(`/terrariums/${id}/history/${target}`);
     return data;
   },
+
+  async interruptCreature(id, name) {
+    const { data } = await api.post(
+      `/terrariums/${id}/creatures/${name}/interrupt`,
+    );
+    return data;
+  },
 };
 
 /** Standalone agent lifecycle */
@@ -100,6 +107,11 @@ export const agentAPI = {
 
   async stop(id) {
     await api.delete(`/agents/${id}`);
+  },
+
+  async interrupt(id) {
+    const { data } = await api.post(`/agents/${id}/interrupt`);
+    return data;
   },
 
   /** Get conversation history + event log */

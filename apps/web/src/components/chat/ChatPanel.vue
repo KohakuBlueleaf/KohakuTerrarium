@@ -121,6 +121,15 @@
             @input="autoResize"
           />
           <button
+            v-if="chat.processing"
+            class="w-8 h-8 flex items-center justify-center rounded-lg transition-all shrink-0 mb-0.5 bg-coral/90 text-white hover:bg-coral shadow-sm shadow-coral/20"
+            title="Stop generation"
+            @click="chat.interrupt()"
+          >
+            <span class="i-carbon-stop-filled text-sm" />
+          </button>
+          <button
+            v-else
             class="w-8 h-8 flex items-center justify-center rounded-lg transition-all shrink-0 mb-0.5"
             :class="
               inputText.trim()

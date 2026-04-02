@@ -343,6 +343,23 @@ export const useChatStore = defineStore("chat", {
       }
     },
 
+    async interrupt() {
+      if (!this._instanceId || !this.processing) return;
+      const target = this.activeTab;
+      if (!target || target.startsWith("ch:")) return;
+
+      try {
+        if (this._instanceType === "terrarium") {
+          await terrariumAPI.interruptCreature(this._instanceId, target);
+        } else {
+          await agentAPI.interrupt(this._instanceId);
+        }
+        this.processing = false;
+      } catch (err) {
+        console.error("Interrupt failed:", err);
+      }
+    },
+
     async send(text) {
       if (!this.activeTab || !text.trim() || !this._ws) return;
 
