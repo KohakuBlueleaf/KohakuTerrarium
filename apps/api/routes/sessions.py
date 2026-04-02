@@ -92,9 +92,9 @@ async def resume_session(session_name: str):
     manager = get_manager()
 
     try:
+        # Force CLI mode (headless) for web resume. TUI can't run without a TTY.
         if session_type == "terrarium":
-            runtime, store = resume_terrarium(path)
-            # Register in manager for API access
+            runtime, store = resume_terrarium(path, io_mode="cli")
             tid = await manager.register_terrarium(runtime, store)
             return {
                 "instance_id": tid,
@@ -102,7 +102,7 @@ async def resume_session(session_name: str):
                 "session_name": path.stem,
             }
         else:
-            agent, store = resume_agent(path)
+            agent, store = resume_agent(path, io_mode="cli")
             aid = await manager.register_agent(agent, store)
             return {
                 "instance_id": aid,
