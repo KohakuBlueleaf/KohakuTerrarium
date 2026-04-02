@@ -13,7 +13,7 @@ Gemstone color palette:
 import time
 
 from textual.containers import Vertical
-from textual.timer import Timer
+
 from textual.widgets import Collapsible, Static
 
 
@@ -533,9 +533,7 @@ class TerrariumPanel(Static):
         self._creatures: list[dict] = []
         self._channels: list[dict] = []
 
-    def set_topology(
-        self, creatures: list[dict], channels: list[dict]
-    ) -> None:
+    def set_topology(self, creatures: list[dict], channels: list[dict]) -> None:
         """Update creature/channel display.
 
         creatures: [{"name": "swe", "running": True, "listen": [...], "send": [...]}]
