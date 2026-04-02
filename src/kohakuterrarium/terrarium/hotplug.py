@@ -176,6 +176,7 @@ class HotPlugMixin:
                 channel_name=channel_name,
                 subscriber_id=creature_name,
                 prompt=prompt,
+                ignore_sender=creature_name,
                 registry=self.environment.shared_channels,
             )
 

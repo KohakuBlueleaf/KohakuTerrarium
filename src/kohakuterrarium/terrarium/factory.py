@@ -226,6 +226,7 @@ def build_creature(
             channel_name=ch_name,
             subscriber_id=creature_cfg.name,
             prompt=prompt,
+            ignore_sender=creature_cfg.name,
             registry=environment.shared_channels,
         )
         trigger_id = f"channel_{creature_cfg.name}_{ch_name}"
