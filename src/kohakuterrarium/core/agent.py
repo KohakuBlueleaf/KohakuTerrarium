@@ -130,6 +130,9 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         self._session_output: Any = None
         self._pending_resume_events: list[dict] | None = None
 
+        # Interrupt flag: set to True to cancel current processing
+        self._interrupt_requested = False
+
         # Environment and session (explicit or auto-created in _init_executor)
         self.environment: Environment | None = environment
         self._explicit_session: Session | None = session
@@ -231,6 +234,21 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
 
         if self._termination_checker:
             self._termination_checker.start()
+
+    def interrupt(self) -> None:
+        """Interrupt the current processing cycle.
+
+        Cancels running direct tools and exits the current LLM turn.
+        The agent stays alive and ready for the next input.
+        Background tools continue running.
+        """
+        self._interrupt_requested = True
+        # Cancel running direct tool tasks
+        for job_id, task in list(self.executor._tasks.items()):
+            status = self.executor.get_status(job_id)
+            if status and status.state.value == "running" and not task.done():
+                task.cancel()
+        logger.info("Agent interrupted", agent_name=self.config.name)
 
     async def stop(self) -> None:
         """Stop all agent modules."""

@@ -139,6 +139,14 @@ class AgentHandlersMixin:
         # via executor._on_complete -> _process_event when they complete.
 
         while True:
+            # Check for interrupt
+            if self._interrupt_requested:
+                self._interrupt_requested = False
+                self.output_router.notify_activity(
+                    "interrupt", "[system] Processing interrupted"
+                )
+                break
+
             # ===================================================================
             # PHASE 1: Setup for new iteration
             # ===================================================================
@@ -166,6 +174,8 @@ class AgentHandlersMixin:
             native_tool_call_ids: dict[str, str] = {}  # job_id -> tool_call_id
 
             async for parse_event in controller.run_once():
+                if self._interrupt_requested:
+                    break
                 if isinstance(parse_event, ToolCallEvent):
                     # Extract tool_call_id if present (native mode)
                     tool_call_id = parse_event.args.pop("_tool_call_id", None)

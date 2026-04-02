@@ -647,3 +647,80 @@ class CreatureStopTool(BaseTool):
                 )
         except KeyError as e:
             return ToolResult(error=str(e))
+
+
+@register_builtin("creature_interrupt")
+class CreatureInterruptTool(BaseTool):
+    """Interrupt a creature's current processing without stopping it."""
+
+    needs_context = True
+
+    @property
+    def tool_name(self) -> str:
+        return "creature_interrupt"
+
+    @property
+    def description(self) -> str:
+        return "Interrupt a creature's current LLM turn (creature stays alive)"
+
+    @property
+    def execution_mode(self) -> ExecutionMode:
+        return ExecutionMode.DIRECT
+
+    def get_parameters_schema(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "terrarium_id": {
+                    "type": "string",
+                    "description": "Terrarium ID",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Creature name to interrupt",
+                },
+                "cancel_background": {
+                    "type": "boolean",
+                    "description": "Also cancel background tools/sub-agents (default: false)",
+                },
+            },
+            "required": ["terrarium_id", "name"],
+        }
+
+    async def _execute(
+        self, args: dict[str, Any], context: ToolContext | None = None
+    ) -> ToolResult:
+        manager = _get_manager(context)
+
+        terrarium_id = args.get("terrarium_id", "").strip()
+        name = args.get("name", "").strip()
+        cancel_bg = args.get("cancel_background", False)
+
+        if not terrarium_id or not name:
+            return ToolResult(error="terrarium_id and name are required")
+
+        try:
+            runtime = manager.get_runtime(terrarium_id)
+            agent = runtime.get_creature_agent(name)
+            if not agent:
+                return ToolResult(error=f"Creature '{name}' not found")
+
+            agent.interrupt()
+
+            if cancel_bg:
+                running = agent.executor.get_running_jobs()
+                cancelled = 0
+                for job in running:
+                    if await agent.executor.cancel(job.job_id):
+                        cancelled += 1
+                return ToolResult(
+                    output=f"Interrupted '{name}' and cancelled {cancelled} background tasks.",
+                    exit_code=0,
+                )
+
+            return ToolResult(
+                output=f"Interrupted '{name}'. Background tasks continue running.",
+                exit_code=0,
+            )
+        except KeyError as e:
+            return ToolResult(error=str(e))

@@ -30,6 +30,8 @@ tools:
   - { name: json_write, type: builtin }
   - { name: send_message, type: builtin }
   - { name: wait_channel, type: builtin }
+  - { name: stop_task, type: builtin }
+  - { name: list_triggers, type: builtin }
 
 subagents:
   - { name: explore, type: builtin }

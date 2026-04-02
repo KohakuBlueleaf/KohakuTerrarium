@@ -43,6 +43,16 @@ async def stop_agent(agent_id: str, manager=Depends(get_manager)):
         raise HTTPException(404, str(e))
 
 
+@router.post("/{agent_id}/interrupt")
+async def interrupt_agent(agent_id: str, manager=Depends(get_manager)):
+    """Interrupt the agent's current processing. Agent stays alive."""
+    session = manager._agents.get(agent_id)
+    if not session:
+        raise HTTPException(404, f"Agent not found: {agent_id}")
+    session.agent.interrupt()
+    return {"status": "interrupted"}
+
+
 @router.get("/{agent_id}/history")
 def agent_history(agent_id: str, manager=Depends(get_manager)):
     """Get conversation history + event log for a standalone agent."""

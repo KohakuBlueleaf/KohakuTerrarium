@@ -432,6 +432,7 @@ class TerrariumRuntime(HotPlugMixin):
             "terrarium_history",
             "creature_start",
             "creature_stop",
+            "creature_interrupt",
             "list_triggers",
         ]
         for name in terrarium_tool_names:
