@@ -145,11 +145,15 @@ def create_output(
     if output_override:
         default_output = output_override
     else:
+        out_options = config.output.options.copy()
+        # Ensure TUI output uses the agent's session key
+        if config.output.type == "tui" and "session_key" not in out_options:
+            out_options["session_key"] = config.session_key or config.name
         default_output = _create_output_module(
             output_type=config.output.type,
             module_path=config.output.module,
             class_name=config.output.class_name,
-            options=config.output.options.copy(),
+            options=out_options,
             loader=loader,
         )
 
