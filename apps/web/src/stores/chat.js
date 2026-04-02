@@ -152,12 +152,9 @@ function _replayEvents(messages, events) {
     } else if (t === "text") {
       appendText(evt.content || "");
     } else if (t === "processing_end" || t === "idle") {
-      // Mark interrupted sub-agents (no subagent_result before processing_end)
-      if (curSubagent && curSubagent.status === "done" && !curSubagent.result) {
-        curSubagent.status = "interrupted";
-        curSubagent.result = "(interrupted)";
-      }
-      curSubagent = null;
+      // Do NOT clear curSubagent here. Sub-agent tools arrive AFTER
+      // processing_end because sub-agents run in the background.
+      // curSubagent is cleared only by subagent_result/subagent_error.
       cur = null;
 
     // ── StreamOutput format (live WS): type="activity" wrapper ──
@@ -233,6 +230,12 @@ function _replayEvents(messages, events) {
     } else if (t === "token_usage" || t === "processing_complete") {
       // skip
     }
+  }
+
+  // Mark sub-agents that never got a result as interrupted
+  if (curSubagent && !curSubagent.result) {
+    curSubagent.status = "interrupted";
+    curSubagent.result = "(interrupted)";
   }
 
   // Clean up empty parts
