@@ -44,4 +44,5 @@ def create_llm_provider(config: AgentConfig) -> LLMProvider:
         model=config.model,
         temperature=config.temperature,
         max_tokens=config.max_tokens,
+        extra_body=config.extra_body or None,
     )

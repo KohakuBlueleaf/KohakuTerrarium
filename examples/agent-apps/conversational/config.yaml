@@ -7,10 +7,11 @@ description: Interactive streaming conversational agent with ASR input and TTS o
 
 # LLM Configuration
 controller:
-  model: gpt-5.4
-  auth_mode: codex-oauth
+  model: "${OPENROUTER_MODEL:google/gemini-3-flash-preview}"
   temperature: 0.8
   max_tokens: 512000
+  api_key_env: OPENROUTER_API_KEY
+  base_url: https://openrouter.ai/api/v1
 
 # System prompt (loaded from file)
 system_prompt_file: system.md
