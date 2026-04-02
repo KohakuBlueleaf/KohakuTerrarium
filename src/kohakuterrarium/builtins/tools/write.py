@@ -37,7 +37,7 @@ class WriteTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Write content to a file"
+        return "Write content to a file (must read first if file exists)"
 
     @property
     def execution_mode(self) -> ExecutionMode:
@@ -113,6 +113,15 @@ class WriteTool(BaseTool):
 
 Write content to a file. Creates the file if it doesn't exist.
 Creates parent directories automatically.
+
+## SAFETY
+
+- You MUST read an existing file before writing to it. The tool will error
+  if you haven't.
+- For partial changes to existing files, prefer the `edit` tool (it sends
+  only the diff, not the whole file).
+- New files (file does not exist) can be written without reading first.
+- If the file was modified since your last read, you must re-read it.
 
 ## Arguments
 

@@ -1,13 +1,13 @@
 ---
 name: glob
-description: Find files matching a glob pattern
+description: Find files by glob pattern (sorted by modification time)
 category: builtin
 tags: [file, search]
 ---
 
 # glob
 
-Find files matching a glob pattern.
+Find files by glob pattern, sorted by modification time (newest first).
 
 ## WHEN TO USE
 
@@ -71,14 +71,6 @@ tool call: glob(
 )
 ```
 
-```
-tool call: glob(
-  path: .
-  limit: 50
-**/*.md
-)
-```
-
 ## Output Format
 
 ```
@@ -87,13 +79,10 @@ src/utils/helpers.py
 tests/test_main.py
 ```
 
-## LIMITATIONS
-
-- Returns file paths only (not contents)
-- Results sorted by modification time (newest first)
+Results are sorted by modification time (newest first). Shows total count when results are truncated by the limit.
 
 ## TIPS
 
-- Use `**/*.ext` for recursive search
+- Use `**/*.ext` for recursive search by extension
 - Combine with `read` to examine found files
-- Use specific patterns to narrow results
+- Use specific patterns to narrow results in large codebases

@@ -1,6 +1,6 @@
 ---
 name: write
-description: Write content to a file (creates or overwrites)
+description: Write content to a file (must read first if file exists)
 category: builtin
 tags: [file, io]
 ---
@@ -8,6 +8,13 @@ tags: [file, io]
 # write
 
 Write content to a file. Creates if doesn't exist, overwrites if it does.
+
+## SAFETY
+
+- **You MUST read an existing file before writing to it.** The tool will error if you haven't.
+- For partial changes to existing files, prefer the `edit` tool (it sends only the diff, not the whole file).
+- New files (file does not exist) can be written without reading first.
+- If the file was modified since your last read, you must re-read it.
 
 ## WHEN TO USE
 
@@ -44,16 +51,6 @@ if __name__ == "__main__":
 )
 ```
 
-```
-tool call: write(
-  path: config.json
-{
-  "name": "my-app",
-  "version": "1.0.0"
-}
-)
-```
-
 ## Output Format
 
 ```
@@ -68,5 +65,5 @@ Created /path/to/file.py (15 lines, 342 bytes)
 ## TIPS
 
 - Use `read` first to understand existing content
-- For partial edits, use `edit` tool
+- For partial edits, use `edit` tool instead
 - Content is written exactly as provided

@@ -226,7 +226,7 @@ class EditTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Edit file using unified diff or search/replace"
+        return "Edit file via search/replace or unified diff (must read first)"
 
     @property
     def execution_mode(self) -> ExecutionMode:
@@ -462,9 +462,19 @@ class EditTool(BaseTool):
     def get_full_documentation(self, tool_format: str = "native") -> str:
         return """# edit
 
-Edit a file. Supports two modes (auto-detected from arguments).
+Edit files using search/replace or unified diff. Mode is auto-detected
+from arguments.
 
-## Mode 1: Search/Replace
+## SAFETY
+
+- You MUST read the file before editing it. The tool will error if you
+  haven't.
+- If the file was modified since your last read, you must re-read it.
+- Binary files cannot be edited.
+
+## Mode 1: Search/Replace (recommended for simple changes)
+
+Find an exact string and replace it.
 
 | Arg | Type | Description |
 |-----|------|-------------|
@@ -473,26 +483,35 @@ Edit a file. Supports two modes (auto-detected from arguments).
 | new_string | string | Replacement text (required) |
 | replace_all | bool | Replace all occurrences (default: false) |
 
-If old_string appears multiple times and replace_all is false,
-provide more surrounding context to make it unique.
+Rules:
+- old_string must match the file content EXACTLY (including whitespace).
+- If old_string appears multiple times and replace_all is false, provide
+  more context to make it unique.
+- Set replace_all=true to replace every occurrence (useful for renaming).
 
-## Mode 2: Unified Diff
+## Mode 2: Unified Diff (for multi-site or complex changes)
+
+Apply standard unified diff patches.
 
 | Arg | Type | Description |
 |-----|------|-------------|
 | path | string | Path to file (required) |
 | diff | string | Unified diff content (required) |
 
-Diff format:
+Format:
 ```
 @@ -start,count +start,count @@
--line to remove
-+line to add
- context line (unchanged)
+ context line (unchanged, starts with space)
+-line to remove (starts with minus)
++line to add (starts with plus)
 ```
 
-## Safety
+Multiple hunks can appear in one diff for changes at different locations.
 
-- You MUST read the file before editing it.
-- If the file was modified since your last read, you must re-read it.
+## TIPS
+
+- Use search/replace for single-site changes (simpler, less error-prone).
+- Use unified diff for multi-site changes or when you need precise line
+  control.
+- Always read the file first to see exact content and line numbers.
 """

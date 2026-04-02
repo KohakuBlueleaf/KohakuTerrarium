@@ -1,93 +1,75 @@
 ---
 name: edit
-description: Edit file using unified diff format
+description: Edit file via search/replace or unified diff (must read first)
 category: builtin
 tags: [file, io, edit, diff, patch]
 ---
 
 # edit
 
-Apply unified diff patches to modify files precisely.
+Edit files using search/replace or unified diff. Supports two modes, auto-detected from arguments.
 
-## WHEN TO USE
+## SAFETY
 
-- Modifying existing code (functions, classes, etc.)
-- Fixing bugs in existing files
-- Adding/removing lines at specific locations
-- Making targeted, precise changes
+- **You MUST read the file before editing it.** The tool will error if you haven't.
+- If the file was modified since your last read, you must re-read it.
+- Binary files cannot be edited.
 
-## HOW TO USE
+## Mode 1: Search/Replace (recommended for simple changes)
 
-```
-tool call: edit(
-  path: file_path
-@@ -start,count +start,count @@
--removed line
-+added line
- context line
-)
-```
+Find an exact string and replace it.
 
-## Arguments
+### Arguments
 
 | Arg | Type | Description |
 |-----|------|-------------|
 | path | @@arg | Path to file (required) |
-| content | body | Unified diff content |
+| old_string | @@arg | Exact text to find (required) |
+| new_string | @@arg | Replacement text (required) |
+| replace_all | @@arg | Replace all occurrences (default: false) |
 
-## Diff Format
+### Rules
 
-Standard unified diff format:
+- old_string must match the file content EXACTLY (including whitespace)
+- If old_string appears multiple times and replace_all is false, provide more context to make it unique
+- Set replace_all=true to replace every occurrence (useful for renaming)
 
-```
-@@ -start,count +start,count @@
-```
-
-- **`-start,count`**: Starting line and number of lines in original
-- **`+start,count`**: Starting line and number of lines in new version
-- Lines starting with `-` are **removed**
-- Lines starting with `+` are **added**
-- Lines starting with ` ` (space) are **context** (must match exactly)
-
-## Examples
-
-### Replace a function
+### Example
 
 ```
 tool call: edit(
   path: src/main.py
-@@ -5,3 +5,3 @@
--def hello():
--    print("Hi")
-+def hello():
-+    print("Hello, World!")
+  old_string: def hello():
+  new_string: def greet():
 )
 ```
 
-### Add import after existing import
+## Mode 2: Unified Diff (for multi-site or complex changes)
+
+Apply standard unified diff patches.
+
+### Arguments
+
+| Arg | Type | Description |
+|-----|------|-------------|
+| path | @@arg | Path to file (required) |
+| diff | body | Unified diff content (required) |
+
+### Format
 
 ```
-tool call: edit(
-  path: src/utils.py
-@@ -1,1 +1,2 @@
- import os
-+import sys
-)
+@@ -start,count +start,count @@
+ context line (unchanged, starts with space)
+-line to remove (starts with minus)
++line to add (starts with plus)
 ```
 
-### Delete lines
+- `start` is 1-indexed line number
+- `count` is the number of lines in that section
+- Context lines must match the file exactly
+- Multiple hunks can appear in one diff
 
-```
-tool call: edit(
-  path: src/old.py
-@@ -10,3 +10,1 @@
- # Keep this comment
--# Delete this
--# And this
-)
-```
-
-### Multiple changes in one diff
+### Example
 
 ```
 tool call: edit(
@@ -104,20 +86,21 @@ tool call: edit(
 
 ## Output Format
 
+Search/replace:
+```
+Edited /path/to/file.py
+  1 replacement(s) made
+```
+
+Unified diff:
 ```
 Edited /path/to/file.py
   2 hunk(s) applied
-  +5 -3 lines
+  +3 -2 lines
 ```
 
 ## TIPS
 
-- Use `tool call: read(  path: file.py)` first to see exact line numbers
-- Include context lines (` ` prefix) to anchor changes
-- Line numbers in `@@` header are 1-indexed
-- Multiple hunks can be in one diff
-
-## LIMITATIONS
-
-- Context lines must match the file exactly
-- Cannot create new files (use `write` for that)
+- Use search/replace for single-site changes (simpler, less error-prone)
+- Use unified diff for multi-site changes or when you need precise line control
+- Always read the file first to see exact content and line numbers

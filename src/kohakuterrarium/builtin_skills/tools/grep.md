@@ -1,13 +1,13 @@
 ---
 name: grep
-description: Search file contents for a pattern (regex)
+description: Search file contents with regex pattern matching
 category: builtin
 tags: [search, content]
 ---
 
 # grep
 
-Search file contents for a pattern using regex.
+Search file contents with regex pattern matching.
 
 ## WHEN TO USE
 
@@ -40,11 +40,19 @@ pattern
 
 | Arg | Type | Description |
 |-----|------|-------------|
-| pattern | body | Regex pattern to search (required) |
-| path | @@arg | Directory to search (default: cwd) |
-| glob | @@arg | File pattern filter (default: `**/*`) |
-| limit | @@arg | Max matches (default: 50) |
-| ignore_case | @@arg | Case-insensitive (default: false) |
+| pattern | body | Python regex pattern to search (required) |
+| path | @@arg | Directory or file to search (default: cwd) |
+| glob | @@arg | File glob filter (default: `**/*`) |
+| limit | @@arg | Max matches to return (default: 50) |
+| ignore_case | @@arg | Case-insensitive search (default: false) |
+
+## Behavior
+
+- Uses Python regex (re module), not ripgrep or shell grep
+- Binary files are automatically skipped
+- Lines longer than 2000 characters are truncated in output
+- When results exceed the limit, a hint message shows total match count so you know to narrow your pattern
+- Searches recursively through directories matching the glob filter
 
 ## Examples
 
@@ -64,14 +72,6 @@ todo|fixme
 
 ```
 tool call: grep(
-  path: src/components
-  glob: *.tsx
-import.*react
-)
-```
-
-```
-tool call: grep(
   path: src/main.py
 import
 )
@@ -86,14 +86,9 @@ src/utils.py:25: def helper(x):
 (2 matches in 15 files)
 ```
 
-## LIMITATIONS
-
-- Regex syntax (escape special chars with `\`)
-- Large codebases may need file filter
-
 ## TIPS
 
-- Use `glob` arg to narrow file types
+- Use `glob` arg to narrow file types (e.g., `**/*.py`)
 - Escape regex special chars: `\(`, `\[`, `\.`
-- Use `read` after grep to examine context
-- For simple text, `ignore_case="true"` helps
+- Use `read` after grep to examine surrounding context
+- Set `ignore_case=true` for case-insensitive text search

@@ -36,7 +36,7 @@ class GrepTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Search file contents for a pattern"
+        return "Search file contents with regex pattern matching"
 
     @property
     def execution_mode(self) -> ExecutionMode:
@@ -160,26 +160,36 @@ class GrepTool(BaseTool):
     def get_full_documentation(self, tool_format: str = "native") -> str:
         return """# grep
 
-Search file contents for a pattern (regex supported).
+Search file contents with regex pattern matching.
 
 ## Arguments
 
 | Arg | Type | Description |
 |-----|------|-------------|
-| pattern | string | Search pattern - Python regex (required) |
+| pattern | string | Python regex pattern (required) |
 | path | string | Directory or file to search (default: cwd) |
-| glob | string | File pattern filter (default: "**/*") |
-| limit | integer | Max matches (default: 50) |
+| glob | string | File glob filter (default: "**/*") |
+| limit | integer | Max matches to return (default: 50) |
 | ignore_case | boolean | Case-insensitive search (default: false) |
 
 ## Behavior
 
+- Uses Python regex (re module), not ripgrep or shell grep.
 - Skips binary files automatically.
 - Searches recursively through directories matching the glob filter.
-- Stops after reaching the match limit.
+- Lines longer than 2000 characters are truncated in output.
+- When results exceed the limit, a hint message is shown with the total
+  match count so you know to narrow your pattern.
 
 ## Output
 
 Returns matches in `file:line: content` format, one per line.
 Shows total match count and files searched at the end.
+
+## TIPS
+
+- Use the `glob` argument to narrow file types (e.g., `**/*.py`).
+- Escape regex special chars: `\\(`, `\\[`, `\\.`.
+- Use `read` after grep to examine surrounding context.
+- Set `ignore_case=true` for case-insensitive text search.
 """

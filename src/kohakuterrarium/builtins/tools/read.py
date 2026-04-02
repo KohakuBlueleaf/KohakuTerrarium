@@ -37,7 +37,7 @@ class ReadTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Read file contents"
+        return "Read file contents (required before write/edit)"
 
     @property
     def execution_mode(self) -> ExecutionMode:
@@ -151,6 +151,15 @@ class ReadTool(BaseTool):
 
 Read file contents with optional line range.
 
+## SAFETY
+
+- You MUST read files before writing or editing them. The write and edit tools
+  will error if you haven't read the file first.
+- Binary files (images, PDFs, compiled files) are detected and rejected with
+  a helpful message.
+- Lines longer than 2000 characters are truncated.
+- Total output is capped at 200KB. Use offset/limit for large files.
+
 ## Arguments
 
 | Arg | Type | Description |
@@ -168,4 +177,11 @@ Read file contents with optional line range.
 ## Output
 
 Line-numbered file contents. Line numbers are 1-indexed in the output.
+
+## TIPS
+
+- Use `glob` first to find files by pattern, then `read` to examine them.
+- Use `grep` to locate relevant lines, then `read` with offset/limit to
+  examine context.
+- For large files, read in chunks with offset/limit.
 """

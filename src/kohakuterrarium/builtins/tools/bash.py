@@ -63,7 +63,7 @@ class BashTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Execute shell commands and return output"
+        return "Execute shell commands (prefer dedicated tools for file ops)"
 
     @property
     def execution_mode(self) -> ExecutionMode:
@@ -150,15 +150,41 @@ class BashTool(BaseTool):
 
 Execute shell commands and return output.
 
+## IMPORTANT: Prefer Dedicated Tools
+
+Do NOT use bash for operations that have dedicated tools:
+- File reading: use `read` (NOT `cat`, `head`, `tail`)
+- File editing: use `edit` (NOT `sed`, `awk`)
+- File writing: use `write` (NOT `echo >`, `cat <<EOF`)
+- File finding: use `glob` (NOT `find`, `ls`)
+- Content search: use `grep` (NOT `grep`, `rg` via bash)
+
+Using dedicated tools gives structured output and enables safety guards.
+
 ## Arguments
 
 | Arg | Type | Description |
 |-----|------|-------------|
 | command | string | Shell command to execute (required) |
 
+## Git Safety
+
+- Prefer new commits over amending existing ones.
+- Never skip hooks (--no-verify) unless explicitly asked.
+- Before destructive operations (reset --hard, push --force), confirm with
+  the user.
+- Never force push to main/master.
+
+## Multiple Commands
+
+- Independent commands: run them separately (parallel execution).
+- Dependent commands: chain with `&&`.
+- Sequential (failure OK): chain with `;`.
+
 ## Behavior
 
-- On Windows, commands run in PowerShell (pwsh preferred, falls back to powershell).
+- On Windows, commands run in PowerShell (pwsh preferred, falls back to
+  powershell).
 - On Unix/Linux/Mac, commands run in bash (falls back to sh).
 - stdout and stderr are combined in the output.
 - Commands have a configurable timeout; killed on timeout.
