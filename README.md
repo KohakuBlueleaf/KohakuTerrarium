@@ -278,15 +278,16 @@ examples/      Example agent apps and terrariums
 apps/api/      FastAPI HTTP API (REST + WebSocket)
 apps/web/      Vue 3 web frontend (Vite + Element Plus + UnoCSS + Vue Flow)
 docs/          Guide, concepts, architecture, API reference
-scripts/       Utility scripts (inspect_session.py)
+scripts/       Utility scripts (inspect_session.py, dep_graph.py)
 
 src/kohakuterrarium/
   core/        Agent, controller, executor, trigger_manager, events, sessions
+  bootstrap/   Agent initialization factories (llm, tools, io, subagents, triggers)
   modules/     Protocols: input, trigger, tool, output, subagent
-  terrarium/   Multi-agent runtime: config, lifecycle, hot-plug, observer
+  terrarium/   Multi-agent runtime: config, factory, persistence, hot-plug, observer
   serving/     KohakuManager, AgentSession, event streaming
   session/     SessionStore (KohakuVault), resume, persistent event recording
-  builtins/    Tools, sub-agents, CLI/TUI/Whisper inputs, stdout/TUI outputs
+  builtins/    Tool/subagent catalogs, tools, sub-agents, inputs, outputs
   parsing/     Stream parser (bracket, XML, native tool calling)
   prompt/      System prompt aggregation + Jinja2 templating
   llm/         LLM providers (OpenAI/OpenRouter/Codex OAuth)
