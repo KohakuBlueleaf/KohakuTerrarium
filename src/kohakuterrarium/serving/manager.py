@@ -78,10 +78,7 @@ class KohakuManager:
         # Auto-attach session store for persistence
         if self._session_dir:
             try:
-                session_path = (
-                    Path(self._session_dir)
-                    / f"{session.agent_id}.kohakutr"
-                )
+                session_path = Path(self._session_dir) / f"{session.agent_id}.kohakutr"
                 store = SessionStore(session_path)
                 store.init_meta(
                     session_id=session.agent_id,

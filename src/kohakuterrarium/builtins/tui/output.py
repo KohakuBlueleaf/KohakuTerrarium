@@ -206,9 +206,7 @@ class TUIOutput(BaseOutputModule):
             self._tui.begin_assistant_turn()
 
             for activity_type, name in cycle["activities"]:
-                inline = self._format_activity_inline(
-                    activity_type, f"[{name}]"
-                )
+                inline = self._format_activity_inline(activity_type, f"[{name}]")
                 if inline:
                     self._tui.write_to_output(inline)
 

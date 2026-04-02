@@ -37,7 +37,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="KohakuTerrarium API server")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8001)
-    parser.add_argument("--reload", action="store_true", help="Auto-reload on code changes (dev only)")
+    parser.add_argument(
+        "--reload", action="store_true", help="Auto-reload on code changes (dev only)"
+    )
     args = parser.parse_args()
 
     uvicorn.run(

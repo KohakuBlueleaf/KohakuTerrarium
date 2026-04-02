@@ -41,6 +41,7 @@ from kohakuterrarium.modules.tool.base import BaseTool
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 class DummyTool(BaseTool):
     """Minimal tool for testing registration and creation."""
 
@@ -64,6 +65,7 @@ class AnotherDummyTool(BaseTool):
 # ---------------------------------------------------------------------------
 # tool_catalog.py
 # ---------------------------------------------------------------------------
+
 
 class TestToolCatalog:
     """Tests for the builtin tool catalog (registration, lookup, deferred loaders)."""
@@ -93,6 +95,7 @@ class TestToolCatalog:
 
     def test_register_deferred_loader_fires_on_miss(self):
         """Deferred loader is invoked when a tool is not in the catalog."""
+
         def loader():
             _BUILTIN_TOOLS["lazy_tool"] = DummyTool
 
@@ -155,6 +158,7 @@ class TestToolCatalog:
 # ---------------------------------------------------------------------------
 # bootstrap/llm.py
 # ---------------------------------------------------------------------------
+
 
 class TestBootstrapLLM:
     """Tests for the LLM provider factory."""
@@ -222,6 +226,7 @@ class TestBootstrapLLM:
         with patch.dict("os.environ", {}, clear=False):
             # Make sure the key is absent
             import os
+
             os.environ.pop("NONEXISTENT_KEY_BOOTSTRAP_TEST_XYZ", None)
             with pytest.raises(ValueError, match="API key not found"):
                 create_llm_provider(config)
@@ -230,6 +235,7 @@ class TestBootstrapLLM:
 # ---------------------------------------------------------------------------
 # bootstrap/tools.py
 # ---------------------------------------------------------------------------
+
 
 class TestBootstrapTools:
     """Tests for tool creation and registration."""
@@ -342,6 +348,7 @@ class TestBootstrapTools:
 # bootstrap/io.py
 # ---------------------------------------------------------------------------
 
+
 class TestBootstrapInput:
     """Tests for input module creation."""
 
@@ -386,7 +393,9 @@ class TestBootstrapOutput:
 
         override = MagicMock(spec=OutputModule)
         config = AgentConfig(name="test")
-        default_out, named = create_output(config, output_override=override, loader=None)
+        default_out, named = create_output(
+            config, output_override=override, loader=None
+        )
         assert default_out is override
         assert named == {}
 
@@ -417,6 +426,7 @@ class TestBootstrapOutput:
 # ---------------------------------------------------------------------------
 # bootstrap/subagents.py
 # ---------------------------------------------------------------------------
+
 
 class TestBootstrapSubagents:
     """Tests for sub-agent config creation."""
@@ -495,6 +505,7 @@ class TestBootstrapSubagents:
 # ---------------------------------------------------------------------------
 # bootstrap/triggers.py
 # ---------------------------------------------------------------------------
+
 
 class TestBootstrapTriggers:
     """Tests for trigger creation."""
@@ -596,6 +607,4 @@ class TestBootstrapTriggers:
 
         # timer and context should be registered; unknown should be skipped
         assert len(manager._triggers) == 2
-        assert all(
-            isinstance(ts, datetime) for ts in manager._created_at.values()
-        )
+        assert all(isinstance(ts, datetime) for ts in manager._created_at.values())

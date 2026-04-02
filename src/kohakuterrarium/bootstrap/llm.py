@@ -35,8 +35,7 @@ def create_llm_provider(config: AgentConfig) -> LLMProvider:
     api_key = config.get_api_key()
     if not api_key:
         raise ValueError(
-            f"API key not found. "
-            f"Set {config.api_key_env} environment variable."
+            f"API key not found. " f"Set {config.api_key_env} environment variable."
         )
 
     return OpenAIProvider(

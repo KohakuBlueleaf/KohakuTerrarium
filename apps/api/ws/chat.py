@@ -105,9 +105,7 @@ def _register_channel_callbacks(
     return channel_cbs
 
 
-async def _send_channel_history(
-    ws: WebSocket, runtime
-) -> None:
+async def _send_channel_history(ws: WebSocket, runtime) -> None:
     """Send historical channel messages that happened before the WS connected."""
     for ch in runtime.environment.shared_channels._channels.values():
         for msg in ch.history:
@@ -135,9 +133,7 @@ async def _send_channel_history(
             )
 
 
-async def _handle_terrarium_input(
-    ws: WebSocket, manager, terrarium_id: str
-) -> None:
+async def _handle_terrarium_input(ws: WebSocket, manager, terrarium_id: str) -> None:
     """Handle incoming WebSocket messages for a terrarium."""
     while True:
         data = await ws.receive_json()
@@ -159,9 +155,7 @@ async def _handle_terrarium_input(
                 }
             )
             await session.agent.inject_input(message, source="web")
-            await ws.send_json(
-                {"type": "idle", "source": target, "ts": time.time()}
-            )
+            await ws.send_json({"type": "idle", "source": target, "ts": time.time()})
         except ValueError as e:
             await ws.send_json(
                 {

@@ -20,6 +20,7 @@ PKG = "kohakuterrarium"
 
 # ── Import graph extraction ──────────────────────────────────────────
 
+
 def _module_name(path: Path) -> str:
     """Convert file path to module name."""
     rel = path.relative_to(ROOT.parent)
@@ -100,9 +101,7 @@ def extract_imports(path: Path) -> list[tuple[str, str, bool]]:
     return results
 
 
-def build_graph() -> tuple[
-    dict[str, set[str]], dict[str, set[str]], set[str]
-]:
+def build_graph() -> tuple[dict[str, set[str]], dict[str, set[str]], set[str]]:
     """Build the full import graph.
 
     Returns (runtime_edges, tc_edges, all_modules).
@@ -130,6 +129,7 @@ def build_graph() -> tuple[
 
 
 # ── Analysis ─────────────────────────────────────────────────────────
+
 
 def find_sccs(graph: dict[str, set[str]]) -> list[list[str]]:
     """Find strongly connected components using Tarjan's algorithm."""
@@ -186,6 +186,7 @@ def _group(mod: str) -> str:
 
 
 # ── Output formats ───────────────────────────────────────────────────
+
 
 def print_stats(runtime: dict[str, set[str]], all_mods: set[str]):
     """Print summary statistics."""
@@ -279,21 +280,21 @@ def output_dot(runtime: dict[str, set[str]], all_mods: set[str]):
     }
 
     print("digraph kohakuterrarium {")
-    print('  rankdir=LR;')
-    print('  node [shape=box, fontsize=10, style=filled];')
+    print("  rankdir=LR;")
+    print("  node [shape=box, fontsize=10, style=filled];")
     print('  edge [color="#666666", arrowsize=0.6];')
     print()
 
     for group, mods in sorted(groups.items()):
         color = colors.get(group, "#FFFFFF")
-        print(f'  subgraph cluster_{group} {{')
+        print(f"  subgraph cluster_{group} {{")
         print(f'    label="{group}";')
-        print(f'    style=filled;')
+        print(f"    style=filled;")
         print(f'    color="{color}";')
         for mod in sorted(mods):
             short = _short(mod)
             print(f'    "{short}";')
-        print('  }')
+        print("  }")
         print()
 
     for src, dests in sorted(runtime.items()):
@@ -307,6 +308,7 @@ def render_plot(runtime: dict[str, set[str]], all_mods: set[str]):
     """Render a matplotlib plot of the group-level dependency graph."""
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         import matplotlib.patches as mpatches
@@ -357,7 +359,9 @@ def render_plot(runtime: dict[str, set[str]], all_mods: set[str]):
     ax.set_aspect("equal")
     ax.set_title(
         "KohakuTerrarium Module Dependency Graph (group level)",
-        fontsize=16, fontweight="bold", pad=20
+        fontsize=16,
+        fontweight="bold",
+        pad=20,
     )
 
     # Draw edges
@@ -368,7 +372,8 @@ def render_plot(runtime: dict[str, set[str]], all_mods: set[str]):
         width = min(0.5 + count * 0.3, 4.0)
         ax.annotate(
             "",
-            xy=(x2, y2), xytext=(x1, y1),
+            xy=(x2, y2),
+            xytext=(x1, y1),
             arrowprops=dict(
                 arrowstyle="-|>",
                 color="#555555",
@@ -390,8 +395,16 @@ def render_plot(runtime: dict[str, set[str]], all_mods: set[str]):
         color = colors_map.get(g, "#CCCCCC")
         circle = plt.Circle((x, y), radius, color=color, ec="black", lw=1.5, zorder=5)
         ax.add_patch(circle)
-        ax.text(x, y, f"{g}\n({size})", ha="center", va="center",
-                fontsize=9, fontweight="bold", zorder=6)
+        ax.text(
+            x,
+            y,
+            f"{g}\n({size})",
+            ha="center",
+            va="center",
+            fontsize=9,
+            fontweight="bold",
+            zorder=6,
+        )
 
     # Fan-in/fan-out stats per group
     group_fan_out: dict[str, int] = defaultdict(int)
@@ -408,9 +421,12 @@ def render_plot(runtime: dict[str, set[str]], all_mods: set[str]):
         legend_lines.append(f"{g:<15} {group_sizes[g]:>3}    {fo:>4}     {fi:>4}")
 
     ax.text(
-        0.02, 0.02, "\n".join(legend_lines),
+        0.02,
+        0.02,
+        "\n".join(legend_lines),
         transform=ax.transAxes,
-        fontsize=8, fontfamily="monospace",
+        fontsize=8,
+        fontfamily="monospace",
         verticalalignment="bottom",
         bbox=dict(boxstyle="round,pad=0.5", facecolor="white", alpha=0.9),
     )
@@ -436,6 +452,7 @@ def _render_detailed_plot(
 ):
     """Render a detailed module-level plot (may be dense)."""
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import math
@@ -469,7 +486,9 @@ def _render_detailed_plot(
     ax.set_aspect("equal")
     ax.set_title(
         "KohakuTerrarium Detailed Module Dependency Graph",
-        fontsize=16, fontweight="bold", pad=20,
+        fontsize=16,
+        fontweight="bold",
+        pad=20,
     )
 
     # Draw edges (thin, low alpha)
@@ -486,7 +505,8 @@ def _render_detailed_plot(
             alpha = 0.4 if sg != dg else 0.15
             ax.annotate(
                 "",
-                xy=(x2, y2), xytext=(x1, y1),
+                xy=(x2, y2),
+                xytext=(x1, y1),
                 arrowprops=dict(
                     arrowstyle="-|>",
                     color=color,
@@ -501,8 +521,16 @@ def _render_detailed_plot(
         g = _group(mod)
         color = colors_map.get(g, "#CCCCCC")
         short = mod.replace("kohakuterrarium.", "").split(".")[-1]
-        ax.plot(x, y, "o", color=color, markersize=8, markeredgecolor="black",
-                markeredgewidth=0.5, zorder=5)
+        ax.plot(
+            x,
+            y,
+            "o",
+            color=color,
+            markersize=8,
+            markeredgecolor="black",
+            markeredgewidth=0.5,
+            zorder=5,
+        )
         ax.text(x + 0.15, y + 0.15, short, fontsize=6, zorder=6, alpha=0.8)
 
     ax.set_xlim(-10, 10)
@@ -516,6 +544,7 @@ def _render_detailed_plot(
 
 
 # ── Main ─────────────────────────────────────────────────────────────
+
 
 def main():
     args = set(sys.argv[1:])
