@@ -94,6 +94,23 @@ async def run_terrarium_with_tui(runtime: TerrariumRuntime) -> None:
         )
     tui.update_terrarium(creature_info, runtime.list_channels())
 
+    # Wire channel on_send callbacks to display messages in channel tabs
+    for ch in runtime.environment.shared_channels._channels.values():
+        ch_name = ch.name
+
+        def _make_ch_cb(channel_name: str):
+            def _cb(cn: str, message) -> None:
+                sender = message.sender if hasattr(message, "sender") else ""
+                content = message.content if hasattr(message, "content") else str(message)
+                tui.add_trigger_message(
+                    f"[{channel_name}] {sender}",
+                    str(content)[:500],
+                    target=f"#{channel_name}",
+                )
+            return _cb
+
+        ch.on_send(_make_ch_cb(ch_name))
+
     # Replay resume history from SessionStore (if available)
     session_store = runtime.session_store
     if session_store:
