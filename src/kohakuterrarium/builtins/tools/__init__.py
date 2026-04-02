@@ -25,6 +25,7 @@ from kohakuterrarium.builtins.tools.list_triggers import ListTriggersTool
 from kohakuterrarium.builtins.tools.read import ReadTool
 from kohakuterrarium.builtins.tools.scratchpad_tool import ScratchpadTool
 from kohakuterrarium.builtins.tools.send_message import SendMessageTool
+from kohakuterrarium.builtins.tools.stop_task import StopTaskTool
 from kohakuterrarium.builtins.tools.think import ThinkTool
 from kohakuterrarium.builtins.tools.tree import TreeTool
 from kohakuterrarium.builtins.tools.wait_channel import WaitChannelTool

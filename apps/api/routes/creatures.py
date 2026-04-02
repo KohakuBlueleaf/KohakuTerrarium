@@ -50,6 +50,22 @@ async def remove_creature(terrarium_id: str, name: str, manager=Depends(get_mana
         raise HTTPException(404, str(e))
 
 
+@router.post("/{name}/interrupt")
+async def interrupt_creature(
+    terrarium_id: str, name: str, manager=Depends(get_manager)
+):
+    """Interrupt a creature's current processing. Creature stays alive."""
+    try:
+        runtime = manager._get_runtime(terrarium_id)
+        agent = runtime.get_creature_agent(name)
+        if not agent:
+            raise HTTPException(404, f"Creature not found: {name}")
+        agent.interrupt()
+        return {"status": "interrupted", "creature": name}
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
 @router.post("/{name}/wire")
 async def wire_channel(
     terrarium_id: str, name: str, req: WireChannel, manager=Depends(get_manager)
