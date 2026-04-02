@@ -188,6 +188,16 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         """Start all agent modules."""
         logger.info("Starting agent", agent_name=self.config.name)
 
+        # Configure TUI with terrarium tabs if available (set by runtime)
+        terrarium_tabs = getattr(self, "_terrarium_tui_tabs", None)
+        if terrarium_tabs and hasattr(self.input, "_tui"):
+            # TUIInput hasn't started yet, but we can pre-configure
+            # by storing tabs on the session for TUIInput to read
+            self.session.extra["terrarium_tui_tabs"] = terrarium_tabs
+            terrarium_rt = getattr(self, "_terrarium_runtime", None)
+            if terrarium_rt:
+                self.session.extra["terrarium_runtime"] = terrarium_rt
+
         await self.input.start()
         await self.output_router.start()
 

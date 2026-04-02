@@ -45,6 +45,9 @@ def create_input(
         "prompt": config.input.prompt,
         **config.input.options,
     }
+    # Ensure TUI input uses the agent's session key
+    if input_type == "tui" and "session_key" not in options:
+        options["session_key"] = config.session_key or config.name
 
     # Builtin input type
     if is_builtin_input(input_type):
