@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from kohakuterrarium.builtins.tools.registry import register_builtin
+from kohakuterrarium.builtins.tool_catalog import register_builtin
 from kohakuterrarium.core.channel import ChannelMessage
 from kohakuterrarium.modules.tool.base import (
     BaseTool,
@@ -569,7 +569,7 @@ class CreatureStartTool(BaseTool):
                 listen_channels=listen,
                 send_channels=send,
             )
-            handle = await runtime.add_creature(creature_cfg)
+            await runtime.add_creature(creature_cfg)
 
             return ToolResult(
                 output=(

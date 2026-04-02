@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from apps.api.deps import get_manager
 from apps.api.schemas import CreatureAdd, WireChannel
+from kohakuterrarium.terrarium.config import CreatureConfig
 
 router = APIRouter()
 
@@ -23,8 +24,6 @@ async def add_creature(
     terrarium_id: str, req: CreatureAdd, manager=Depends(get_manager)
 ):
     """Add a creature to a running terrarium."""
-    from kohakuterrarium.terrarium.config import CreatureConfig
-
     config = CreatureConfig(
         name=req.name,
         config_path=req.config_path,

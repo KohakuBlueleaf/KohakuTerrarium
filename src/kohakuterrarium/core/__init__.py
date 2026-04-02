@@ -1,17 +1,7 @@
 """
-Core module - fundamental abstractions and runtime components.
+Core module: fundamental abstractions and runtime components.
 
-Exports:
-- Agent: Main agent orchestrator
-- AgentConfig: Agent configuration
-- ModuleLoader: Load custom modules from agent folders
-- TriggerEvent: Universal event type for all components
-- EventType: Common event type constants
-- Conversation: Message history management
-- Controller: Main LLM orchestration loop
-- Executor: Background tool execution
-- JobStatus, JobResult: Job tracking
-- Registry: Module registration
+Exports the main building blocks for constructing and running agents.
 """
 
 from kohakuterrarium.core.config import (
@@ -22,12 +12,12 @@ from kohakuterrarium.core.config import (
     TriggerConfig,
     load_agent_config,
 )
-from kohakuterrarium.core.conversation import Conversation, ConversationConfig
 from kohakuterrarium.core.controller import (
     Controller,
     ControllerConfig,
     ControllerContext,
 )
+from kohakuterrarium.core.conversation import Conversation, ConversationConfig
 from kohakuterrarium.core.environment import Environment
 from kohakuterrarium.core.events import (
     EventType,
@@ -46,8 +36,8 @@ from kohakuterrarium.core.job import (
     generate_job_id,
 )
 from kohakuterrarium.core.loader import (
-    ModuleLoader,
     ModuleLoadError,
+    ModuleLoader,
     load_custom_module,
 )
 from kohakuterrarium.core.registry import Registry, get_registry, register_tool
@@ -99,7 +89,13 @@ __all__ = [
 
 
 def __getattr__(name: str):
-    """Lazy imports for modules that would cause circular import chains."""
+    """Lazy import for Agent/run_agent.
+
+    Cycle edge: builtins.inputs.cli imports core.events via core.__init__,
+    but core.agent -> core.agent_init imports builtins.inputs. Eagerly
+    importing Agent here would trigger that cycle. All other core exports
+    load eagerly above.
+    """
     if name in ("Agent", "run_agent"):
         from kohakuterrarium.core.agent import Agent, run_agent
 

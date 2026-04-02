@@ -188,6 +188,48 @@ class OpenAIProvider(BaseLLMProvider):
 
         return body
 
+    def _process_sse_event(
+        self,
+        data: str,
+        pending_calls: dict[int, dict[str, str]],
+    ) -> tuple[str | None, bool]:
+        """Parse one SSE event payload, update accumulators.
+
+        Args:
+            data: The raw SSE data string (after removing "data: " prefix).
+            pending_calls: Mutable dict accumulating native tool call deltas.
+
+        Returns:
+            A tuple of (text_content_or_None, is_done). When is_done is True
+            the caller should finalize and stop iterating.
+        """
+        if data == "[DONE]":
+            logger.debug("Stream completed")
+            return None, True
+
+        try:
+            chunk = json.loads(data)
+        except json.JSONDecodeError as e:
+            logger.warning("Failed to parse SSE chunk", error=str(e))
+            return None, False
+
+        # Capture usage from final chunk (many providers include it)
+        if "usage" in chunk and chunk["usage"]:
+            self._last_usage = chunk["usage"]
+
+        choices = chunk.get("choices", [])
+        if not choices:
+            return None, False
+
+        delta = choices[0].get("delta", {})
+
+        # Accumulate native tool call deltas
+        if "tool_calls" in delta:
+            self._accumulate_tool_calls(delta["tool_calls"], pending_calls)
+
+        content = delta.get("content", "")
+        return (content or None), False
+
     async def _stream_chat(
         self,
         messages: list[dict[str, Any]],
@@ -239,7 +281,6 @@ class OpenAIProvider(BaseLLMProvider):
                             error=error_text.decode(),
                         )
 
-                        # Check if should retry
                         if (
                             self._should_retry(response.status_code)
                             and attempt < self.max_retries
@@ -258,50 +299,21 @@ class OpenAIProvider(BaseLLMProvider):
                         )
 
                     async for line in response.aiter_lines():
-                        if not line:
+                        if not line or not line.startswith("data: "):
                             continue
 
-                        # SSE format: "data: {...}" or "data: [DONE]"
-                        if line.startswith("data: "):
-                            data = line[6:]  # Remove "data: " prefix
+                        text, done = self._process_sse_event(
+                            line[6:], pending_calls
+                        )
+                        if done:
+                            self._finalize_tool_calls(pending_calls)
+                            return
+                        if text:
+                            yield text
 
-                            if data == "[DONE]":
-                                logger.debug("Stream completed")
-                                # Convert accumulated tool calls
-                                self._finalize_tool_calls(pending_calls)
-                                return  # Success, exit generator
-
-                            try:
-                                chunk = json.loads(data)
-
-                                # Capture usage from final chunk (many providers include it)
-                                if "usage" in chunk and chunk["usage"]:
-                                    self._last_usage = chunk["usage"]
-
-                                choices = chunk.get("choices", [])
-                                if choices:
-                                    delta = choices[0].get("delta", {})
-
-                                    # Yield text content as before
-                                    content = delta.get("content", "")
-                                    if content:
-                                        yield content
-
-                                    # Accumulate native tool call deltas
-                                    if "tool_calls" in delta:
-                                        self._accumulate_tool_calls(
-                                            delta["tool_calls"],
-                                            pending_calls,
-                                        )
-                            except json.JSONDecodeError as e:
-                                logger.warning(
-                                    "Failed to parse SSE chunk", error=str(e)
-                                )
-                                continue
-
-                    # Stream ended without [DONE] - still finalize
+                    # Stream ended without [DONE]
                     self._finalize_tool_calls(pending_calls)
-                    return  # Success, exit generator
+                    return
 
             except httpx.TimeoutException as e:
                 logger.error("Request timed out", timeout=self.timeout, attempt=attempt)
@@ -312,7 +324,6 @@ class OpenAIProvider(BaseLLMProvider):
             except httpx.HTTPStatusError:
                 raise
             except Exception as e:
-                # Check if it's a retryable network error
                 if self._is_retryable_error(e) and attempt < self.max_retries:
                     logger.warning(
                         "Retryable network error during streaming",

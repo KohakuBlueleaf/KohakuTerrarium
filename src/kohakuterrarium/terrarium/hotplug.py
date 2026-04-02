@@ -17,6 +17,7 @@ from kohakuterrarium.terrarium.config import (
     build_channel_topology_prompt,
 )
 from kohakuterrarium.terrarium.creature import CreatureHandle
+from kohakuterrarium.terrarium.factory import build_creature
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -50,8 +51,8 @@ class HotPlugMixin:
         if creature_cfg.name in self._creatures:
             raise RuntimeError(f"Creature already exists: {creature_cfg.name}")
 
-        # Build creature (reuse existing _build_creature)
-        handle = self._build_creature(creature_cfg)
+        # Build creature via factory function
+        handle = build_creature(creature_cfg, self.environment, self.config)
         self._creatures[creature_cfg.name] = handle
 
         # Start the agent

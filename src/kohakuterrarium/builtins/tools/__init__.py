@@ -2,16 +2,21 @@
 Built-in tool implementations.
 
 All tools use the @register_builtin decorator for automatic registration.
+This module imports all tool classes to trigger their registration, and
+re-exports public API from tool_catalog for convenience.
+
+Internal code should import from ``builtins.tool_catalog`` directly to
+avoid pulling in all tool modules.
 """
 
-from kohakuterrarium.builtins.tools.registry import (
+from kohakuterrarium.builtins.tool_catalog import (
     get_builtin_tool,
     is_builtin_tool,
     list_builtin_tools,
     register_builtin,
 )
 
-# Import tools to trigger registration
+# Import tools to trigger registration via @register_builtin decorator
 from kohakuterrarium.builtins.tools.ask_user import AskUserTool
 from kohakuterrarium.builtins.tools.bash import BashTool, PythonTool
 from kohakuterrarium.builtins.tools.edit import EditTool
@@ -53,6 +58,7 @@ __all__ = [
     "JsonReadTool",
     "JsonWriteTool",
     "ListTriggersTool",
+    "StopTaskTool",
     "ThinkTool",
     "TreeTool",
     "WaitChannelTool",

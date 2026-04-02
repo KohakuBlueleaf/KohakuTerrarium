@@ -494,52 +494,50 @@ def load_agent_config(agent_path: str | Path) -> AgentConfig:
     return build_agent_config(config_data, agent_path)
 
 
-def build_agent_config(
-    config_data: dict[str, Any],
-    agent_path: Path,
-) -> AgentConfig:
-    """
-    Build AgentConfig from a raw config dict.
+def _resolve_inheritance(
+    config_data: dict[str, Any], agent_path: Path
+) -> dict[str, Any]:
+    """Resolve base_config inheritance and merge parent config data.
 
-    Handles base_config inheritance, system prompt loading, and
-    template rendering. Used by load_agent_config (from file) and
-    by terrarium runtime (inline root agent config from dict).
-
-    Args:
-        config_data: Raw config dict (env vars interpolated automatically)
-        agent_path: Path context for resolving relative paths
+    If config_data has a base_config reference, loads the base config
+    recursively and merges it with the child config.
 
     Returns:
-        Loaded AgentConfig
+        Merged config_data (with _base_path set if inheritance was resolved).
     """
-    config_data = _interpolate_env_vars(config_data)
-
-    # Resolve base_config inheritance
     base_config_ref = config_data.get("base_config")
-    if base_config_ref:
-        base_path = _resolve_base_config_path(base_config_ref, agent_path)
-        if base_path:
-            base_data = _load_base_config_data(base_path)
-            if base_data:
-                logger.debug(
-                    "Merging base config",
-                    base=str(base_path),
-                    child=str(agent_path),
-                )
-                config_data = _merge_configs(base_data, config_data)
-                # Store resolved base path for system prompt resolution
-                config_data["_base_path"] = base_path
-        else:
-            logger.warning(
-                "Base config not found, continuing with child-only config",
-                base_config=base_config_ref,
-            )
+    if not base_config_ref:
+        return config_data
 
-    # Extract controller section if present
+    base_path = _resolve_base_config_path(base_config_ref, agent_path)
+    if not base_path:
+        logger.warning(
+            "Base config not found, continuing with child-only config",
+            base_config=base_config_ref,
+        )
+        return config_data
+
+    base_data = _load_base_config_data(base_path)
+    if not base_data:
+        return config_data
+
+    logger.debug(
+        "Merging base config",
+        base=str(base_path),
+        child=str(agent_path),
+    )
+    merged = _merge_configs(base_data, config_data)
+    merged["_base_path"] = base_path
+    return merged
+
+
+def _construct_agent_config(
+    config_data: dict[str, Any], agent_path: Path
+) -> AgentConfig:
+    """Build the AgentConfig dataclass from a (possibly merged) config dict."""
     controller_data = config_data.get("controller", {})
 
-    # Build AgentConfig
-    config = AgentConfig(
+    return AgentConfig(
         name=config_data.get("name", agent_path.name),
         version=config_data.get("version", "1.0"),
         model=controller_data.get(
@@ -594,8 +592,14 @@ def build_agent_config(
         session_key=config_data.get("session_key"),
     )
 
-    # Load system prompt from file(s)
-    # Inheritance: base prompt chain is loaded first, then child prompt appended
+
+def _load_prompt_chain(
+    config: AgentConfig, config_data: dict[str, Any]
+) -> None:
+    """Load system prompt from the file chain (base prompts + child prompt).
+
+    Mutates config.system_prompt in place if prompt files are found.
+    """
     base_path = config_data.get("_base_path")
     prompt_chain: list[str] = config_data.get("_prompt_chain", [])
     prompt_parts: list[str] = []
@@ -629,35 +633,66 @@ def build_agent_config(
             parts=len(prompt_parts),
         )
 
-    # Load prompt context files and render into system prompt
-    if config.prompt_context_files and config.agent_path:
-        context_vars: dict[str, str] = {}
-        for var_name, file_path in config.prompt_context_files.items():
-            full_path = config.agent_path / file_path
-            if full_path.exists():
-                with open(full_path, encoding="utf-8") as f:
-                    context_vars[var_name] = f.read()
-                logger.debug(
-                    "Loaded prompt context file",
-                    variable=var_name,
-                    path=str(full_path),
-                )
-            else:
-                logger.warning(
-                    "Prompt context file not found",
-                    variable=var_name,
-                    path=str(full_path),
-                )
 
-        # Render template with context variables
-        if context_vars:
-            config.system_prompt = render_template_safe(
-                config.system_prompt, **context_vars
-            )
+def _render_prompt_context(config: AgentConfig) -> None:
+    """Load prompt context files and render Jinja template variables.
+
+    Mutates config.system_prompt in place if context files are found.
+    """
+    if not config.prompt_context_files or not config.agent_path:
+        return
+
+    context_vars: dict[str, str] = {}
+    for var_name, file_path in config.prompt_context_files.items():
+        full_path = config.agent_path / file_path
+        if full_path.exists():
+            with open(full_path, encoding="utf-8") as f:
+                context_vars[var_name] = f.read()
             logger.debug(
-                "Rendered system prompt with context",
-                variables=list(context_vars.keys()),
+                "Loaded prompt context file",
+                variable=var_name,
+                path=str(full_path),
             )
+        else:
+            logger.warning(
+                "Prompt context file not found",
+                variable=var_name,
+                path=str(full_path),
+            )
+
+    if context_vars:
+        config.system_prompt = render_template_safe(
+            config.system_prompt, **context_vars
+        )
+        logger.debug(
+            "Rendered system prompt with context",
+            variables=list(context_vars.keys()),
+        )
+
+
+def build_agent_config(
+    config_data: dict[str, Any],
+    agent_path: Path,
+) -> AgentConfig:
+    """
+    Build AgentConfig from a raw config dict.
+
+    Handles base_config inheritance, system prompt loading, and
+    template rendering. Used by load_agent_config (from file) and
+    by terrarium runtime (inline root agent config from dict).
+
+    Args:
+        config_data: Raw config dict (env vars interpolated automatically)
+        agent_path: Path context for resolving relative paths
+
+    Returns:
+        Loaded AgentConfig
+    """
+    config_data = _interpolate_env_vars(config_data)
+    config_data = _resolve_inheritance(config_data, agent_path)
+    config = _construct_agent_config(config_data, agent_path)
+    _load_prompt_chain(config, config_data)
+    _render_prompt_context(config)
 
     logger.info("Agent config loaded", agent_name=config.name, model=config.model)
     return config

@@ -9,6 +9,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from kohakuterrarium.builtins.inputs import create_builtin_input
+from kohakuterrarium.builtins.outputs import create_builtin_output
 from kohakuterrarium.core.agent import Agent
 from kohakuterrarium.core.conversation import Conversation
 from kohakuterrarium.session.store import SessionStore
@@ -29,9 +31,6 @@ def _create_io_modules(
 
     Returns (input_module, output_module).
     """
-    from kohakuterrarium.builtins.inputs import create_builtin_input
-    from kohakuterrarium.builtins.outputs import create_builtin_output
-
     match mode:
         case "cli":
             return create_builtin_input("cli", {}), create_builtin_output("stdout", {})

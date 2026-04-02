@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from apps.api.deps import get_manager
+from apps.api.events import get_event_log
 from apps.api.schemas import AgentChat, ChannelAdd, TerrariumCreate
 
 router = APIRouter()
@@ -63,11 +64,8 @@ def terrarium_history(terrarium_id: str, target: str, manager=Depends(get_manage
     Returns conversation messages + event log.
 
     Events are read from the SessionStore (persistent, survives resume)
-    with fallback to the in-memory event log (for instances without
-    session persistence).
+    with fallback to the in-memory event log.
     """
-    from apps.api.ws.chat import get_event_log
-
     try:
         session = manager.terrarium_mount(terrarium_id, target)
         mount_key = f"{terrarium_id}:{target}"
@@ -81,12 +79,14 @@ def terrarium_history(terrarium_id: str, target: str, manager=Depends(get_manage
             except Exception:
                 pass
 
-        # Fall back to in-memory event log
+        # Fallback to in-memory log
         if not events:
             events = get_event_log(mount_key)
 
         return {
-            "messages": session.agent.conversation_history,
+            "terrarium_id": terrarium_id,
+            "target": target,
+            "messages": agent.conversation_history,
             "events": events,
         }
     except ValueError as e:
@@ -94,17 +94,17 @@ def terrarium_history(terrarium_id: str, target: str, manager=Depends(get_manage
 
 
 @router.post("/{terrarium_id}/chat/{target}")
-async def terrarium_chat(
-    terrarium_id: str, target: str, req: AgentChat, manager=Depends(get_manager)
+async def chat_terrarium(
+    terrarium_id: str,
+    target: str,
+    req: AgentChat,
+    manager=Depends(get_manager),
 ):
-    """Chat with a creature or root agent in a terrarium (non-streaming).
-
-    target: "root" for root agent, or creature name (e.g. "swe", "reviewer").
-    """
+    """Non-streaming chat with a creature or root agent."""
     try:
-        response = ""
+        chunks = []
         async for chunk in manager.terrarium_chat(terrarium_id, target, req.message):
-            response += chunk
-        return {"response": response}
+            chunks.append(chunk)
+        return {"response": "".join(chunks)}
     except ValueError as e:
         raise HTTPException(404, str(e))

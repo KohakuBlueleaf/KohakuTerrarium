@@ -337,23 +337,19 @@ class Controller:
 
         return combined_text
 
-    async def run_once(self) -> AsyncIterator[ParseEvent]:
+    def _build_turn_context(
+        self, events: list[TriggerEvent]
+    ) -> tuple[str | list[ContentPart], str]:
         """
-        Run one controller turn.
+        Build user message content from events plus job status.
 
-        Collects pending events, runs LLM, and yields parse events.
+        Combines job status context and event content (multimodal-aware)
+        into final user content for the conversation.
 
-        Yields:
-            ParseEvents as they are detected in the LLM output
+        Returns:
+            Tuple of (user_content, combined_text). combined_text is the
+            text-only portion, used to detect empty messages in native mode.
         """
-        # Collect events
-        events = await self._collect_events()
-        if not events:
-            return
-
-        logger.debug("Processing events", count=len(events))
-
-        # Build context with job status
         text_context_parts: list[str] = []
         image_context_parts: list[ImagePart] = []
 
@@ -368,175 +364,202 @@ class Controller:
         if isinstance(event_content, str):
             text_context_parts.append(event_content)
         else:
-            # Multimodal content - extract text and images
+            # Multimodal content: extract text and images
             for part in event_content:
                 if isinstance(part, TextPart):
                     text_context_parts.append(part.text)
                 elif isinstance(part, ImagePart):
                     image_context_parts.append(part)
 
-        # Build final user content
         combined_text = "\n\n".join(text_context_parts)
 
         if image_context_parts:
-            # Multimodal: text + images
             user_content: str | list[ContentPart] = [TextPart(text=combined_text)]
             user_content.extend(image_context_parts)
         else:
             user_content = combined_text
 
-        # In native mode, empty tool_complete events just trigger next turn
-        # (tool results already added as role="tool" messages)
-        if not combined_text.strip() and self._is_native_mode:
-            pass  # Skip empty user message
-        else:
-            self.conversation.append("user", user_content)
+        return user_content, combined_text
 
-        # Run LLM
-        messages = self.conversation.to_messages()
-        logger.info("Generating response...")
+    async def _run_native_completion(
+        self, messages: list[dict], tool_schemas: "list[ToolSchema]"
+    ) -> AsyncIterator[ParseEvent]:
+        """
+        Run LLM in native tool-calling mode.
 
+        Streams text chunks as TextEvents, extracts native tool calls,
+        appends the assistant message (with tool_calls metadata) to
+        conversation, and yields ToolCallEvent/SubAgentCallEvent for
+        each native call.
+        """
         assistant_content = ""
 
-        if self._is_native_mode:
-            # Native mode: pass tool schemas to API, get structured tool_calls
-            tool_schemas = self._get_native_tool_schemas()
-            async for chunk in self.llm.chat(
-                messages, stream=True, tools=tool_schemas or None
-            ):
-                if self._interrupted:
-                    break
-                assistant_content += chunk
-                if chunk:
-                    yield TextEvent(text=chunk)
+        async for chunk in self.llm.chat(
+            messages, stream=True, tools=tool_schemas or None
+        ):
+            if self._interrupted:
+                break
+            assistant_content += chunk
+            if chunk:
+                yield TextEvent(text=chunk)
 
-            # Log token usage from this completion
-            usage = self.llm.last_usage if hasattr(self.llm, "last_usage") else {}
-            if usage:
-                self._last_usage = usage
+        self._log_token_usage()
+
+        # Extract native tool calls from LLM response
+        native_calls = (
+            self.llm.last_tool_calls if hasattr(self.llm, "last_tool_calls") else []
+        )
+
+        if native_calls:
+            tool_calls_data = []
+            known_subagents = set(self.registry.list_subagents())
+
+            for tc in native_calls:
+                tool_calls_data.append(
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.name,
+                            "arguments": tc.arguments,
+                        },
+                    }
+                )
                 logger.info(
-                    "Token usage",
-                    prompt_tokens=usage.get("prompt_tokens", 0),
-                    completion_tokens=usage.get("completion_tokens", 0),
-                    total_tokens=usage.get("total_tokens", 0),
+                    "Native tool call",
+                    tool_name=tc.name,
+                    tool_args=tc.arguments[:100],
                 )
+                call_args = {**tc.parsed_arguments(), "_tool_call_id": tc.id}
+                if tc.name in known_subagents:
+                    yield SubAgentCallEvent(
+                        name=tc.name, args=call_args, raw=tc.arguments
+                    )
+                else:
+                    yield ToolCallEvent(
+                        name=tc.name, args=call_args, raw=tc.arguments
+                    )
 
-            # Extract native tool calls and build proper assistant message
-            native_calls = (
-                self.llm.last_tool_calls if hasattr(self.llm, "last_tool_calls") else []
+            # Append assistant message WITH tool_calls metadata
+            self.conversation.append(
+                "assistant",
+                assistant_content or "",
+                tool_calls=tool_calls_data,
             )
-
-            if native_calls:
-                # Build assistant message WITH tool_calls metadata
-                tool_calls_data = []
-                known_subagents = set(self.registry.list_subagents())
-                for tc in native_calls:
-                    tool_calls_data.append(
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {
-                                "name": tc.name,
-                                "arguments": tc.arguments,
-                            },
-                        }
-                    )
-                    logger.info(
-                        "Native tool call",
-                        tool_name=tc.name,
-                        tool_args=tc.arguments[:100],
-                    )
-                    if tc.name in known_subagents:
-                        yield SubAgentCallEvent(
-                            name=tc.name,
-                            args={
-                                **tc.parsed_arguments(),
-                                "_tool_call_id": tc.id,
-                            },
-                            raw=tc.arguments,
-                        )
-                    else:
-                        # Include tool_call_id so results can be linked
-                        yield ToolCallEvent(
-                            name=tc.name,
-                            args={
-                                **tc.parsed_arguments(),
-                                "_tool_call_id": tc.id,
-                            },
-                            raw=tc.arguments,
-                        )
-
-                # Add assistant message with tool_calls
-                self.conversation.append(
-                    "assistant",
-                    assistant_content or "",
-                    tool_calls=tool_calls_data,
-                )
-            else:
-                # No tool calls - normal assistant message
-                self.conversation.append("assistant", assistant_content)
         else:
-            # Custom format mode: parse text stream for tool calls
-            self._parser = self._get_parser()
+            # No tool calls: normal assistant message
+            self.conversation.append("assistant", assistant_content)
 
-            async for chunk in self.llm.chat(messages, stream=True):
-                if self._interrupted:
-                    break
-                assistant_content += chunk
+    async def _run_text_completion(
+        self, messages: list[dict]
+    ) -> AsyncIterator[ParseEvent]:
+        """
+        Run LLM in custom text format mode.
 
-                # Parse chunk
-                parse_events = self._parser.feed(chunk)
+        Creates a stream parser, feeds chunks through it, handles
+        CommandEvents inline (yielding CommandResultEvent), and yields
+        all other ParseEvents. Flushes the parser at end of stream.
 
-                for event in parse_events:
-                    # Commands execute inline; yield result as CommandResultEvent
-                    if isinstance(event, CommandEvent):
-                        result = await self._handle_command(event)
-                        if result.content:
-                            assistant_content += f"\n{result.content}\n"
-                            yield CommandResultEvent(
-                                command=event.command, content=result.content
-                            )
-                        elif result.error:
-                            assistant_content += f"\n[Command Error: {result.error}]\n"
-                            yield CommandResultEvent(
-                                command=event.command, error=result.error
-                            )
-                    else:
-                        yield event
+        After this generator completes, self._last_assistant_content
+        holds the full assistant text for conversation append.
+        """
+        self._parser = self._get_parser()
+        assistant_content = ""
 
-            # Flush parser
-            for event in self._parser.flush():
+        async for chunk in self.llm.chat(messages, stream=True):
+            if self._interrupted:
+                break
+            assistant_content += chunk
+
+            for event in self._parser.feed(chunk):
                 if isinstance(event, CommandEvent):
-                    result = await self._handle_command(event)
-                    if result.content:
-                        assistant_content += f"\n{result.content}\n"
-                        yield CommandResultEvent(
-                            command=event.command, content=result.content
-                        )
-                    elif result.error:
-                        assistant_content += f"\n[Command Error: {result.error}]\n"
-                        yield CommandResultEvent(
-                            command=event.command, error=result.error
-                        )
+                    text, result_event = await self._execute_command_inline(event)
+                    assistant_content += text
+                    yield result_event
                 else:
                     yield event
 
-        # Log token usage for custom format mode
-        if not self._is_native_mode:
-            usage = self.llm.last_usage if hasattr(self.llm, "last_usage") else {}
-            if usage:
-                self._last_usage = usage
-                logger.info(
-                    "Token usage",
-                    prompt_tokens=usage.get("prompt_tokens", 0),
-                    completion_tokens=usage.get("completion_tokens", 0),
-                    total_tokens=usage.get("total_tokens", 0),
-                )
+        # Flush remaining parser state
+        for event in self._parser.flush():
+            if isinstance(event, CommandEvent):
+                text, result_event = await self._execute_command_inline(event)
+                assistant_content += text
+                yield result_event
+            else:
+                yield event
 
-        # Add assistant message to conversation (custom format only;
-        # native mode already appended above with tool_calls metadata)
-        if not self._is_native_mode:
-            self.conversation.append("assistant", assistant_content)
+        self._last_assistant_content = assistant_content
+
+    async def _execute_command_inline(
+        self, event: CommandEvent
+    ) -> tuple[str, CommandResultEvent]:
+        """
+        Execute a command event inline during text completion.
+
+        Returns:
+            Tuple of (text to append to assistant_content,
+            CommandResultEvent to yield to caller).
+        """
+        result = await self._handle_command(event)
+        if result.content:
+            return (
+                f"\n{result.content}\n",
+                CommandResultEvent(command=event.command, content=result.content),
+            )
+        elif result.error:
+            return (
+                f"\n[Command Error: {result.error}]\n",
+                CommandResultEvent(command=event.command, error=result.error),
+            )
+        return ("", CommandResultEvent(command=event.command))
+
+    def _log_token_usage(self) -> None:
+        """Extract and log token usage from the last LLM completion."""
+        usage = self.llm.last_usage if hasattr(self.llm, "last_usage") else {}
+        if usage:
+            self._last_usage = usage
+            logger.info(
+                "Token usage",
+                prompt_tokens=usage.get("prompt_tokens", 0),
+                completion_tokens=usage.get("completion_tokens", 0),
+                total_tokens=usage.get("total_tokens", 0),
+            )
+
+    async def run_once(self) -> AsyncIterator[ParseEvent]:
+        """
+        Run one controller turn.
+
+        Collects pending events, runs LLM, and yields parse events.
+
+        Yields:
+            ParseEvents as they are detected in the LLM output
+        """
+        events = await self._collect_events()
+        if not events:
+            return
+
+        logger.debug("Processing events", count=len(events))
+
+        user_content, combined_text = self._build_turn_context(events)
+
+        # In native mode, empty tool_complete events just trigger next turn
+        # (tool results already added as role="tool" messages)
+        skip_empty = self._is_native_mode and not combined_text.strip()
+        if not skip_empty:
+            self.conversation.append("user", user_content)
+
+        messages = self.conversation.to_messages()
+        logger.info("Generating response...")
+
+        if self._is_native_mode:
+            tool_schemas = self._get_native_tool_schemas()
+            async for event in self._run_native_completion(messages, tool_schemas):
+                yield event
+        else:
+            async for event in self._run_text_completion(messages):
+                yield event
+            self._log_token_usage()
+            self.conversation.append("assistant", self._last_assistant_content)
 
     async def _handle_command(self, event: CommandEvent) -> CommandResult:
         """Handle a framework command."""

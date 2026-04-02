@@ -6,7 +6,6 @@ as the WS StreamOutput). Captures text, tool activity, processing state,
 trigger events, and token usage without modifying the processing loop.
 """
 
-import time
 from typing import Any
 
 from kohakuterrarium.modules.output.base import OutputModule
@@ -116,114 +115,162 @@ class SessionOutput(OutputModule):
                 self._record("text", {"content": text})
             self._text_buffer.clear()
 
+    # Dispatch table: activity_type -> handler method name
+    _ACTIVITY_HANDLERS: dict[str, str] = {
+        "trigger_fired": "_handle_trigger_fired",
+        "tool_start": "_handle_tool_start",
+        "tool_done": "_handle_tool_done",
+        "tool_error": "_handle_tool_error",
+        "subagent_start": "_handle_subagent_start",
+        "subagent_done": "_handle_subagent_done",
+        "subagent_error": "_handle_subagent_error",
+        "token_usage": "_handle_token_usage",
+        "processing_complete": "_handle_processing_complete",
+    }
+
     def _record_activity(
         self, activity_type: str, name: str, detail: str, metadata: dict
     ) -> None:
-        if activity_type == "trigger_fired":
-            self._record(
-                "trigger_fired",
-                {
-                    "trigger_id": metadata.get("trigger_id", ""),
-                    "channel": metadata.get("channel", ""),
-                    "sender": metadata.get("sender", ""),
-                    "content": metadata.get("content", ""),
-                },
-            )
-        elif activity_type == "tool_start":
-            self._record(
-                "tool_call",
-                {
-                    "name": name,
-                    "call_id": metadata.get("job_id", ""),
-                    "args": metadata.get("args", {}),
-                },
-            )
-        elif activity_type == "tool_done":
-            self._record(
-                "tool_result",
-                {
-                    "name": name,
-                    "call_id": metadata.get("job_id", ""),
-                    "output": detail,
-                    "exit_code": 0,
-                },
-            )
-        elif activity_type == "tool_error":
-            self._record(
-                "tool_result",
-                {
-                    "name": name,
-                    "call_id": metadata.get("job_id", ""),
-                    "output": detail,
-                    "exit_code": 1,
-                    "error": detail,
-                },
-            )
-        elif activity_type == "subagent_start":
-            self._record(
-                "subagent_call",
-                {
-                    "name": name,
-                    "task": metadata.get("task", detail),
-                    "job_id": metadata.get("job_id", ""),
-                },
-            )
-        elif activity_type == "subagent_done":
-            self._record(
-                "subagent_result",
-                {
-                    "name": name,
-                    "job_id": metadata.get("job_id", ""),
-                    "output": metadata.get("result", detail),
-                    "tools_used": metadata.get("tools_used", []),
-                    "turns": metadata.get("turns", 0),
-                    "duration": metadata.get("duration", 0),
-                },
-            )
-        elif activity_type == "subagent_error":
-            self._record(
-                "subagent_result",
-                {
-                    "name": name,
-                    "job_id": metadata.get("job_id", ""),
-                    "output": detail,
-                    "error": detail,
-                    "success": False,
-                },
-            )
-        elif activity_type == "token_usage":
-            self._record(
-                "token_usage",
-                {
-                    "prompt_tokens": metadata.get("prompt_tokens", 0),
-                    "completion_tokens": metadata.get("completion_tokens", 0),
-                    "total_tokens": metadata.get("total_tokens", 0),
-                },
-            )
+        handler_name = self._ACTIVITY_HANDLERS.get(activity_type)
+        if handler_name:
+            getattr(self, handler_name)(name, detail, metadata)
         elif activity_type.startswith("subagent_tool_"):
-            self._record(
-                "subagent_tool",
-                {
-                    "subagent": metadata.get("subagent", name),
-                    "tool_name": metadata.get("tool", ""),
-                    "activity": activity_type.replace("subagent_", ""),
-                    "detail": metadata.get("detail", detail),
-                },
-            )
-        elif activity_type == "processing_complete":
-            self._record(
-                "processing_complete",
-                {
-                    "trigger_channel": metadata.get("trigger_channel", ""),
-                    "trigger_sender": metadata.get("trigger_sender", ""),
-                    "output_preview": metadata.get("output_preview", ""),
-                },
-            )
+            self._handle_subagent_tool(activity_type, name, detail, metadata)
         else:
             self._record(
                 f"activity:{activity_type}",
                 {"name": name, "detail": detail, **metadata},
             )
+
+    def _handle_trigger_fired(
+        self, name: str, detail: str, metadata: dict
+    ) -> None:
+        self._record(
+            "trigger_fired",
+            {
+                "trigger_id": metadata.get("trigger_id", ""),
+                "channel": metadata.get("channel", ""),
+                "sender": metadata.get("sender", ""),
+                "content": metadata.get("content", ""),
+            },
+        )
+
+    def _handle_tool_start(
+        self, name: str, detail: str, metadata: dict
+    ) -> None:
+        self._record(
+            "tool_call",
+            {
+                "name": name,
+                "call_id": metadata.get("job_id", ""),
+                "args": metadata.get("args", {}),
+            },
+        )
+
+    def _handle_tool_done(
+        self, name: str, detail: str, metadata: dict
+    ) -> None:
+        self._record(
+            "tool_result",
+            {
+                "name": name,
+                "call_id": metadata.get("job_id", ""),
+                "output": detail,
+                "exit_code": 0,
+            },
+        )
+
+    def _handle_tool_error(
+        self, name: str, detail: str, metadata: dict
+    ) -> None:
+        self._record(
+            "tool_result",
+            {
+                "name": name,
+                "call_id": metadata.get("job_id", ""),
+                "output": detail,
+                "exit_code": 1,
+                "error": detail,
+            },
+        )
+
+    def _handle_subagent_start(
+        self, name: str, detail: str, metadata: dict
+    ) -> None:
+        self._record(
+            "subagent_call",
+            {
+                "name": name,
+                "task": metadata.get("task", detail),
+                "job_id": metadata.get("job_id", ""),
+            },
+        )
+
+    def _handle_subagent_done(
+        self, name: str, detail: str, metadata: dict
+    ) -> None:
+        self._record(
+            "subagent_result",
+            {
+                "name": name,
+                "job_id": metadata.get("job_id", ""),
+                "output": metadata.get("result", detail),
+                "tools_used": metadata.get("tools_used", []),
+                "turns": metadata.get("turns", 0),
+                "duration": metadata.get("duration", 0),
+            },
+        )
+
+    def _handle_subagent_error(
+        self, name: str, detail: str, metadata: dict
+    ) -> None:
+        self._record(
+            "subagent_result",
+            {
+                "name": name,
+                "job_id": metadata.get("job_id", ""),
+                "output": detail,
+                "error": detail,
+                "success": False,
+            },
+        )
+
+    def _handle_token_usage(
+        self, name: str, detail: str, metadata: dict
+    ) -> None:
+        self._record(
+            "token_usage",
+            {
+                "prompt_tokens": metadata.get("prompt_tokens", 0),
+                "completion_tokens": metadata.get("completion_tokens", 0),
+                "total_tokens": metadata.get("total_tokens", 0),
+            },
+        )
+
+    def _handle_subagent_tool(
+        self, activity_type: str, name: str, detail: str, metadata: dict
+    ) -> None:
+        self._record(
+            "subagent_tool",
+            {
+                "subagent": metadata.get("subagent", name),
+                "tool_name": metadata.get("tool", ""),
+                "activity": activity_type.replace("subagent_", ""),
+                "detail": metadata.get("detail", detail),
+            },
+        )
+
+    def _handle_processing_complete(
+        self, name: str, detail: str, metadata: dict
+    ) -> None:
+        self._record(
+            "processing_complete",
+            {
+                "trigger_channel": metadata.get("trigger_channel", ""),
+                "trigger_sender": metadata.get("trigger_sender", ""),
+                "output_preview": metadata.get("output_preview", ""),
+            },
+        )
 
 
 def _parse_detail(detail: str) -> tuple[str, str]:

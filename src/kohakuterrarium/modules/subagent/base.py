@@ -12,14 +12,12 @@ from typing import Any
 
 from kohakuterrarium.core.constants import TOOL_OUTPUT_PREVIEW_CHARS
 from kohakuterrarium.core.conversation import Conversation
-from kohakuterrarium.core.events import TriggerEvent
 from kohakuterrarium.core.executor import Executor
 from kohakuterrarium.core.job import JobResult, JobState, JobStatus, JobType
 from kohakuterrarium.core.registry import Registry
 from kohakuterrarium.llm.base import LLMProvider
 from kohakuterrarium.llm.tools import build_tool_schemas
-from kohakuterrarium.modules.subagent.config import OutputTarget, SubAgentConfig
-from kohakuterrarium.modules.tool.base import Tool
+from kohakuterrarium.modules.subagent.config import SubAgentConfig
 from kohakuterrarium.parsing import ParserConfig, StreamParser, TextEvent, ToolCallEvent
 from kohakuterrarium.parsing.format import (
     BRACKET_FORMAT,
@@ -43,12 +41,12 @@ _SUBAGENT_CRITICAL_RULES = """
 
 def build_subagent_framework_hints(
     tool_format: str | None,
-    parser_format: "ToolCallFormat | None" = None,
+    parser_format: ToolCallFormat | None = None,
 ) -> str:
     """Build format-aware framework hints for sub-agents.
 
-    - Native mode: no format examples (API handles it)
-    - Custom mode: generate examples from the actual ToolCallFormat
+    Native mode: no format examples (API handles it).
+    Custom mode: generate examples from the actual ToolCallFormat.
     """
     if tool_format == "native":
         return (
@@ -58,36 +56,26 @@ def build_subagent_framework_hints(
             + _SUBAGENT_CRITICAL_RULES
         )
 
-    # Custom format: generate examples from ToolCallFormat
     if parser_format is None:
         parser_format = BRACKET_FORMAT
 
     lines = ["## Tool Calling Format", ""]
-
-    # Show generic format
     generic = format_tool_call_example(
         parser_format, "tool_name", {"arg": "value"}, "content here"
     )
     lines.append(f"```\n{generic}\n```")
     lines.append("")
-
-    # Show concrete examples
     lines.append("Examples:")
     lines.append("")
 
-    glob_ex = format_tool_call_example(parser_format, "glob", {"pattern": "**/*.py"})
-    lines.append(f"```\n{glob_ex}\n```")
-    lines.append("")
-
-    grep_ex = format_tool_call_example(
-        parser_format, "grep", {"pattern": "class.*Config"}
-    )
-    lines.append(f"```\n{grep_ex}\n```")
-    lines.append("")
-
-    read_ex = format_tool_call_example(parser_format, "read", {"path": "src/main.py"})
-    lines.append(f"```\n{read_ex}\n```")
-    lines.append("")
+    for name, args in [
+        ("glob", {"pattern": "**/*.py"}),
+        ("grep", {"pattern": "class.*Config"}),
+        ("read", {"path": "src/main.py"}),
+    ]:
+        ex = format_tool_call_example(parser_format, name, args)
+        lines.append(f"```\n{ex}\n```")
+        lines.append("")
 
     lines.append(_SUBAGENT_CRITICAL_RULES)
     return "\n".join(lines)
@@ -99,17 +87,7 @@ SUBAGENT_FRAMEWORK_HINTS = build_subagent_framework_hints("bracket", BRACKET_FOR
 
 @dataclass
 class SubAgentResult:
-    """
-    Result from sub-agent execution.
-
-    Attributes:
-        output: Main output content
-        success: Whether execution was successful
-        error: Error message if failed
-        turns: Number of conversation turns used
-        duration: Execution time in seconds
-        metadata: Additional result data
-    """
+    """Result from sub-agent execution."""
 
     output: str = ""
     success: bool = True
@@ -126,16 +104,10 @@ class SubAgentResult:
 
 
 class SubAgent:
-    """
-    Nested agent with limited capabilities.
+    """Nested agent with limited capabilities.
 
     A sub-agent runs with its own controller and tool access, but returns
     results to the parent controller (unless output_to=external).
-
-    Usage:
-        config = SubAgentConfig(name="explore", tools=["glob", "grep", "read"])
-        subagent = SubAgent(config, parent_registry, llm_provider)
-        result = await subagent.run("Find all Python files with 'async def'")
     """
 
     def __init__(
@@ -146,18 +118,6 @@ class SubAgent:
         agent_path: Any = None,
         tool_format: str | None = None,
     ):
-        """
-        Initialize sub-agent.
-
-        Args:
-            config: Sub-agent configuration
-            parent_registry: Parent's registry for tool access
-            llm: LLM provider (can be same as parent or different)
-            agent_path: Path to agent folder for loading prompts
-            tool_format: Tool format to use (None = bracket default).
-                "native" means the LLM uses native tool calling.
-                "bracket"/"xml"/custom are text-based formats.
-        """
         self.config = config
         self.parent_registry = parent_registry
         self.llm = llm
@@ -165,7 +125,6 @@ class SubAgent:
         self.tool_format = tool_format
 
         # Optional callback for reporting tool activity to parent
-        # Signature: on_tool_activity(activity_type: str, tool_name: str, detail: str)
         self.on_tool_activity: Any = None
 
         # Optional session store for persisting sub-agent conversations
@@ -211,11 +170,7 @@ class SubAgent:
 
     @staticmethod
     def _resolve_parser_format(tool_format: str | None) -> ToolCallFormat:
-        """Resolve a tool_format string to a ToolCallFormat instance.
-
-        For native mode, we still return BRACKET_FORMAT as fallback
-        (the parser won't be used much in native mode, but needs a valid format).
-        """
+        """Resolve a tool_format string to a ToolCallFormat instance."""
         match tool_format:
             case "xml":
                 return XML_FORMAT
@@ -225,21 +180,13 @@ class SubAgent:
                 return BRACKET_FORMAT
 
     def _create_limited_registry(self) -> Registry:
-        """
-        Create registry with only allowed tools.
-
-        Tools not found in parent registry are tracked in self._missing_tools
-        so the error can be surfaced to the LLM if the sub-agent tries to
-        use them.
-        """
+        """Create registry with only allowed tools."""
         limited = Registry()
         self._missing_tools: list[str] = []
 
         for tool_name in self.config.tools:
             tool = self.parent_registry.get_tool(tool_name)
             if tool:
-                # Register all tools - access control is via prompting,
-                # not silent removal (which confuses the model)
                 limited.register_tool(tool)
             else:
                 self._missing_tools.append(tool_name)
@@ -255,11 +202,9 @@ class SubAgent:
         """Build complete system prompt with framework hints and tool list."""
         parts = []
 
-        # Base prompt from config
         base_prompt = self.config.load_prompt(self.agent_path)
         parts.append(base_prompt)
 
-        # Tool list
         tool_names = self.registry.list_tools()
         if tool_names:
             tool_lines = ["## Available Tools", ""]
@@ -269,7 +214,6 @@ class SubAgent:
                 tool_lines.append(f"- `{name}`: {desc}")
             parts.append("\n".join(tool_lines))
 
-        # Warn about missing tools so the LLM knows its limitations
         if self._missing_tools:
             missing_note = (
                 "## Unavailable Tools\n\n"
@@ -279,7 +223,6 @@ class SubAgent:
             )
             parts.append(missing_note)
 
-        # Framework hints (format-aware)
         parser_fmt = self._resolve_parser_format(self.tool_format)
         parts.append(build_subagent_framework_hints(self.tool_format, parser_fmt))
 
@@ -293,15 +236,7 @@ class SubAgent:
         return result
 
     async def run(self, task: str) -> SubAgentResult:
-        """
-        Execute the sub-agent with a task.
-
-        Args:
-            task: Task description for the sub-agent
-
-        Returns:
-            SubAgentResult with output and status
-        """
+        """Execute the sub-agent with a task."""
         self._running = True
         self._start_time = datetime.now()
         self._turns = 0
@@ -309,8 +244,7 @@ class SubAgent:
         try:
             if self.config.timeout > 0:
                 return await asyncio.wait_for(
-                    self._run_internal(task),
-                    timeout=self.config.timeout,
+                    self._run_internal(task), timeout=self.config.timeout,
                 )
             else:
                 return await self._run_internal(task)
@@ -328,9 +262,7 @@ class SubAgent:
             )
         except Exception as e:
             logger.error(
-                "Sub-agent error",
-                subagent_name=self.config.name,
-                error=str(e),
+                "Sub-agent error", subagent_name=self.config.name, error=str(e),
             )
             return SubAgentResult(
                 success=False,
@@ -341,23 +273,21 @@ class SubAgent:
         finally:
             self._running = False
 
-    async def _run_internal(self, task: str) -> SubAgentResult:
-        """Internal run logic. Handles both native and custom tool calling."""
-        # Setup conversation
-        self.conversation = Conversation()
-        system_prompt = self._build_system_prompt()
-        self.conversation.append("system", system_prompt)
-        self.conversation.append("user", task)
+    # ------------------------------------------------------------------
+    # Internal run logic (split into focused helpers)
+    # ------------------------------------------------------------------
 
-        # Build native tool schemas if in native mode
+    async def _run_internal(self, task: str) -> SubAgentResult:
+        """Internal run logic. Runs conversation loop with tool execution."""
+        self._setup_conversation(task)
+
         native_tool_schemas = None
         if self._is_native:
             native_tool_schemas = build_tool_schemas(self.registry)
 
         output_parts: list[str] = []
-        tools_used: list[str] = []  # Track all tool calls for metadata
+        tools_used: list[str] = []
 
-        # Run conversation loop (0 = unlimited turns)
         while self.config.max_turns == 0 or self._turns < self.config.max_turns:
             self._turns += 1
             logger.debug(
@@ -366,158 +296,184 @@ class SubAgent:
                 turn=self._turns,
             )
 
-            messages = self.conversation.to_messages()
-            assistant_content = ""
-            tool_calls: list[ToolCallEvent] = []
+            tool_calls, turn_output = await self._run_single_turn(native_tool_schemas)
+            output_parts.extend(turn_output)
 
-            if self._is_native and native_tool_schemas:
-                # Native mode: pass tool schemas, extract structured calls
-                async for chunk in self.llm.chat(
-                    messages, stream=True, tools=native_tool_schemas or None
-                ):
-                    assistant_content += chunk
-                    if chunk:
-                        output_parts.append(chunk)
-
-                # Extract native tool calls
-                native_calls = (
-                    self.llm.last_tool_calls
-                    if hasattr(self.llm, "last_tool_calls")
-                    else []
-                )
-
-                if native_calls:
-                    tool_calls_data = []
-                    for tc in native_calls:
-                        tool_calls_data.append(
-                            {
-                                "id": tc.id,
-                                "type": "function",
-                                "function": {
-                                    "name": tc.name,
-                                    "arguments": tc.arguments,
-                                },
-                            }
-                        )
-                        tool_calls.append(
-                            ToolCallEvent(
-                                name=tc.name,
-                                args={
-                                    **tc.parsed_arguments(),
-                                    "_tool_call_id": tc.id,
-                                },
-                                raw=tc.arguments,
-                            )
-                        )
-                        logger.info(
-                            "Sub-agent native tool call",
-                            subagent_name=self.config.name,
-                            tool_name=tc.name,
-                        )
-
-                    # Add assistant message WITH tool_calls metadata
-                    self.conversation.append(
-                        "assistant",
-                        assistant_content or "",
-                        tool_calls=tool_calls_data,
-                    )
-                else:
-                    self.conversation.append("assistant", assistant_content)
-            else:
-                # Custom format mode: parse text for tool calls
-                self._parser = StreamParser(self._parser_config)
-
-                async for chunk in self.llm.chat(messages, stream=True):
-                    assistant_content += chunk
-                    for event in self._parser.feed(chunk):
-                        if isinstance(event, ToolCallEvent):
-                            tool_calls.append(event)
-                        elif isinstance(event, TextEvent):
-                            output_parts.append(event.text)
-
-                for event in self._parser.flush():
-                    if isinstance(event, ToolCallEvent):
-                        tool_calls.append(event)
-                    elif isinstance(event, TextEvent):
-                        output_parts.append(event.text)
-
-                self.conversation.append("assistant", assistant_content)
-
-            # Log LLM output preview
-            preview = assistant_content[:200].replace("\n", " ")
-            logger.debug(
-                "Sub-agent LLM response",
-                subagent_name=self.config.name,
-                turn=self._turns,
-                preview=preview + ("..." if len(assistant_content) > 200 else ""),
-            )
-
-            # If no tool calls, we're done
             if not tool_calls:
                 logger.info(
-                    "Sub-agent no tools called - finishing",
+                    "Sub-agent no tools called, finishing",
                     subagent_name=self.config.name,
-                    response_preview=assistant_content[:300].replace("\n", "\\n"),
                 )
                 break
 
-            # Execute tools
-            logger.info(
-                "Sub-agent executing tools",
-                subagent_name=self.config.name,
-                tool_count=len(tool_calls),
-                tools=[tc.name for tc in tool_calls],
-            )
             tools_used.extend(tc.name for tc in tool_calls)
+            tool_results = await self._execute_and_report_tools(tool_calls)
+            self._append_tool_results(tool_calls, tool_results)
 
-            # Notify parent of tool starts
-            if self.on_tool_activity:
-                for tc in tool_calls:
-                    args_preview = ""
-                    tc_args = {
-                        k: v for k, v in tc.args.items() if not k.startswith("_")
+        return self._build_result(output_parts, tools_used)
+
+    def _setup_conversation(self, task: str) -> None:
+        """Initialize conversation with system prompt and task."""
+        self.conversation = Conversation()
+        system_prompt = self._build_system_prompt()
+        self.conversation.append("system", system_prompt)
+        self.conversation.append("user", task)
+
+    async def _run_single_turn(
+        self, native_tool_schemas: Any
+    ) -> tuple[list[ToolCallEvent], list[str]]:
+        """Run one LLM turn. Returns (tool_calls, output_text_parts)."""
+        messages = self.conversation.to_messages()
+        if self._is_native and native_tool_schemas:
+            return await self._run_native_turn(messages, native_tool_schemas)
+        return await self._run_text_turn(messages)
+
+    async def _run_native_turn(
+        self, messages: list[dict], tool_schemas: Any
+    ) -> tuple[list[ToolCallEvent], list[str]]:
+        """Run one native-mode LLM turn."""
+        assistant_content = ""
+        output_parts: list[str] = []
+        tool_calls: list[ToolCallEvent] = []
+
+        async for chunk in self.llm.chat(
+            messages, stream=True, tools=tool_schemas or None
+        ):
+            assistant_content += chunk
+            if chunk:
+                output_parts.append(chunk)
+
+        native_calls = (
+            self.llm.last_tool_calls
+            if hasattr(self.llm, "last_tool_calls")
+            else []
+        )
+
+        if native_calls:
+            tool_calls_data = []
+            for tc in native_calls:
+                tool_calls_data.append(
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.name, "arguments": tc.arguments},
                     }
-                    if tc_args:
-                        parts = [f"{k}={str(v)[:80]}" for k, v in tc_args.items()]
-                        args_preview = " ".join(parts)[:120]
-                    self.on_tool_activity("tool_start", tc.name, args_preview)
+                )
+                tool_calls.append(
+                    ToolCallEvent(
+                        name=tc.name,
+                        args={**tc.parsed_arguments(), "_tool_call_id": tc.id},
+                        raw=tc.arguments,
+                    )
+                )
+                logger.info(
+                    "Sub-agent native tool call",
+                    subagent_name=self.config.name,
+                    tool_name=tc.name,
+                )
+            self.conversation.append(
+                "assistant", assistant_content or "", tool_calls=tool_calls_data,
+            )
+        else:
+            self.conversation.append("assistant", assistant_content)
 
-            tool_results = await self._execute_tools(tool_calls)
+        self._log_turn_preview(assistant_content)
+        return tool_calls, output_parts
 
-            # Notify parent of tool completions
-            if self.on_tool_activity:
-                for tc in tool_calls:
-                    self.on_tool_activity("tool_done", tc.name, "")
+    async def _run_text_turn(
+        self, messages: list[dict]
+    ) -> tuple[list[ToolCallEvent], list[str]]:
+        """Run one custom-format LLM turn with stream parsing."""
+        self._parser = StreamParser(self._parser_config)
+        assistant_content = ""
+        output_parts: list[str] = []
+        tool_calls: list[ToolCallEvent] = []
 
-            # Add tool results to conversation
-            if self._is_native:
-                # Native mode: add as role="tool" messages with tool_call_id
-                for tc in tool_calls:
-                    tool_call_id = tc.args.get("_tool_call_id", "")
-                    # Find matching result
-                    result_text = ""
-                    for r in tool_results.split("\n\n") if tool_results else []:
-                        if r.startswith(f"[{tc.name}]"):
-                            result_text = r
-                            break
-                    if not result_text:
-                        result_text = tool_results or "(no output)"
-                    if tool_call_id:
-                        self.conversation.append(
-                            "tool",
-                            result_text,
-                            tool_call_id=tool_call_id,
-                            name=tc.name,
-                        )
-            else:
-                # Custom mode: add as user message
-                if tool_results:
-                    self.conversation.append("user", tool_results)
+        async for chunk in self.llm.chat(messages, stream=True):
+            assistant_content += chunk
+            for event in self._parser.feed(chunk):
+                if isinstance(event, ToolCallEvent):
+                    tool_calls.append(event)
+                elif isinstance(event, TextEvent):
+                    output_parts.append(event.text)
 
-        # Build final output
+        for event in self._parser.flush():
+            if isinstance(event, ToolCallEvent):
+                tool_calls.append(event)
+            elif isinstance(event, TextEvent):
+                output_parts.append(event.text)
+
+        self.conversation.append("assistant", assistant_content)
+        self._log_turn_preview(assistant_content)
+        return tool_calls, output_parts
+
+    def _log_turn_preview(self, assistant_content: str) -> None:
+        """Log a preview of the LLM response for debugging."""
+        preview = assistant_content[:200].replace("\n", " ")
+        logger.debug(
+            "Sub-agent LLM response",
+            subagent_name=self.config.name,
+            turn=self._turns,
+            preview=preview + ("..." if len(assistant_content) > 200 else ""),
+        )
+
+    async def _execute_and_report_tools(
+        self, tool_calls: list[ToolCallEvent]
+    ) -> str:
+        """Execute tools, notifying parent of start/done via callback."""
+        logger.info(
+            "Sub-agent executing tools",
+            subagent_name=self.config.name,
+            tool_count=len(tool_calls),
+            tools=[tc.name for tc in tool_calls],
+        )
+
+        if self.on_tool_activity:
+            for tc in tool_calls:
+                tc_args = {k: v for k, v in tc.args.items() if not k.startswith("_")}
+                args_preview = ""
+                if tc_args:
+                    parts = [f"{k}={str(v)[:80]}" for k, v in tc_args.items()]
+                    args_preview = " ".join(parts)[:120]
+                self.on_tool_activity("tool_start", tc.name, args_preview)
+
+        tool_results = await self._execute_tools(tool_calls)
+
+        if self.on_tool_activity:
+            for tc in tool_calls:
+                self.on_tool_activity("tool_done", tc.name, "")
+
+        return tool_results
+
+    def _append_tool_results(
+        self, tool_calls: list[ToolCallEvent], tool_results: str
+    ) -> None:
+        """Add tool results to conversation in the appropriate format."""
+        if self._is_native:
+            for tc in tool_calls:
+                tool_call_id = tc.args.get("_tool_call_id", "")
+                result_text = ""
+                for r in tool_results.split("\n\n") if tool_results else []:
+                    if r.startswith(f"[{tc.name}]"):
+                        result_text = r
+                        break
+                if not result_text:
+                    result_text = tool_results or "(no output)"
+                if tool_call_id:
+                    self.conversation.append(
+                        "tool", result_text,
+                        tool_call_id=tool_call_id, name=tc.name,
+                    )
+        else:
+            if tool_results:
+                self.conversation.append("user", tool_results)
+
+    def _build_result(
+        self, output_parts: list[str], tools_used: list[str]
+    ) -> SubAgentResult:
+        """Build the final SubAgentResult, saving conversation if possible."""
         final_output = "".join(output_parts).strip()
 
-        # Save sub-agent conversation to session store before it's destroyed
         if self._session_store:
             try:
                 self._session_store.save_subagent(
@@ -553,6 +509,10 @@ class SubAgent:
             metadata={"tools_used": tools_used},
         )
 
+    # ------------------------------------------------------------------
+    # Tool execution
+    # ------------------------------------------------------------------
+
     async def _execute_tools(self, tool_calls: list[ToolCallEvent]) -> str:
         """Execute tool calls and return formatted results."""
         results: list[str] = []
@@ -568,7 +528,6 @@ class SubAgent:
                 results.append(f"[{tool_call.name}] Error: Tool not available")
                 continue
 
-            # Log tool execution start
             args_preview = str(tool_call.args)[:100]
             logger.debug(
                 "Sub-agent tool start",
@@ -580,17 +539,14 @@ class SubAgent:
             try:
                 result = await tool.execute(tool_call.args)
                 if result.success:
-                    # Use get_text_output() to handle both str and multimodal
                     text_output = result.get_text_output()
                     output = text_output if text_output else "(no output)"
                     results.append(f"[{tool_call.name}]\n{output}")
-                    # Log success with output preview
-                    output_preview = (text_output or "")[:100].replace("\n", " ")
                     logger.debug(
                         "Sub-agent tool success",
                         subagent_name=self.config.name,
                         tool_name=tool_call.name,
-                        output_preview=output_preview,
+                        output_preview=(text_output or "")[:100].replace("\n", " "),
                     )
                 else:
                     error = result.error or "Unknown error"
@@ -625,17 +581,12 @@ class SubAgent:
 
 
 class SubAgentJob:
-    """
-    Wrapper for running a sub-agent as a background job.
+    """Wrapper for running a sub-agent as a background job.
 
     Integrates with the executor's job tracking system.
     """
 
-    def __init__(
-        self,
-        subagent: SubAgent,
-        job_id: str,
-    ):
+    def __init__(self, subagent: SubAgent, job_id: str):
         self.subagent = subagent
         self.job_id = job_id
         self._task: asyncio.Task | None = None
@@ -648,7 +599,6 @@ class SubAgentJob:
 
     def to_job_status(self) -> JobStatus:
         """Create job status for this sub-agent run."""
-        # Check error first, then running, then done
         if self._result and not self._result.success:
             state = JobState.ERROR
         elif self.subagent.is_running:

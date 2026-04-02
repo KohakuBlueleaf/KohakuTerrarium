@@ -412,7 +412,7 @@ class KohakuManager:
             source_id=terrarium_id,
             source_type="terrarium",
             filter_channels=channels,
-            running_check=lambda: runtime._running,
+            running_check=lambda: runtime.is_running,
         ):
             yield event
 

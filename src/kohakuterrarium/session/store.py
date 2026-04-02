@@ -12,7 +12,7 @@ Single .kt file (SQLite) containing:
   - fts:        Full-text search index (TextVault)
 """
 
-import os
+import json
 import platform
 import time
 from datetime import datetime, timezone
@@ -239,8 +239,6 @@ class SessionStore:
                 return val
             # Legacy: JSON string from older sessions
             if isinstance(val, (str, bytes)):
-                import json
-
                 s = val.decode() if isinstance(val, bytes) else val
                 data = json.loads(s)
                 if isinstance(data, dict) and "messages" in data:

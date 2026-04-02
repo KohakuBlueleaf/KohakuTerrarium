@@ -6,50 +6,22 @@ Not an agent -- pure wiring.
 """
 
 import asyncio
-from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
-from kohakuterrarium.builtins.inputs.none import NoneInput
-from kohakuterrarium.builtins.tools.registry import get_builtin_tool
-from kohakuterrarium.terrarium.tool_manager import (
-    TERRARIUM_MANAGER_KEY,
-    TerrariumToolManager,
-)
 from kohakuterrarium.core.agent import Agent
-from kohakuterrarium.core.config import build_agent_config
-from kohakuterrarium.core.conversation import Conversation
 from kohakuterrarium.core.environment import Environment
 from kohakuterrarium.core.session import Session
-from kohakuterrarium.modules.trigger.channel import ChannelTrigger
 from kohakuterrarium.terrarium.api import TerrariumAPI
-from kohakuterrarium.terrarium.config import (
-    CreatureConfig,
-    TerrariumConfig,
-    build_channel_topology_prompt,
-)
+from kohakuterrarium.terrarium.config import TerrariumConfig
 from kohakuterrarium.terrarium.creature import CreatureHandle
+from kohakuterrarium.terrarium.factory import build_creature, build_root_agent
 from kohakuterrarium.terrarium.hotplug import HotPlugMixin
 from kohakuterrarium.terrarium.observer import ChannelObserver
-from kohakuterrarium.terrarium.output_log import OutputLogCapture
+from kohakuterrarium.terrarium.persistence import attach_session_store
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
-
-
-def _build_conversation_from_messages(messages: list[dict]) -> Conversation:
-    """Build a Conversation from a list of message dicts (for resume)."""
-    conv = Conversation()
-    for msg in messages:
-        kwargs = {}
-        if msg.get("tool_calls"):
-            kwargs["tool_calls"] = msg["tool_calls"]
-        if msg.get("tool_call_id"):
-            kwargs["tool_call_id"] = msg["tool_call_id"]
-        if msg.get("name"):
-            kwargs["name"] = msg["name"]
-        conv.append(msg.get("role", "user"), msg.get("content", ""), **kwargs)
-    return conv
 
 
 class TerrariumRuntime(HotPlugMixin):
@@ -154,7 +126,7 @@ class TerrariumRuntime(HotPlugMixin):
 
         # 3. Build creatures
         for creature_cfg in self.config.creatures:
-            handle = self._build_creature(creature_cfg)
+            handle = build_creature(creature_cfg, self.environment, self.config)
             self._creatures[creature_cfg.name] = handle
 
         # 4. Start all creature agents
@@ -165,7 +137,7 @@ class TerrariumRuntime(HotPlugMixin):
         # 5. Build root agent if configured (OUTSIDE the terrarium)
         # Don't start it here - run() will call agent.run() which handles start
         if self.config.root:
-            self._root_agent = self._build_root_agent()
+            self._root_agent = build_root_agent(self.config, self.environment, self)
             logger.info(
                 "Root agent built",
                 base_config=self.config.root.config_data.get("base_config"),
@@ -251,7 +223,7 @@ class TerrariumRuntime(HotPlugMixin):
             await self.stop()
 
     # ------------------------------------------------------------------
-    # Status
+    # Status / accessors
     # ------------------------------------------------------------------
 
     def attach_session_store(self, store: Any) -> None:
@@ -260,97 +232,36 @@ class TerrariumRuntime(HotPlugMixin):
         Must be called AFTER start() (when creatures exist) but works
         at any time during the runtime lifecycle.
         """
-        self._session_store = store
-
-        # Attach to all creature agents
-        for name, handle in self._creatures.items():
-            handle.agent.attach_session_store(store)
-
-        # Attach to root agent
-        if self._root_agent is not None:
-            self._root_agent.attach_session_store(store)
-
-        # Register on_send callbacks for all shared channels
-        for ch in self.environment.shared_channels._channels.values():
-
-            def _make_cb(ch_name):
-                def _cb(channel_name, message):
-                    try:
-                        ts = (
-                            message.timestamp.isoformat()
-                            if hasattr(message.timestamp, "isoformat")
-                            else str(message.timestamp)
-                        )
-                        store.save_channel_message(
-                            channel_name,
-                            {
-                                "sender": message.sender,
-                                "content": (
-                                    message.content
-                                    if isinstance(message.content, str)
-                                    else str(message.content)
-                                ),
-                                "msg_id": message.message_id,
-                                "ts": ts,
-                            },
-                        )
-                    except Exception:
-                        pass
-
-                return _cb
-
-            ch.on_send(_make_cb(ch.name))
-
-        # Inject resume data if present (conversations + scratchpads)
-        if hasattr(self, "_pending_resume_data") and self._pending_resume_data:
-            for name, data in self._pending_resume_data.items():
-                agent = self.get_creature_agent(name)
-                if name == "root" and agent is None:
-                    agent = self._root_agent
-                if not agent:
-                    continue
-
-                saved_messages = data.get("conversation")
-                if saved_messages and isinstance(saved_messages, list):
-                    agent.controller.conversation = _build_conversation_from_messages(
-                        saved_messages
-                    )
-                    logger.info("Conversation restored", agent=name)
-
-                pad = data.get("scratchpad", {})
-                if pad and agent.session:
-                    for k, v in pad.items():
-                        agent.session.scratchpad.set(k, v)
-
-            self._pending_resume_data = None
-
-        # Set resume events on root agent for output replay
-        if (
-            hasattr(self, "_pending_resume_events")
-            and self._pending_resume_events
-            and self._root_agent is not None
-        ):
-            root_events = self._pending_resume_events.get("root")
-            if root_events:
-                self._root_agent._pending_resume_events = root_events
-                logger.info("Resume events set on root agent", count=len(root_events))
-            self._pending_resume_events = None
-
-        logger.info(
-            "Session store attached to terrarium",
-            creatures=list(self._creatures.keys()),
-            channels=len(self.environment.shared_channels._channels),
-        )
+        attach_session_store(self, store)
 
     @property
     def root_agent(self) -> Agent | None:
         """The root agent, if configured."""
         return self._root_agent
 
+    @property
+    def is_running(self) -> bool:
+        """Whether the terrarium is currently running."""
+        return self._running
+
+    @property
+    def creatures(self) -> dict[str, CreatureHandle]:
+        """All creature handles, keyed by name."""
+        return self._creatures
+
+    @property
+    def session_store(self) -> Any:
+        """The attached SessionStore, or None."""
+        return getattr(self, "_session_store", None)
+
     def get_creature_agent(self, name: str) -> Agent | None:
-        """Get a creature's Agent instance by name. For API mounting."""
+        """Get a creature's Agent instance by name."""
         handle = self._creatures.get(name)
         return handle.agent if handle else None
+
+    def list_channels(self) -> list[dict[str, str]]:
+        """List all shared channels as dicts."""
+        return self.environment.shared_channels.get_channel_info()
 
     def get_status(self) -> dict[str, Any]:
         """Return a status dict for monitoring."""
@@ -376,211 +287,6 @@ class TerrariumRuntime(HotPlugMixin):
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
-
-    def _build_root_agent(self) -> Agent:
-        """
-        Build the root agent OUTSIDE the terrarium.
-
-        The root agent:
-        - Loads from its own creature config (e.g. creatures/root)
-        - Gets a TerrariumToolManager pre-bound to this runtime
-        - Has its own I/O (cli/tui) for user interaction
-        - Is NOT a peer of terrarium creatures
-        """
-        root_cfg = self.config.root
-        assert root_cfg is not None
-
-        logger.info("Building root agent")
-
-        # Build root agent config from inline dict (supports base_config inheritance)
-        agent_config = build_agent_config(root_cfg.config_data, root_cfg.base_dir)
-
-        # Create a separate environment for the root agent
-        # with a TerrariumToolManager pre-bound to this runtime
-        root_env = Environment(env_id=f"root_{self.environment.env_id}")
-        manager = TerrariumToolManager()
-        manager.register_runtime(self.config.name, self)
-        root_env.register(TERRARIUM_MANAGER_KEY, manager)
-
-        root_session = root_env.get_session("root")
-
-        # Root agent uses its own I/O from its creature config
-        agent = Agent(
-            agent_config,
-            session=root_session,
-            environment=root_env,
-        )
-
-        # Force-add all terrarium tools regardless of creature config
-        self._force_register_terrarium_tools(agent)
-
-        # Inject terrarium awareness into root's system prompt
-        awareness = self._build_root_awareness_prompt()
-        self._inject_prompt_section(agent, awareness)
-
-        return agent
-
-    @staticmethod
-    def _force_register_terrarium_tools(agent: Agent) -> None:
-        """Force-register all terrarium management tools on the root agent."""
-        terrarium_tool_names = [
-            "terrarium_create",
-            "terrarium_status",
-            "terrarium_stop",
-            "terrarium_send",
-            "terrarium_observe",
-            "terrarium_history",
-            "creature_start",
-            "creature_stop",
-            "creature_interrupt",
-            "list_triggers",
-        ]
-        for name in terrarium_tool_names:
-            if agent.registry.get_tool(name) is None:
-                tool = get_builtin_tool(name)
-                if tool:
-                    agent.registry.register_tool(tool)
-                    agent.executor.register_tool(tool)
-                    logger.debug("Force-registered terrarium tool", tool_name=name)
-
-    def _build_root_awareness_prompt(self) -> str:
-        """Build prompt section telling root about the bound terrarium."""
-        creature_names = [c.name for c in self.config.creatures]
-
-        channel_lines: list[str] = []
-        for ch in self.config.channels:
-            desc = f" - {ch.description}" if ch.description else ""
-            channel_lines.append(f"- `{ch.name}` ({ch.channel_type}){desc}")
-
-        # Document auto-created direct channels
-        direct_lines: list[str] = []
-        for name in creature_names:
-            direct_lines.append(f"- `{name}` (queue) - direct channel to {name}")
-
-        parts = [
-            f"## Bound Terrarium: {self.config.name}",
-            "",
-            f"Use terrarium_id='{self.config.name}' for all terrarium tool calls.",
-            "",
-            "### Creatures",
-            ", ".join(creature_names),
-            "",
-            "### Channels",
-            *channel_lines,
-            "",
-            "### Direct Channels",
-            "Every creature has a direct queue channel named after it.",
-            "Use these to send messages to a specific creature:",
-            *direct_lines,
-        ]
-        return "\n".join(parts)
-
-    def _build_creature(self, creature_cfg: CreatureConfig) -> CreatureHandle:
-        """
-        Build a single creature: load config, create Agent, wire channels.
-        """
-        logger.info(
-            "Building creature",
-            creature=creature_cfg.name,
-        )
-
-        # Build agent config from inline dict (same format as standalone)
-        agent_config = build_agent_config(
-            creature_cfg.config_data, creature_cfg.base_dir
-        )
-
-        # Each creature gets a PRIVATE session from the environment
-        creature_session = self.environment.get_session(creature_cfg.name)
-
-        # For creatures with no interactive user input, override input
-        # to NoneInput so the agent loop blocks on triggers instead of stdin.
-        input_module = NoneInput()
-
-        # Create the agent with explicit session and environment
-        agent = Agent(
-            agent_config,
-            input_module=input_module,
-            session=creature_session,
-            environment=self.environment,
-        )
-
-        # -- Inject ChannelTriggers for listen channels --
-        # Triggers listen on SHARED channels (environment.shared_channels)
-        # Broadcast channels get a prompt that frames messages as informational
-        broadcast_names = {
-            ch.name for ch in self.config.channels if ch.channel_type == "broadcast"
-        }
-
-        # Always listen on the creature's own direct channel
-        all_listen = list(creature_cfg.listen_channels)
-        if creature_cfg.name not in all_listen:
-            all_listen.append(creature_cfg.name)
-
-        for ch_name in all_listen:
-            prompt = None
-            if ch_name in broadcast_names:
-                prompt = (
-                    "[Broadcast on '{channel}' from '{sender}']: {content}\n\n"
-                    "This message was broadcast to all team members on '{channel}'. "
-                    "Only act on it if it is relevant to your current task."
-                )
-            trigger = ChannelTrigger(
-                channel_name=ch_name,
-                subscriber_id=creature_cfg.name,
-                prompt=prompt,
-                registry=self.environment.shared_channels,
-            )
-            trigger_id = f"channel_{creature_cfg.name}_{ch_name}"
-            agent.trigger_manager._triggers[trigger_id] = trigger
-            agent.trigger_manager._created_at[trigger_id] = datetime.now()
-            logger.debug(
-                "Injected channel trigger",
-                creature=creature_cfg.name,
-                channel=ch_name,
-                trigger_id=trigger_id,
-                broadcast=ch_name in broadcast_names,
-            )
-
-        # -- Inject channel topology into the system prompt --
-        topology_prompt = build_channel_topology_prompt(self.config, creature_cfg)
-        if topology_prompt:
-            self._inject_prompt_section(agent, topology_prompt)
-
-        # -- Output log capture --
-        capture: OutputLogCapture | None = None
-        if creature_cfg.output_log:
-            capture = OutputLogCapture(
-                agent.output_router.default_output,
-                max_entries=creature_cfg.output_log_size,
-            )
-            agent.output_router.default_output = capture
-            logger.debug("Output log attached", creature=creature_cfg.name)
-
-        return CreatureHandle(
-            name=creature_cfg.name,
-            agent=agent,
-            config=creature_cfg,
-            listen_channels=list(creature_cfg.listen_channels),
-            send_channels=list(creature_cfg.send_channels),
-            output_log=capture,
-        )
-
-    @staticmethod
-    def _inject_prompt_section(agent: Agent, section: str) -> None:
-        """
-        Append *section* to the system message already stored in the
-        agent's controller conversation.
-
-        The controller sets up the system message during ``__init__``,
-        so by the time we get here it is the first message in the list.
-        """
-        sys_msg = agent.controller.conversation.get_system_message()
-        if sys_msg is None:
-            return
-
-        if isinstance(sys_msg.content, str):
-            sys_msg.content = sys_msg.content + "\n\n" + section
-        # If somehow multimodal, leave as-is (unlikely for system prompt)
 
     async def _run_creature(self, handle: CreatureHandle) -> None:
         """
