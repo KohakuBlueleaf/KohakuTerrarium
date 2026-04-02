@@ -316,7 +316,7 @@ class AgentHandlersMixin:
         self.output_router.notify_activity(
             "tool_start",
             f"[{label}]{bg_tag} {arg_preview}",
-            metadata={"job_id": job_id, "args": full_args},
+            metadata={"job_id": job_id, "args": full_args, "background": not is_direct},
         )
 
     def _check_termination(self, round_text: list[str]) -> bool:
@@ -529,7 +529,11 @@ class AgentHandlersMixin:
             elif result is not None:
                 content = result.output if result.output else ""
                 status = "OK" if result.exit_code == 0 else f"exit={result.exit_code}"
-                self.output_router.notify_activity("tool_done", f"[{label}] {status}")
+                self.output_router.notify_activity(
+                    "tool_done",
+                    f"[{label}] {status}",
+                    metadata={"job_id": job_id, "output": content[:5000]},
+                )
             else:
                 content = ""
 
@@ -579,7 +583,9 @@ class AgentHandlersMixin:
                     result_strs.append(f"## {job_id} - {status}\n{output}")
                     logger.info("Tool %s: done", job_id)
                     self.output_router.notify_activity(
-                        "tool_done", f"[{label}] {status}"
+                        "tool_done",
+                        f"[{label}] {status}",
+                        metadata={"job_id": job_id, "output": output[:5000]},
                     )
 
         return "\n\n".join(result_strs) if result_strs else ""

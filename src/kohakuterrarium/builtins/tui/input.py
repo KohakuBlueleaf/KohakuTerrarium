@@ -8,9 +8,9 @@ from kohakuterrarium.core.events import TriggerEvent, create_user_input_event
 from kohakuterrarium.core.session import get_session
 from kohakuterrarium.modules.input.base import BaseInputModule
 from kohakuterrarium.utils.logging import (
-    disable_tui_logging,
-    enable_tui_logging,
     get_logger,
+    restore_logging,
+    suppress_logging,
 )
 
 logger = get_logger(__name__)
@@ -57,8 +57,8 @@ class TUIInput(BaseInputModule):
             )
         self._tui = session.tui
 
-        # Redirect framework logs to TUI Logs tab
-        enable_tui_logging(self._tui.write_log)
+        # Suppress framework logs (captured by SessionOutput to session DB)
+        suppress_logging()
 
         # Build and launch the Textual app
         await self._tui.start(self._prompt)
@@ -76,8 +76,7 @@ class TUIInput(BaseInputModule):
             except (asyncio.CancelledError, Exception):
                 pass
 
-        # Restore stderr logging
-        disable_tui_logging()
+        restore_logging()
         logger.debug("TUI input stopped")
 
     async def get_input(self) -> TriggerEvent | None:

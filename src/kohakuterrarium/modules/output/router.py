@@ -200,7 +200,12 @@ class OutputRouter:
             metadata: Structured data (full args, job_id, tools_used, etc.)
                       Only consumed by outputs that support it (e.g. WebSocket).
         """
-        self.default_output.on_activity(activity_type, detail)
+        if metadata and hasattr(self.default_output, "on_activity_with_metadata"):
+            self.default_output.on_activity_with_metadata(
+                activity_type, detail, metadata
+            )
+        else:
+            self.default_output.on_activity(activity_type, detail)
         for secondary in self._secondary_outputs:
             # Pass metadata if the output supports it
             if metadata and hasattr(secondary, "on_activity_with_metadata"):
