@@ -5,7 +5,7 @@ Tests for:
 - ToolSchema creation and API format conversion
 - NativeToolCall argument parsing
 - build_tool_schemas helper
-- OpenAIProvider tool call accumulation
+- OpenAIProvider initialization and configuration
 """
 
 import pytest
@@ -268,138 +268,54 @@ class TestBuildToolSchemas:
 
 
 # =============================================================================
-# OpenAIProvider Tool Call Accumulation Tests
+# OpenAIProvider Configuration Tests
 # =============================================================================
 
 
-class TestOpenAIProviderToolAccumulation:
-    """Tests for OpenAIProvider._accumulate_tool_calls and _finalize_tool_calls."""
+class TestOpenAIProviderConfig:
+    """Tests for OpenAIProvider initialization and configuration."""
 
-    def _make_provider(self):
-        """Create a provider instance for testing internal methods."""
+    def _make_provider(self, **kwargs):
         from kohakuterrarium.llm.openai import OpenAIProvider
 
-        return OpenAIProvider(api_key="test-key-not-real", model="gpt-4o-mini")
-
-    def test_accumulate_single_tool_call(self):
-        """Test accumulating a single tool call across chunks."""
-        provider = self._make_provider()
-        pending: dict[int, dict[str, str]] = {}
-
-        # First chunk: id and function name
-        provider._accumulate_tool_calls(
-            [
-                {
-                    "index": 0,
-                    "id": "call_abc123",
-                    "function": {"name": "bash", "arguments": ""},
-                }
-            ],
-            pending,
-        )
-
-        # Subsequent chunks: argument fragments
-        provider._accumulate_tool_calls(
-            [{"index": 0, "function": {"arguments": '{"com'}}],
-            pending,
-        )
-        provider._accumulate_tool_calls(
-            [{"index": 0, "function": {"arguments": 'mand": '}}],
-            pending,
-        )
-        provider._accumulate_tool_calls(
-            [{"index": 0, "function": {"arguments": '"ls -la"}'}}],
-            pending,
-        )
-
-        provider._finalize_tool_calls(pending)
-
-        assert len(provider.last_tool_calls) == 1
-        tc = provider.last_tool_calls[0]
-        assert tc.id == "call_abc123"
-        assert tc.name == "bash"
-        assert tc.arguments == '{"command": "ls -la"}'
-        assert tc.parsed_arguments() == {"command": "ls -la"}
-
-    def test_accumulate_multiple_tool_calls(self):
-        """Test accumulating multiple parallel tool calls."""
-        provider = self._make_provider()
-        pending: dict[int, dict[str, str]] = {}
-
-        # Two tool calls arriving interleaved
-        provider._accumulate_tool_calls(
-            [
-                {
-                    "index": 0,
-                    "id": "call_001",
-                    "function": {"name": "bash", "arguments": ""},
-                },
-                {
-                    "index": 1,
-                    "id": "call_002",
-                    "function": {"name": "read", "arguments": ""},
-                },
-            ],
-            pending,
-        )
-
-        provider._accumulate_tool_calls(
-            [
-                {"index": 0, "function": {"arguments": '{"cmd": "ls"}'}},
-                {"index": 1, "function": {"arguments": '{"path": "/tmp"}'}},
-            ],
-            pending,
-        )
-
-        provider._finalize_tool_calls(pending)
-
-        assert len(provider.last_tool_calls) == 2
-        assert provider.last_tool_calls[0].name == "bash"
-        assert provider.last_tool_calls[0].id == "call_001"
-        assert provider.last_tool_calls[1].name == "read"
-        assert provider.last_tool_calls[1].id == "call_002"
-
-    def test_finalize_empty_pending(self):
-        """Test finalizing with no pending tool calls."""
-        provider = self._make_provider()
-        provider._finalize_tool_calls({})
-        assert provider.last_tool_calls == []
+        defaults = {"api_key": "test-key-not-real", "model": "gpt-4o-mini"}
+        defaults.update(kwargs)
+        return OpenAIProvider(**defaults)
 
     def test_last_tool_calls_initially_empty(self):
         """Test that last_tool_calls is empty on fresh provider."""
         provider = self._make_provider()
         assert provider.last_tool_calls == []
 
-    def test_build_request_body_without_tools(self):
-        """Test request body has no tools key when tools=None."""
-        provider = self._make_provider()
-        body = provider._build_request_body(
-            [{"role": "user", "content": "hello"}],
-            stream=True,
+    def test_extra_body_stored(self):
+        """Test that extra_body is stored on the provider."""
+        provider = self._make_provider(
+            extra_body={"reasoning": {"enabled": True}}
         )
-        assert "tools" not in body
+        assert provider.extra_body == {"reasoning": {"enabled": True}}
 
-    def test_build_request_body_with_tools(self):
-        """Test request body includes tools when provided."""
+    def test_extra_body_defaults_empty(self):
+        """Test that extra_body defaults to empty dict."""
         provider = self._make_provider()
-        schemas = [
-            ToolSchema(
-                name="bash",
-                description="Run commands",
-                parameters={
-                    "type": "object",
-                    "properties": {
-                        "command": {"type": "string"},
-                    },
-                },
-            )
-        ]
-        body = provider._build_request_body(
-            [{"role": "user", "content": "hello"}],
-            stream=True,
-            tools=schemas,
+        assert provider.extra_body == {}
+
+    def test_missing_api_key_raises(self):
+        """Test that missing API key raises ValueError."""
+        from kohakuterrarium.llm.openai import OpenAIProvider
+
+        with pytest.raises(ValueError, match="API key is required"):
+            OpenAIProvider(api_key=None)
+
+    def test_client_is_async_openai(self):
+        """Test that the internal client is AsyncOpenAI."""
+        from openai import AsyncOpenAI
+
+        provider = self._make_provider()
+        assert isinstance(provider._client, AsyncOpenAI)
+
+    def test_custom_base_url(self):
+        """Test that custom base_url is passed to the client."""
+        provider = self._make_provider(
+            base_url="https://openrouter.ai/api/v1"
         )
-        assert "tools" in body
-        assert len(body["tools"]) == 1
-        assert body["tools"][0]["type"] == "function"
-        assert body["tools"][0]["function"]["name"] == "bash"
+        assert "openrouter" in str(provider._client.base_url)

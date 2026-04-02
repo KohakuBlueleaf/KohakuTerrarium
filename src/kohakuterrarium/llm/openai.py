@@ -1,14 +1,13 @@
 """
-OpenAI-compatible LLM provider.
+OpenAI-compatible LLM provider using the OpenAI Python SDK.
 
 Supports OpenAI API and compatible services like OpenRouter, Together AI, etc.
+Uses AsyncOpenAI for all API calls (streaming + non-streaming).
 """
 
-import asyncio
-import json
 from typing import Any, AsyncIterator
 
-import httpx
+from openai import AsyncOpenAI
 
 from kohakuterrarium.llm.base import (
     BaseLLMProvider,
@@ -27,17 +26,16 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 
 class OpenAIProvider(BaseLLMProvider):
-    """
-    OpenAI API-compatible LLM provider.
+    """OpenAI API-compatible LLM provider using the official SDK.
 
     Works with:
     - OpenAI API (default)
     - OpenRouter (set base_url to OPENROUTER_BASE_URL)
     - Any OpenAI-compatible endpoint
 
-    Usage:
-        # OpenAI
-        provider = OpenAIProvider(api_key="sk-...")
+    Usage::
+
+        provider = OpenAIProvider(api_key="sk-...", model="gpt-4o")
 
         # OpenRouter
         provider = OpenAIProvider(
@@ -46,7 +44,6 @@ class OpenAIProvider(BaseLLMProvider):
             model="anthropic/claude-3-opus",
         )
 
-        # Streaming
         async for chunk in provider.chat(messages):
             print(chunk, end="")
     """
@@ -58,25 +55,25 @@ class OpenAIProvider(BaseLLMProvider):
         base_url: str = OPENAI_BASE_URL,
         *,
         temperature: float = 0.7,
-        max_tokens: int = 4096,
-        timeout: float = 60.0,
+        max_tokens: int | None = None,
+        timeout: float = 120.0,
         extra_headers: dict[str, str] | None = None,
+        extra_body: dict[str, Any] | None = None,
         max_retries: int = 3,
-        retry_delay: float = 1.0,
     ):
-        """
-        Initialize the OpenAI provider.
+        """Initialize the OpenAI provider.
 
         Args:
-            api_key: API key for authentication (required)
+            api_key: API key for authentication
             model: Model identifier
             base_url: API base URL (change for OpenRouter, etc.)
             temperature: Sampling temperature
             max_tokens: Maximum tokens to generate
             timeout: Request timeout in seconds
             extra_headers: Additional headers (e.g., for OpenRouter HTTP-Referer)
-            max_retries: Maximum retry attempts for 5xx errors
-            retry_delay: Base delay between retries (exponential backoff)
+            extra_body: Additional fields merged into every API request body
+                (e.g., {"reasoning": {"enabled": True}})
+            max_retries: Maximum retry attempts for transient errors
         """
         super().__init__(
             LLMConfig(
@@ -92,143 +89,30 @@ class OpenAIProvider(BaseLLMProvider):
                 "Set OPENROUTER_API_KEY or OPENAI_API_KEY environment variable."
             )
 
-        self.api_key = api_key
-        self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
-        self.extra_headers = extra_headers or {}
-        self.max_retries = max_retries
-        self.retry_delay = retry_delay
-
-        # httpx client for async requests
-        self._client: httpx.AsyncClient | None = None
-
-        # Token usage from last completion (streaming or non-streaming)
+        self.extra_body = extra_body or {}
         self._last_usage: dict[str, int] = {}
 
+        self._client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=timeout,
+            max_retries=max_retries,
+            default_headers=extra_headers or {},
+        )
+
         logger.debug(
-            "OpenAIProvider initialized",
+            "OpenAIProvider initialized (SDK)",
             model=model,
-            base_url=self.base_url,
+            base_url=base_url,
         )
-
-    def _should_retry(self, status_code: int) -> bool:
-        """Check if request should be retried based on status code."""
-        # Retry on 5xx server errors and 429 rate limit
-        return status_code >= 500 or status_code == 429
-
-    def _is_retryable_error(self, error: Exception) -> bool:
-        """Check if exception is a retryable network error."""
-        # Retry on connection errors, incomplete reads, etc.
-        retryable_types = (
-            httpx.RemoteProtocolError,  # incomplete chunked read, etc.
-            httpx.ReadError,
-            httpx.ConnectError,
-            httpx.WriteError,
-        )
-        return isinstance(error, retryable_types)
-
-    async def _get_client(self) -> httpx.AsyncClient:
-        """Get or create httpx client."""
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
-                timeout=httpx.Timeout(self.timeout, connect=10.0),
-            )
-        return self._client
 
     async def close(self) -> None:
-        """Close the httpx client."""
-        if self._client is not None:
-            await self._client.aclose()
-            self._client = None
+        """Close the underlying HTTP client."""
+        await self._client.close()
 
-    def _build_headers(self) -> dict[str, str]:
-        """Build request headers."""
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-        headers.update(self.extra_headers)
-        return headers
-
-    def _build_request_body(
-        self,
-        messages: list[dict[str, Any]],
-        stream: bool,
-        *,
-        tools: list[ToolSchema] | None = None,
-        **kwargs: Any,
-    ) -> dict[str, Any]:
-        """Build the request body for chat completion."""
-        body: dict[str, Any] = {
-            "model": kwargs.get("model", self.config.model),
-            "messages": messages,
-            "stream": stream,
-        }
-
-        # Add optional parameters if provided
-        if "temperature" in kwargs:
-            body["temperature"] = kwargs["temperature"]
-        elif self.config.temperature is not None:
-            body["temperature"] = self.config.temperature
-
-        if "max_tokens" in kwargs:
-            body["max_tokens"] = kwargs["max_tokens"]
-        elif self.config.max_tokens is not None:
-            body["max_tokens"] = self.config.max_tokens
-
-        if "top_p" in kwargs:
-            body["top_p"] = kwargs["top_p"]
-
-        if "stop" in kwargs:
-            body["stop"] = kwargs["stop"]
-
-        # Add native tool schemas if provided
-        if tools:
-            body["tools"] = [t.to_api_format() for t in tools]
-
-        return body
-
-    def _process_sse_event(
-        self,
-        data: str,
-        pending_calls: dict[int, dict[str, str]],
-    ) -> tuple[str | None, bool]:
-        """Parse one SSE event payload, update accumulators.
-
-        Args:
-            data: The raw SSE data string (after removing "data: " prefix).
-            pending_calls: Mutable dict accumulating native tool call deltas.
-
-        Returns:
-            A tuple of (text_content_or_None, is_done). When is_done is True
-            the caller should finalize and stop iterating.
-        """
-        if data == "[DONE]":
-            logger.debug("Stream completed")
-            return None, True
-
-        try:
-            chunk = json.loads(data)
-        except json.JSONDecodeError as e:
-            logger.warning("Failed to parse SSE chunk", error=str(e))
-            return None, False
-
-        # Capture usage from final chunk (many providers include it)
-        if "usage" in chunk and chunk["usage"]:
-            self._last_usage = chunk["usage"]
-
-        choices = chunk.get("choices", [])
-        if not choices:
-            return None, False
-
-        delta = choices[0].get("delta", {})
-
-        # Accumulate native tool call deltas
-        if "tool_calls" in delta:
-            self._accumulate_tool_calls(delta["tool_calls"], pending_calls)
-
-        content = delta.get("content", "")
-        return (content or None), False
+    # ------------------------------------------------------------------
+    # Streaming
+    # ------------------------------------------------------------------
 
     async def _stream_chat(
         self,
@@ -237,283 +121,181 @@ class OpenAIProvider(BaseLLMProvider):
         tools: list[ToolSchema] | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
-        """Stream chat completion with retry for 5xx errors."""
-        client = await self._get_client()
-        url = f"{self.base_url}/chat/completions"
-        headers = self._build_headers()
-        body = self._build_request_body(messages, stream=True, tools=tools, **kwargs)
-
-        # Reset native tool call accumulator
+        """Stream chat completion via the OpenAI SDK."""
         self._last_tool_calls = []
+
+        api_tools = [t.to_api_format() for t in tools] if tools else None
+
+        create_kwargs: dict[str, Any] = {
+            "model": kwargs.get("model", self.config.model),
+            "messages": messages,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+
+        # Optional parameters
+        temp = kwargs.get("temperature", self.config.temperature)
+        if temp is not None:
+            create_kwargs["temperature"] = temp
+
+        max_tok = kwargs.get("max_tokens", self.config.max_tokens)
+        if max_tok is not None:
+            create_kwargs["max_tokens"] = max_tok
+
+        if "top_p" in kwargs:
+            create_kwargs["top_p"] = kwargs["top_p"]
+        if "stop" in kwargs:
+            create_kwargs["stop"] = kwargs["stop"]
+        if api_tools:
+            create_kwargs["tools"] = api_tools
+
+        # extra_body: merged into the request body by the SDK
+        merged_extra = {**self.extra_body}
+        if "extra_body" in kwargs:
+            merged_extra.update(kwargs["extra_body"])
+        if merged_extra:
+            create_kwargs["extra_body"] = merged_extra
+
+        logger.debug("Starting streaming request", model=create_kwargs["model"])
+
         pending_calls: dict[int, dict[str, str]] = {}
 
-        last_error: Exception | None = None
+        stream = await self._client.chat.completions.create(**create_kwargs)
 
-        for attempt in range(self.max_retries + 1):
-            if attempt > 0:
-                delay = self.retry_delay * (2 ** (attempt - 1))  # Exponential backoff
-                logger.warning(
-                    "Retrying streaming request",
-                    attempt=attempt,
-                    max_retries=self.max_retries,
-                    delay=delay,
-                )
-                await asyncio.sleep(delay)
-                # Reset accumulators on retry
-                pending_calls = {}
-
-            logger.debug(
-                "Starting streaming request", model=body["model"], attempt=attempt
-            )
-
-            try:
-                async with client.stream(
-                    "POST",
-                    url,
-                    headers=headers,
-                    json=body,
-                ) as response:
-                    if response.status_code != 200:
-                        error_text = await response.aread()
-                        logger.error(
-                            "API request failed",
-                            status=response.status_code,
-                            error=error_text.decode(),
-                        )
-
-                        if (
-                            self._should_retry(response.status_code)
-                            and attempt < self.max_retries
-                        ):
-                            last_error = httpx.HTTPStatusError(
-                                f"API request failed: {response.status_code}",
-                                request=response.request,
-                                response=response,
-                            )
-                            continue  # Retry
-
-                        raise httpx.HTTPStatusError(
-                            f"API request failed: {response.status_code}",
-                            request=response.request,
-                            response=response,
-                        )
-
-                    async for line in response.aiter_lines():
-                        if not line or not line.startswith("data: "):
-                            continue
-
-                        text, done = self._process_sse_event(line[6:], pending_calls)
-                        if done:
-                            self._finalize_tool_calls(pending_calls)
-                            return
-                        if text:
-                            yield text
-
-                    # Stream ended without [DONE]
-                    self._finalize_tool_calls(pending_calls)
-                    return
-
-            except httpx.TimeoutException as e:
-                logger.error("Request timed out", timeout=self.timeout, attempt=attempt)
-                last_error = e
-                if attempt < self.max_retries:
-                    continue  # Retry on timeout
-                raise
-            except httpx.HTTPStatusError:
-                raise
-            except Exception as e:
-                if self._is_retryable_error(e) and attempt < self.max_retries:
-                    logger.warning(
-                        "Retryable network error during streaming",
-                        error=str(e),
-                        attempt=attempt,
-                    )
-                    last_error = e
-                    continue  # Retry
-                logger.error("Unexpected error during streaming", error=str(e))
-                raise
-
-        # If we get here, all retries failed
-        self._finalize_tool_calls(pending_calls)
-        if last_error:
-            raise last_error
-
-    def _accumulate_tool_calls(
-        self,
-        tool_call_deltas: list[dict[str, Any]],
-        pending: dict[int, dict[str, str]],
-    ) -> None:
-        """Accumulate incremental tool_call deltas from streaming chunks."""
-        for tc_delta in tool_call_deltas:
-            idx = tc_delta.get("index", 0)
-            if idx not in pending:
-                pending[idx] = {
-                    "id": tc_delta.get("id", ""),
-                    "name": "",
-                    "arguments": "",
+        async for chunk in stream:
+            # Usage (usually in the final chunk)
+            if chunk.usage:
+                self._last_usage = {
+                    "prompt_tokens": chunk.usage.prompt_tokens or 0,
+                    "completion_tokens": chunk.usage.completion_tokens or 0,
+                    "total_tokens": chunk.usage.total_tokens or 0,
                 }
 
-            # First chunk for this index may contain the id
-            if tc_delta.get("id"):
-                pending[idx]["id"] = tc_delta["id"]
+            if not chunk.choices:
+                continue
 
-            if "function" in tc_delta:
-                fn = tc_delta["function"]
-                if "name" in fn and fn["name"]:
-                    pending[idx]["name"] = fn["name"]
-                if "arguments" in fn and fn["arguments"]:
-                    pending[idx]["arguments"] += fn["arguments"]
+            delta = chunk.choices[0].delta
 
-    def _finalize_tool_calls(self, pending: dict[int, dict[str, str]]) -> None:
-        """Convert accumulated pending tool calls into NativeToolCall list."""
-        if not pending:
-            return
+            # Accumulate native tool call deltas
+            if delta.tool_calls:
+                for tc_delta in delta.tool_calls:
+                    idx = tc_delta.index
+                    if idx not in pending_calls:
+                        pending_calls[idx] = {"id": "", "name": "", "arguments": ""}
+                    if tc_delta.id:
+                        pending_calls[idx]["id"] = tc_delta.id
+                    if tc_delta.function:
+                        if tc_delta.function.name:
+                            pending_calls[idx]["name"] = tc_delta.function.name
+                        if tc_delta.function.arguments:
+                            pending_calls[idx]["arguments"] += tc_delta.function.arguments
 
-        self._last_tool_calls = [
-            NativeToolCall(
-                id=call["id"],
-                name=call["name"],
-                arguments=call["arguments"],
-            )
-            for _, call in sorted(pending.items())
-        ]
+            # Yield text content
+            if delta.content:
+                yield delta.content
 
-        if self._last_tool_calls:
+        # Finalize tool calls
+        if pending_calls:
+            self._last_tool_calls = [
+                NativeToolCall(
+                    id=call["id"],
+                    name=call["name"],
+                    arguments=call["arguments"],
+                )
+                for _, call in sorted(pending_calls.items())
+            ]
             logger.debug(
                 "Native tool calls received",
                 count=len(self._last_tool_calls),
                 tools=[tc.name for tc in self._last_tool_calls],
             )
 
+        if self._last_usage:
+            logger.info(
+                "Token usage",
+                prompt_tokens=self._last_usage.get("prompt_tokens", 0),
+                completion_tokens=self._last_usage.get("completion_tokens", 0),
+            )
+
+    # ------------------------------------------------------------------
+    # Non-streaming
+    # ------------------------------------------------------------------
+
     async def _complete_chat(
         self,
         messages: list[dict[str, Any]],
         **kwargs: Any,
     ) -> ChatResponse:
-        """Non-streaming chat completion with retry for 5xx errors."""
-        client = await self._get_client()
-        url = f"{self.base_url}/chat/completions"
-        headers = self._build_headers()
-        body = self._build_request_body(messages, stream=False, **kwargs)
-
-        # Reset native tool call accumulator
+        """Non-streaming chat completion via the OpenAI SDK."""
         self._last_tool_calls = []
 
-        last_error: Exception | None = None
+        create_kwargs: dict[str, Any] = {
+            "model": kwargs.get("model", self.config.model),
+            "messages": messages,
+        }
 
-        for attempt in range(self.max_retries + 1):
-            if attempt > 0:
-                delay = self.retry_delay * (2 ** (attempt - 1))  # Exponential backoff
-                logger.warning(
-                    "Retrying request",
-                    attempt=attempt,
-                    max_retries=self.max_retries,
-                    delay=delay,
+        temp = kwargs.get("temperature", self.config.temperature)
+        if temp is not None:
+            create_kwargs["temperature"] = temp
+
+        max_tok = kwargs.get("max_tokens", self.config.max_tokens)
+        if max_tok is not None:
+            create_kwargs["max_tokens"] = max_tok
+
+        merged_extra = {**self.extra_body}
+        if "extra_body" in kwargs:
+            merged_extra.update(kwargs["extra_body"])
+        if merged_extra:
+            create_kwargs["extra_body"] = merged_extra
+
+        logger.debug("Starting non-streaming request", model=create_kwargs["model"])
+
+        response = await self._client.chat.completions.create(**create_kwargs)
+
+        choice = response.choices[0]
+        message = choice.message
+
+        # Extract native tool calls
+        if message.tool_calls:
+            self._last_tool_calls = [
+                NativeToolCall(
+                    id=tc.id,
+                    name=tc.function.name,
+                    arguments=tc.function.arguments,
                 )
-                await asyncio.sleep(delay)
-
+                for tc in message.tool_calls
+            ]
             logger.debug(
-                "Starting non-streaming request", model=body["model"], attempt=attempt
+                "Native tool calls received (non-streaming)",
+                count=len(self._last_tool_calls),
+                tools=[tc.name for tc in self._last_tool_calls],
             )
 
-            try:
-                response = await client.post(url, headers=headers, json=body)
+        if response.usage:
+            self._last_usage = {
+                "prompt_tokens": response.usage.prompt_tokens or 0,
+                "completion_tokens": response.usage.completion_tokens or 0,
+                "total_tokens": response.usage.total_tokens or 0,
+            }
+            logger.debug(
+                "Request completed",
+                tokens_in=self._last_usage.get("prompt_tokens"),
+                tokens_out=self._last_usage.get("completion_tokens"),
+            )
 
-                # Check for retryable errors before raise_for_status
-                if (
-                    self._should_retry(response.status_code)
-                    and attempt < self.max_retries
-                ):
-                    logger.error(
-                        "API request failed (will retry)",
-                        status=response.status_code,
-                        error=response.text,
-                    )
-                    last_error = httpx.HTTPStatusError(
-                        f"API request failed: {response.status_code}",
-                        request=response.request,
-                        response=response,
-                    )
-                    continue  # Retry
+        return ChatResponse(
+            content=message.content or "",
+            finish_reason=choice.finish_reason or "unknown",
+            usage=self._last_usage,
+            model=response.model,
+        )
 
-                response.raise_for_status()
-
-                data = response.json()
-                choices = data.get("choices", [])
-
-                if not choices:
-                    raise ValueError("No choices in API response")
-
-                choice = choices[0]
-                message = choice.get("message", {})
-                usage = data.get("usage", {})
-
-                # Extract native tool calls from non-streaming response
-                api_tool_calls = message.get("tool_calls", [])
-                if api_tool_calls:
-                    self._last_tool_calls = [
-                        NativeToolCall(
-                            id=tc.get("id", ""),
-                            name=tc.get("function", {}).get("name", ""),
-                            arguments=tc.get("function", {}).get("arguments", ""),
-                        )
-                        for tc in api_tool_calls
-                    ]
-                    logger.debug(
-                        "Native tool calls received (non-streaming)",
-                        count=len(self._last_tool_calls),
-                        tools=[tc.name for tc in self._last_tool_calls],
-                    )
-
-                self._last_usage = usage
-                logger.debug(
-                    "Request completed",
-                    tokens_in=usage.get("prompt_tokens"),
-                    tokens_out=usage.get("completion_tokens"),
-                )
-
-                return ChatResponse(
-                    content=message.get("content", "") or "",
-                    finish_reason=choice.get("finish_reason", "unknown"),
-                    usage=usage,
-                    model=data.get("model", self.config.model),
-                )
-
-            except httpx.TimeoutException as e:
-                logger.error("Request timed out", timeout=self.timeout, attempt=attempt)
-                last_error = e
-                if attempt < self.max_retries:
-                    continue  # Retry on timeout
-                raise
-            except httpx.HTTPStatusError as e:
-                logger.error(
-                    "API request failed",
-                    status=e.response.status_code,
-                    error=e.response.text,
-                )
-                raise
-            except Exception as e:
-                # Check if it's a retryable network error
-                if self._is_retryable_error(e) and attempt < self.max_retries:
-                    logger.warning(
-                        "Retryable network error",
-                        error=str(e),
-                        attempt=attempt,
-                    )
-                    last_error = e
-                    continue  # Retry
-                logger.error("Unexpected error", error=str(e))
-                raise
-
-        # If we get here, all retries failed
-        if last_error:
-            raise last_error
-        raise RuntimeError("Unexpected: no error but no response")
+    # ------------------------------------------------------------------
+    # Context manager
+    # ------------------------------------------------------------------
 
     async def __aenter__(self) -> "OpenAIProvider":
-        """Async context manager entry."""
         return self
 
     async def __aexit__(self, *args: Any) -> None:
-        """Async context manager exit."""
         await self.close()

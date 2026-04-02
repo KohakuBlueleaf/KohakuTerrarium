@@ -211,6 +211,7 @@ class TestBootstrapLLM:
             model="gpt-4o",
             temperature=0.5,
             max_tokens=2048,
+            extra_body=None,
         )
         assert result is mock_instance
 

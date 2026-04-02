@@ -121,9 +121,10 @@ class AgentConfig:
     api_key_env: str = "OPENROUTER_API_KEY"
     base_url: str = "https://openrouter.ai/api/v1"
     temperature: float = 0.7
-    max_tokens: int = 4096
+    max_tokens: int | None = None  # None = let the API decide
     reasoning_effort: str = "medium"  # none/minimal/low/medium/high/xhigh
     service_tier: str | None = None  # None/priority/flex
+    extra_body: dict[str, Any] = field(default_factory=dict)  # extra fields merged into API request body
 
     # System prompt (loaded from file or inline)
     system_prompt: str = "You are a helpful assistant."
@@ -556,13 +557,16 @@ def _construct_agent_config(
             "temperature", config_data.get("temperature", 0.7)
         ),
         max_tokens=controller_data.get(
-            "max_tokens", config_data.get("max_tokens", 4096)
+            "max_tokens", config_data.get("max_tokens", None)
         ),
         reasoning_effort=controller_data.get(
             "reasoning_effort", config_data.get("reasoning_effort", "medium")
         ),
         service_tier=controller_data.get(
             "service_tier", config_data.get("service_tier", None)
+        ),
+        extra_body=controller_data.get(
+            "extra_body", config_data.get("extra_body", {})
         ),
         system_prompt=config_data.get("system_prompt", "You are a helpful assistant."),
         system_prompt_file=config_data.get("system_prompt_file"),

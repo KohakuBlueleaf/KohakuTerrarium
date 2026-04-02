@@ -31,7 +31,7 @@ class LLMConfig:
 
     model: str
     temperature: float = 0.7
-    max_tokens: int = 4096
+    max_tokens: int | None = None
     top_p: float = 1.0
     stop: list[str] | None = None
     extra: dict[str, Any] | None = None
