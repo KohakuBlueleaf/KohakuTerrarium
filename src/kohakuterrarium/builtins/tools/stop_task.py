@@ -54,13 +54,25 @@ class StopTaskTool(BaseTool):
         if not context or not context.agent:
             return ToolResult(error="Agent context required", exit_code=1)
 
-        cancelled = await context.agent.executor.cancel(job_id)
+        agent = context.agent
+
+        # Try executor first (background tools)
+        cancelled = await agent.executor.cancel(job_id)
         if cancelled:
-            logger.info("Task cancelled", job_id=job_id)
-            return ToolResult(output=f"Cancelled: {job_id}", exit_code=0)
+            logger.info("Tool task cancelled", job_id=job_id)
+            return ToolResult(output=f"Cancelled tool: {job_id}", exit_code=0)
+
+        # Try sub-agent manager (background sub-agents)
+        if hasattr(agent, "subagent_manager") and agent.subagent_manager:
+            cancelled = await agent.subagent_manager.cancel(job_id)
+            if cancelled:
+                logger.info("Sub-agent cancelled", job_id=job_id)
+                return ToolResult(output=f"Cancelled sub-agent: {job_id}", exit_code=0)
 
         # Check if it exists but is already done
-        status = context.agent.executor.get_status(job_id)
+        status = agent.executor.get_status(job_id)
+        if not status and hasattr(agent, "subagent_manager") and agent.subagent_manager:
+            status = agent.subagent_manager.get_status(job_id)
         if status:
             return ToolResult(
                 output=f"Task {job_id} is already {status.state.value}",
