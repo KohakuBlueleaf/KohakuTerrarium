@@ -115,9 +115,7 @@ class AgentInitMixin:
             tool_format=parent_tool_format,
         )
 
-        init_subagents(
-            self.config, self.subagent_manager, self.registry, self._loader
-        )
+        init_subagents(self.config, self.subagent_manager, self.registry, self._loader)
 
     def _resolve_tool_format(self) -> ToolCallFormat | None:
         """
@@ -227,6 +225,4 @@ class AgentInitMixin:
     def _init_triggers(self) -> None:
         """Initialize trigger modules from config into trigger_manager."""
         session = getattr(self, "session", None)
-        init_triggers(
-            self.config, self.trigger_manager, session, self._loader
-        )
+        init_triggers(self.config, self.trigger_manager, session, self._loader)

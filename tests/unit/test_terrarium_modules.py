@@ -200,7 +200,7 @@ class TestBuildRootAwarenessPrompt:
         channels: list[ChannelConfig] | None = None,
     ) -> TerrariumConfig:
         creature_list = []
-        for name in (creatures or []):
+        for name in creatures or []:
             creature_list.append(
                 CreatureConfig(
                     name=name,
@@ -227,7 +227,9 @@ class TestBuildRootAwarenessPrompt:
     def test_contains_channels(self):
         """Prompt lists channel names and types."""
         channels = [
-            ChannelConfig(name="draft", channel_type="queue", description="Draft review"),
+            ChannelConfig(
+                name="draft", channel_type="queue", description="Draft review"
+            ),
             ChannelConfig(name="announce", channel_type="broadcast"),
         ]
         config = self._make_config(creatures=["a", "b"], channels=channels)

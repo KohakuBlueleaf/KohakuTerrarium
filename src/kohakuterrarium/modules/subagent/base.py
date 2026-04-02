@@ -244,7 +244,8 @@ class SubAgent:
         try:
             if self.config.timeout > 0:
                 return await asyncio.wait_for(
-                    self._run_internal(task), timeout=self.config.timeout,
+                    self._run_internal(task),
+                    timeout=self.config.timeout,
                 )
             else:
                 return await self._run_internal(task)
@@ -262,7 +263,9 @@ class SubAgent:
             )
         except Exception as e:
             logger.error(
-                "Sub-agent error", subagent_name=self.config.name, error=str(e),
+                "Sub-agent error",
+                subagent_name=self.config.name,
+                error=str(e),
             )
             return SubAgentResult(
                 success=False,
@@ -344,9 +347,7 @@ class SubAgent:
                 output_parts.append(chunk)
 
         native_calls = (
-            self.llm.last_tool_calls
-            if hasattr(self.llm, "last_tool_calls")
-            else []
+            self.llm.last_tool_calls if hasattr(self.llm, "last_tool_calls") else []
         )
 
         if native_calls:
@@ -372,7 +373,9 @@ class SubAgent:
                     tool_name=tc.name,
                 )
             self.conversation.append(
-                "assistant", assistant_content or "", tool_calls=tool_calls_data,
+                "assistant",
+                assistant_content or "",
+                tool_calls=tool_calls_data,
             )
         else:
             self.conversation.append("assistant", assistant_content)
@@ -417,9 +420,7 @@ class SubAgent:
             preview=preview + ("..." if len(assistant_content) > 200 else ""),
         )
 
-    async def _execute_and_report_tools(
-        self, tool_calls: list[ToolCallEvent]
-    ) -> str:
+    async def _execute_and_report_tools(self, tool_calls: list[ToolCallEvent]) -> str:
         """Execute tools, notifying parent of start/done via callback."""
         logger.info(
             "Sub-agent executing tools",
@@ -461,8 +462,10 @@ class SubAgent:
                     result_text = tool_results or "(no output)"
                 if tool_call_id:
                     self.conversation.append(
-                        "tool", result_text,
-                        tool_call_id=tool_call_id, name=tc.name,
+                        "tool",
+                        result_text,
+                        tool_call_id=tool_call_id,
+                        name=tc.name,
                     )
         else:
             if tool_results:

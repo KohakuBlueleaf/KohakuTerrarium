@@ -172,7 +172,9 @@ def resume_terrarium(
     # Rebuild runtime from config, with optional IO mode override for root
     config = load_terrarium_config(config_path)
     if io_mode and config.root:
-        config.root.config_data["input"] = {"type": io_mode if io_mode != "cli" else "cli"}
+        config.root.config_data["input"] = {
+            "type": io_mode if io_mode != "cli" else "cli"
+        }
         config.root.config_data["output"] = {
             "type": io_mode if io_mode != "cli" else "stdout",
             "controller_direct": True,

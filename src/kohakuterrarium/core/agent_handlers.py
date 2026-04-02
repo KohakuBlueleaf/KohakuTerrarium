@@ -365,9 +365,7 @@ class AgentHandlersMixin:
                 )
                 native_results_added = True
             else:
-                results = await self._collect_tool_results(
-                    direct_job_ids, direct_tasks
-                )
+                results = await self._collect_tool_results(direct_job_ids, direct_tasks)
                 if results:
                     feedback_parts.append(results)
 
@@ -379,13 +377,14 @@ class AgentHandlersMixin:
         # Push feedback to controller for next turn
         if native_results_added and not feedback_parts:
             logger.debug("Native tool results in conversation, continuing")
-            await controller.push_event(
-                TriggerEvent(type="tool_complete", content="")
-            )
+            await controller.push_event(TriggerEvent(type="tool_complete", content=""))
         elif feedback_parts:
             combined = "\n\n".join(feedback_parts)
             feedback_event = create_tool_complete_event(
-                job_id="batch", content=combined, exit_code=0, error=None,
+                job_id="batch",
+                content=combined,
+                exit_code=0,
+                error=None,
             )
             logger.debug("Pushing feedback to controller, continuing")
             await controller.push_event(feedback_event)
@@ -475,8 +474,10 @@ class AgentHandlersMixin:
             )
             task = self.executor.get_task(job_id)
             if task is None:
+
                 async def _get_result():
                     return self.executor.get_result(job_id)
+
                 task = asyncio.create_task(_get_result())
 
             return job_id, task, is_direct
@@ -507,7 +508,8 @@ class AgentHandlersMixin:
             return
 
         results_list = await asyncio.gather(
-            *[tasks[jid] for jid in job_ids], return_exceptions=True,
+            *[tasks[jid] for jid in job_ids],
+            return_exceptions=True,
         )
 
         for job_id, result in zip(job_ids, results_list):
@@ -532,7 +534,10 @@ class AgentHandlersMixin:
                 content = ""
 
             controller.conversation.append(
-                "tool", content, tool_call_id=tool_call_id, name=tool_name,
+                "tool",
+                content,
+                tool_call_id=tool_call_id,
+                name=tool_name,
             )
 
     async def _collect_tool_results(
@@ -545,7 +550,8 @@ class AgentHandlersMixin:
             return ""
 
         results_list = await asyncio.gather(
-            *[tasks[jid] for jid in job_ids], return_exceptions=True,
+            *[tasks[jid] for jid in job_ids],
+            return_exceptions=True,
         )
 
         result_strs: list[str] = []
@@ -561,9 +567,7 @@ class AgentHandlersMixin:
             elif result is not None:
                 output = result.output if result.output else ""
                 if result.error:
-                    result_strs.append(
-                        f"## {job_id} - ERROR\n{result.error}\n{output}"
-                    )
+                    result_strs.append(f"## {job_id} - ERROR\n{result.error}\n{output}")
                     logger.info("Tool %s: error", job_id)
                     self.output_router.notify_activity(
                         "tool_error", f"[{label}] ERROR: {result.error}"

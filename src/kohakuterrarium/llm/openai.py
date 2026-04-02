@@ -302,9 +302,7 @@ class OpenAIProvider(BaseLLMProvider):
                         if not line or not line.startswith("data: "):
                             continue
 
-                        text, done = self._process_sse_event(
-                            line[6:], pending_calls
-                        )
+                        text, done = self._process_sse_event(line[6:], pending_calls)
                         if done:
                             self._finalize_tool_calls(pending_calls)
                             return

@@ -113,9 +113,7 @@ def _run_terrarium_cli(args: argparse.Namespace) -> int:
     if session_arg is not None:
         if session_arg == "__auto__":
             _session_dir.mkdir(parents=True, exist_ok=True)
-            session_file = (
-                _session_dir / f"{config.name}_{id(config):08x}.kohakutr"
-            )
+            session_file = _session_dir / f"{config.name}_{id(config):08x}.kohakutr"
         else:
             session_file = Path(session_arg)
 

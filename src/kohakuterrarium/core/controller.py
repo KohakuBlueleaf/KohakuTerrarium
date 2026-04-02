@@ -436,9 +436,7 @@ class Controller:
                         name=tc.name, args=call_args, raw=tc.arguments
                     )
                 else:
-                    yield ToolCallEvent(
-                        name=tc.name, args=call_args, raw=tc.arguments
-                    )
+                    yield ToolCallEvent(name=tc.name, args=call_args, raw=tc.arguments)
 
             # Append assistant message WITH tool_calls metadata
             self.conversation.append(

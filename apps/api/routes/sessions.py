@@ -86,7 +86,9 @@ async def resume_session(session_name: str):
             )
 
     if path is None:
-        raise HTTPException(status_code=404, detail=f"Session not found: {session_name}")
+        raise HTTPException(
+            status_code=404, detail=f"Session not found: {session_name}"
+        )
 
     session_type = detect_session_type(path)
     manager = get_manager()

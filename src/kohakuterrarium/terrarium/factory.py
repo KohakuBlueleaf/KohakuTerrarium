@@ -25,8 +25,13 @@ from kohakuterrarium.terrarium.config import (
 )
 from kohakuterrarium.terrarium.creature import CreatureHandle
 from kohakuterrarium.terrarium.output_log import OutputLogCapture
-from kohakuterrarium.terrarium.tool_manager import TERRARIUM_MANAGER_KEY, TerrariumToolManager
-from kohakuterrarium.terrarium.tool_registration import ensure_terrarium_tools_registered
+from kohakuterrarium.terrarium.tool_manager import (
+    TERRARIUM_MANAGER_KEY,
+    TerrariumToolManager,
+)
+from kohakuterrarium.terrarium.tool_registration import (
+    ensure_terrarium_tools_registered,
+)
 from kohakuterrarium.utils.logging import get_logger
 
 if TYPE_CHECKING:
@@ -175,9 +180,7 @@ def build_creature(
     )
 
     # Build agent config from inline dict (same format as standalone)
-    agent_config = build_agent_config(
-        creature_cfg.config_data, creature_cfg.base_dir
-    )
+    agent_config = build_agent_config(creature_cfg.config_data, creature_cfg.base_dir)
 
     # Each creature gets a PRIVATE session from the environment
     creature_session = environment.get_session(creature_cfg.name)

@@ -85,9 +85,7 @@ def agent_history(agent_id: str, manager=Depends(get_manager)):
 
 
 @router.post("/{agent_id}/chat")
-async def chat_agent(
-    agent_id: str, req: AgentChat, manager=Depends(get_manager)
-):
+async def chat_agent(agent_id: str, req: AgentChat, manager=Depends(get_manager)):
     """Non-streaming chat with an agent."""
     try:
         chunks = []

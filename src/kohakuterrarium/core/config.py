@@ -593,9 +593,7 @@ def _construct_agent_config(
     )
 
 
-def _load_prompt_chain(
-    config: AgentConfig, config_data: dict[str, Any]
-) -> None:
+def _load_prompt_chain(config: AgentConfig, config_data: dict[str, Any]) -> None:
     """Load system prompt from the file chain (base prompts + child prompt).
 
     Mutates config.system_prompt in place if prompt files are found.

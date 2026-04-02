@@ -176,8 +176,7 @@ def run_agent_cli(agent_path: str, log_level: str, session: str | None = None) -
             if session == "__auto__":
                 _SESSION_DIR.mkdir(parents=True, exist_ok=True)
                 session_file = (
-                    _SESSION_DIR
-                    / f"{agent.config.name}_{id(agent):08x}.kohakutr"
+                    _SESSION_DIR / f"{agent.config.name}_{id(agent):08x}.kohakutr"
                 )
             else:
                 session_file = Path(session)

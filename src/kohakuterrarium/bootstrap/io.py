@@ -110,9 +110,7 @@ def _create_output_module(
             logger.warning("Custom output missing module or class, using stdout")
             return StdoutOutput()
         if loader is None:
-            logger.warning(
-                "No module loader available for custom output, using stdout"
-            )
+            logger.warning("No module loader available for custom output, using stdout")
             return StdoutOutput()
         try:
             return loader.load_instance(

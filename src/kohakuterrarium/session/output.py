@@ -142,9 +142,7 @@ class SessionOutput(OutputModule):
                 {"name": name, "detail": detail, **metadata},
             )
 
-    def _handle_trigger_fired(
-        self, name: str, detail: str, metadata: dict
-    ) -> None:
+    def _handle_trigger_fired(self, name: str, detail: str, metadata: dict) -> None:
         self._record(
             "trigger_fired",
             {
@@ -155,9 +153,7 @@ class SessionOutput(OutputModule):
             },
         )
 
-    def _handle_tool_start(
-        self, name: str, detail: str, metadata: dict
-    ) -> None:
+    def _handle_tool_start(self, name: str, detail: str, metadata: dict) -> None:
         self._record(
             "tool_call",
             {
@@ -167,9 +163,7 @@ class SessionOutput(OutputModule):
             },
         )
 
-    def _handle_tool_done(
-        self, name: str, detail: str, metadata: dict
-    ) -> None:
+    def _handle_tool_done(self, name: str, detail: str, metadata: dict) -> None:
         self._record(
             "tool_result",
             {
@@ -180,9 +174,7 @@ class SessionOutput(OutputModule):
             },
         )
 
-    def _handle_tool_error(
-        self, name: str, detail: str, metadata: dict
-    ) -> None:
+    def _handle_tool_error(self, name: str, detail: str, metadata: dict) -> None:
         self._record(
             "tool_result",
             {
@@ -194,9 +186,7 @@ class SessionOutput(OutputModule):
             },
         )
 
-    def _handle_subagent_start(
-        self, name: str, detail: str, metadata: dict
-    ) -> None:
+    def _handle_subagent_start(self, name: str, detail: str, metadata: dict) -> None:
         self._record(
             "subagent_call",
             {
@@ -206,9 +196,7 @@ class SessionOutput(OutputModule):
             },
         )
 
-    def _handle_subagent_done(
-        self, name: str, detail: str, metadata: dict
-    ) -> None:
+    def _handle_subagent_done(self, name: str, detail: str, metadata: dict) -> None:
         self._record(
             "subagent_result",
             {
@@ -221,9 +209,7 @@ class SessionOutput(OutputModule):
             },
         )
 
-    def _handle_subagent_error(
-        self, name: str, detail: str, metadata: dict
-    ) -> None:
+    def _handle_subagent_error(self, name: str, detail: str, metadata: dict) -> None:
         self._record(
             "subagent_result",
             {
@@ -235,9 +221,7 @@ class SessionOutput(OutputModule):
             },
         )
 
-    def _handle_token_usage(
-        self, name: str, detail: str, metadata: dict
-    ) -> None:
+    def _handle_token_usage(self, name: str, detail: str, metadata: dict) -> None:
         self._record(
             "token_usage",
             {
