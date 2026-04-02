@@ -173,6 +173,9 @@ class Controller:
         self._parser_config: ParserConfig | None = None
         self._parser: StreamParser | None = None
 
+        # Interrupt flag: checked during LLM streaming
+        self._interrupted = False
+
         # Job store (shared with executor if provided)
         if executor:
             self.job_store = executor.job_store
@@ -401,6 +404,8 @@ class Controller:
             async for chunk in self.llm.chat(
                 messages, stream=True, tools=tool_schemas or None
             ):
+                if self._interrupted:
+                    break
                 assistant_content += chunk
                 if chunk:
                     yield TextEvent(text=chunk)
@@ -475,6 +480,8 @@ class Controller:
             self._parser = self._get_parser()
 
             async for chunk in self.llm.chat(messages, stream=True):
+                if self._interrupted:
+                    break
                 assistant_content += chunk
 
                 # Parse chunk

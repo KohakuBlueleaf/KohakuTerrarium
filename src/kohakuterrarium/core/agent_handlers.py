@@ -116,6 +116,10 @@ class AgentHandlersMixin:
         They deliver results via executor._on_complete callback,
         which fires _process_event as a new task (same as triggers).
         """
+        # Clear interrupt flags for new processing cycle
+        self._interrupt_requested = False
+        self.controller._interrupted = False
+
         # Notify triggers of context update (for idle timer reset, etc.)
         self.trigger_manager.set_context_all(event.context)
 
@@ -142,6 +146,7 @@ class AgentHandlersMixin:
             # Check for interrupt
             if self._interrupt_requested:
                 self._interrupt_requested = False
+                self.controller._interrupted = False
                 self.output_router.notify_activity(
                     "interrupt", "[system] Processing interrupted"
                 )

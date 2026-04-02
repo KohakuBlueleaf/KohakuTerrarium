@@ -238,11 +238,13 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
     def interrupt(self) -> None:
         """Interrupt the current processing cycle.
 
-        Cancels running direct tools and exits the current LLM turn.
+        Cancels the LLM stream and running direct tools.
         The agent stays alive and ready for the next input.
         Background tools continue running.
         """
         self._interrupt_requested = True
+        # Signal the controller to stop streaming
+        self.controller._interrupted = True
         # Cancel running direct tool tasks
         for job_id, task in list(self.executor._tasks.items()):
             status = self.executor.get_status(job_id)
