@@ -242,13 +242,16 @@ class TUIOutput(BaseOutputModule):
             app = self._tui._app
             done_event = asyncio.Event()
 
+            target = self._default_target or ""
+            scroll_id = self._tui._get_chat_scroll_id(target)
+
             def _do_build_and_mount():
                 async def _inner():
                     try:
                         from textual.containers import VerticalScroll
 
                         ws = _build_resume_widgets(turns)
-                        chat = app.query_one("#chat-scroll", VerticalScroll)
+                        chat = app.query_one(f"#{scroll_id}", VerticalScroll)
                         await chat.mount_all(ws)
                         chat.scroll_end(animate=False)
                     except Exception as e:

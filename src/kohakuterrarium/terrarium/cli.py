@@ -23,7 +23,7 @@ async def run_terrarium_with_tui(runtime: TerrariumRuntime) -> None:
     backend). The TUI handles all user I/O, routing input to the root
     agent via inject_input().
     """
-    # Run runtime as background task
+    # Run runtime as background task (conversations/scratchpad restored inside)
     runtime_task = asyncio.create_task(runtime.run())
 
     # Wait for runtime to be fully started
@@ -62,6 +62,7 @@ async def run_terrarium_with_tui(runtime: TerrariumRuntime) -> None:
     tui_output = TUIOutput(session_key="root")
     tui_output._tui = tui
     tui_output._running = True
+    tui_output._default_target = "root"
     root.output_router.default_output = tui_output
 
     # Wire each creature's output to its TUI tab
@@ -92,6 +93,36 @@ async def run_terrarium_with_tui(runtime: TerrariumRuntime) -> None:
             }
         )
     tui.update_terrarium(creature_info, runtime.list_channels())
+
+    # Replay resume history from SessionStore (if available)
+    session_store = runtime.session_store
+    if session_store:
+        # Root agent events -> root tab
+        root_events = session_store.get_events("root")
+        if root_events and tui_output:
+            await tui_output.on_resume(root_events)
+
+        # Creature events -> creature tabs
+        for name, handle in runtime.creatures.items():
+            creature_events = session_store.get_events(name)
+            if creature_events:
+                creature_out = handle.agent.output_router.default_output
+                if hasattr(creature_out, "on_resume"):
+                    await creature_out.on_resume(creature_events)
+
+        # Channel messages -> channel tabs
+        for ch_info in runtime.list_channels():
+            ch_name = ch_info["name"]
+            ch_messages = session_store.get_channel_messages(ch_name)
+            if ch_messages:
+                tab_target = f"#{ch_name}"
+                for msg in ch_messages:
+                    sender = msg.get("sender", "")
+                    content = msg.get("content", "")
+                    tui.add_trigger_message(
+                        f"[{ch_name}] {sender}", str(content)[:500],
+                        target=tab_target,
+                    )
 
     # Main loop: TUI input -> root agent via inject_input
     try:
