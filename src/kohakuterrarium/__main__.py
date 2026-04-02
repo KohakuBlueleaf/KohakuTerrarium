@@ -338,7 +338,10 @@ def resume_cli(
     try:
         if session_type == "terrarium":
             runtime, store = resume_terrarium(path, pwd_override, io_mode=io_mode)
-            asyncio.run(runtime.run())
+            # Use terrarium TUI (same as kt terrarium run)
+            from kohakuterrarium.terrarium.cli import run_terrarium_with_tui
+
+            asyncio.run(run_terrarium_with_tui(runtime))
         else:
             agent, store = resume_agent(path, pwd_override, io_mode=io_mode)
             asyncio.run(agent.run())
