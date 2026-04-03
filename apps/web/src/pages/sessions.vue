@@ -87,18 +87,27 @@
             <div class="text-warm-400/60">{{ formatDate(session.last_active) }}</div>
           </div>
 
-          <!-- Resume button -->
-          <button
-            class="btn-primary shrink-0 flex items-center gap-1"
-            :disabled="resuming === session.name"
-            :class="{ 'opacity-50 cursor-not-allowed': resuming === session.name }"
-            @click="resumeSession(session)"
-          >
-            <span
-              :class="resuming === session.name ? 'i-carbon-renew kohaku-pulse' : 'i-carbon-play'"
-            />
-            {{ resuming === session.name ? "Resuming..." : "Resume" }}
-          </button>
+          <!-- Resume + Delete buttons -->
+          <div class="flex gap-2 shrink-0">
+            <button
+              class="btn-primary flex items-center gap-1"
+              :disabled="resuming === session.name"
+              :class="{ 'opacity-50 cursor-not-allowed': resuming === session.name }"
+              @click="resumeSession(session)"
+            >
+              <span
+                :class="resuming === session.name ? 'i-carbon-renew kohaku-pulse' : 'i-carbon-play'"
+              />
+              {{ resuming === session.name ? "Resuming..." : "Resume" }}
+            </button>
+            <button
+              class="btn-secondary flex items-center gap-1 text-coral hover:bg-coral/10"
+              title="Delete session"
+              @click="deleteSession(session)"
+            >
+              <span class="i-carbon-trash-can" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -151,6 +160,19 @@ async function resumeSession(session) {
     );
   } finally {
     resuming.value = null;
+  }
+}
+
+async function deleteSession(session) {
+  if (!confirm(`Delete session "${session.name}"?`)) return;
+  try {
+    await sessionAPI.delete(session.name);
+    sessions.value = sessions.value.filter((s) => s.name !== session.name);
+    ElMessage.success("Session deleted");
+  } catch (err) {
+    ElMessage.error(
+      `Failed to delete: ${err.response?.data?.detail || err.message}`,
+    );
   }
 }
 

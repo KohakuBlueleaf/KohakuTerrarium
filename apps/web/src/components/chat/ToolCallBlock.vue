@@ -33,6 +33,11 @@
         >{{ formatArgs(tc.args) }}</span
       >
       <span
+        v-if="elapsed"
+        class="text-[10px] text-warm-400 font-mono shrink-0"
+        >{{ elapsed }}</span
+      >
+      <span
         v-if="tc.result || tc.tools_used?.length"
         class="i-carbon-chevron-down text-warm-400 transition-transform text-[10px]"
         :class="{ 'rotate-180': expanded }"
@@ -132,6 +137,34 @@ const props = defineProps({
 });
 
 defineEmits(["toggle"]);
+
+// Elapsed time for running tools
+const elapsedSec = ref(0);
+let _timer = null;
+
+watchEffect(() => {
+  if (props.tc.status === "running" && props.tc.startedAt) {
+    if (!_timer) {
+      _timer = setInterval(() => {
+        elapsedSec.value = Math.floor((Date.now() - props.tc.startedAt) / 1000);
+      }, 1000);
+    }
+  } else if (_timer) {
+    clearInterval(_timer);
+    _timer = null;
+  }
+});
+
+onUnmounted(() => {
+  if (_timer) clearInterval(_timer);
+});
+
+const elapsed = computed(() => {
+  if (props.tc.status === "running" && elapsedSec.value > 0) {
+    return `${elapsedSec.value}s`;
+  }
+  return "";
+});
 
 const statusIcon = computed(() => {
   if (props.tc.status === "running")

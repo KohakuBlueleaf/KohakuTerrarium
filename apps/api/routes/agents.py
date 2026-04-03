@@ -54,6 +54,52 @@ async def interrupt_agent(agent_id: str, manager=Depends(get_manager)):
     return {"status": "interrupted"}
 
 
+@router.get("/{agent_id}/jobs")
+def agent_jobs(agent_id: str, manager=Depends(get_manager)):
+    """List running background jobs for an agent."""
+    session = manager._agents.get(agent_id)
+    if not session:
+        raise HTTPException(404, f"Agent not found: {agent_id}")
+    agent = session.agent
+    jobs = []
+    for j in agent.executor.get_running_jobs():
+        jobs.append(_job_to_dict(j))
+    if hasattr(agent, "subagent_manager") and agent.subagent_manager:
+        for j in agent.subagent_manager.get_running_jobs():
+            jobs.append(_job_to_dict(j))
+    return jobs
+
+
+@router.post("/{agent_id}/tasks/{job_id}/stop")
+async def stop_agent_task(agent_id: str, job_id: str, manager=Depends(get_manager)):
+    """Stop a specific background task."""
+    session = manager._agents.get(agent_id)
+    if not session:
+        raise HTTPException(404, f"Agent not found: {agent_id}")
+    agent = session.agent
+    if await agent.executor.cancel(job_id):
+        return {"status": "cancelled", "job_id": job_id}
+    if hasattr(agent, "subagent_manager") and agent.subagent_manager:
+        if await agent.subagent_manager.cancel(job_id):
+            return {"status": "cancelled", "job_id": job_id}
+    status = agent.executor.get_status(job_id)
+    if status:
+        return {"status": status.state.value, "job_id": job_id}
+    raise HTTPException(404, f"Task not found: {job_id}")
+
+
+def _job_to_dict(j) -> dict:
+    return {
+        "job_id": j.job_id,
+        "job_type": j.job_type.value,
+        "type_name": j.type_name,
+        "state": j.state.value,
+        "start_time": j.start_time.isoformat() if j.start_time else "",
+        "duration": j.duration,
+        "preview": j.preview,
+    }
+
+
 @router.get("/{agent_id}/history")
 def agent_history(agent_id: str, manager=Depends(get_manager)):
     """Get conversation history + event log for a standalone agent."""

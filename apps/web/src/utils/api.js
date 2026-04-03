@@ -83,6 +83,20 @@ export const terrariumAPI = {
     );
     return data;
   },
+
+  async listCreatureJobs(id, name) {
+    const { data } = await api.get(
+      `/terrariums/${id}/creatures/${name}/jobs`,
+    );
+    return data;
+  },
+
+  async stopCreatureTask(id, name, jobId) {
+    const { data } = await api.post(
+      `/terrariums/${id}/creatures/${name}/tasks/${jobId}/stop`,
+    );
+    return data;
+  },
 };
 
 /** Standalone agent lifecycle */
@@ -125,6 +139,16 @@ export const agentAPI = {
     const { data } = await api.post(`/agents/${id}/chat`, { message });
     return data;
   },
+
+  async listJobs(id) {
+    const { data } = await api.get(`/agents/${id}/jobs`);
+    return data;
+  },
+
+  async stopTask(id, jobId) {
+    const { data } = await api.post(`/agents/${id}/tasks/${jobId}/stop`);
+    return data;
+  },
 };
 
 /** Saved sessions */
@@ -138,6 +162,11 @@ export const sessionAPI = {
   /** @returns {Promise<{instance_id: string, type: string, session_name: string}>} */
   async resume(sessionName) {
     const { data } = await api.post(`/sessions/${sessionName}/resume`);
+    return data;
+  },
+
+  async delete(sessionName) {
+    const { data } = await api.delete(`/sessions/${sessionName}`);
     return data;
   },
 };
