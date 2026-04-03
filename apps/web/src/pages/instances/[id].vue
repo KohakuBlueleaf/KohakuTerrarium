@@ -53,6 +53,7 @@
         v-if="instance.type === 'terrarium'"
         :horizontal="layoutMode === 'vertical'"
         :initial-size="50"
+        persist-key="main"
       >
         <template #first>
           <ChatPanel :instance="instance" />
@@ -61,6 +62,7 @@
           <SplitPane
             :horizontal="layoutMode === 'horizontal'"
             :initial-size="50"
+            persist-key="right"
           >
             <template #first>
               <TopologyGraph

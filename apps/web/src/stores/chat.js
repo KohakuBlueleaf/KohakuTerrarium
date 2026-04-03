@@ -325,12 +325,15 @@ export const useChatStore = defineStore("chat", {
         this._connectCreature(instance.id);
       }
 
-      this.activeTab = this.tabs[0] || null;
+      // Restore saved tabs/active tab for this instance
+      this._restoreTabs();
+      if (!this.activeTab) this.activeTab = this.tabs[0] || null;
     },
 
     openTab(tabKey) {
       this._addTab(tabKey);
       this.activeTab = tabKey;
+      this._saveTabs();
 
       // Load history for creature/root tabs
       if (this._instanceType === "terrarium") {
@@ -349,6 +352,7 @@ export const useChatStore = defineStore("chat", {
       this.activeTab = tab;
       // Clear unread count for the tab we're switching to
       if (tab) delete this.unreadCounts[tab];
+      this._saveTabs();
       // Load history if tab has no messages yet (tab switch catch-up)
       if (tab && this._instanceType === "terrarium") {
         const msgs = this.messagesByTab[tab];
@@ -744,6 +748,33 @@ export const useChatStore = defineStore("chat", {
       if (this._ws) {
         this._ws.close();
         this._ws = null;
+      }
+    },
+
+    _saveTabs() {
+      if (!this._instanceId) return;
+      const key = `chat-tabs-${this._instanceId}`;
+      localStorage.setItem(key, JSON.stringify({
+        tabs: this.tabs,
+        activeTab: this.activeTab,
+      }));
+    },
+
+    _restoreTabs() {
+      if (!this._instanceId) return;
+      const key = `chat-tabs-${this._instanceId}`;
+      try {
+        const saved = JSON.parse(localStorage.getItem(key) || "null");
+        if (saved?.tabs?.length) {
+          for (const tab of saved.tabs) {
+            this._addTab(tab);
+          }
+          if (saved.activeTab && this.tabs.includes(saved.activeTab)) {
+            this.activeTab = saved.activeTab;
+          }
+        }
+      } catch {
+        // ignore corrupt data
       }
     },
   },
