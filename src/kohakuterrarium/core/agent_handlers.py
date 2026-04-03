@@ -220,6 +220,9 @@ class AgentHandlersMixin:
             round_result = await self._run_single_turn(controller)
             all_round_text.extend(round_result.text_output)
 
+            # Emit token usage after each LLM turn (real-time update)
+            self._emit_token_usage(controller)
+
             # Check interrupt after LLM turn (before waiting for tools)
             if self._interrupt_requested:
                 self._cancel_direct_tasks(round_result.direct_tasks)
@@ -478,18 +481,8 @@ class AgentHandlersMixin:
         controller: Controller,
         all_round_text: list[str],
     ) -> None:
-        """Finalize: flush output, emit usage, notify processing end."""
+        """Finalize: flush output, notify processing end."""
         await self._flush_output()
-
-        # Emit token usage
-        usage = getattr(controller, "_last_usage", {})
-        if usage:
-            self.output_router.notify_activity(
-                "token_usage",
-                f"tokens: {usage.get('prompt_tokens', 0)} in, "
-                f"{usage.get('completion_tokens', 0)} out",
-                metadata=usage,
-            )
 
         # Channel-triggered event notification
         trigger_channel = event.context.get("channel") if event.context else None
@@ -518,6 +511,17 @@ class AgentHandlersMixin:
             prompt_tokens = usage.get("prompt_tokens", 0)
             if self.compact_manager.should_compact(prompt_tokens):
                 self.compact_manager.trigger_compact()
+
+    def _emit_token_usage(self, controller: Controller) -> None:
+        """Emit token usage from the last LLM turn to output."""
+        usage = getattr(controller, "_last_usage", {})
+        if usage:
+            self.output_router.notify_activity(
+                "token_usage",
+                f"tokens: {usage.get('prompt_tokens', 0)} in, "
+                f"{usage.get('completion_tokens', 0)} out",
+                metadata=usage,
+            )
 
     def _cancel_direct_tasks(self, tasks: dict[str, asyncio.Task]) -> None:
         """Cancel all running direct tool tasks (on interrupt)."""
