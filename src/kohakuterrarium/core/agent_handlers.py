@@ -7,6 +7,7 @@ the main Agent class to keep file sizes manageable.
 """
 
 import asyncio
+import importlib
 from dataclasses import dataclass, field
 
 from kohakuterrarium.core.controller import Controller
@@ -48,8 +49,6 @@ class AgentHandlersMixin:
 
     async def _restore_triggers(self, saved_triggers: list[dict]) -> None:
         """Re-create resumable triggers from saved state."""
-        import importlib
-
         for saved in saved_triggers:
             trigger_id = saved.get("trigger_id", "")
             type_name = saved.get("type", "")

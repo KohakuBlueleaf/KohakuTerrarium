@@ -82,8 +82,6 @@ def build_root_agent(
     # Root agent uses NoneInput by default (terrarium TUI handles I/O).
     # If running headless (web API), this is correct.
     # If running with TUI, the terrarium CLI creates the TUI separately.
-    from kohakuterrarium.builtins.inputs.none import NoneInput
-
     agent = Agent(
         agent_config,
         input_module=NoneInput(),

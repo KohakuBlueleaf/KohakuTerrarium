@@ -17,6 +17,8 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from kohakuterrarium.llm.message import create_message
+
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -297,8 +299,6 @@ class CompactManager:
         conversation._messages.append(system_msg)
 
         # Add summary as an assistant message with a marker
-        from kohakuterrarium.llm.message import create_message
-
         summary_msg = create_message(
             "assistant",
             f"[Previous context summary (compact round {self._compact_count + 1})]\n\n{summary}",

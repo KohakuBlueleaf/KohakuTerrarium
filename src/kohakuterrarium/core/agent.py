@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 
 from kohakuterrarium.core.agent_handlers import AgentHandlersMixin
 from kohakuterrarium.core.agent_init import AgentInitMixin
+from kohakuterrarium.core.compact import CompactConfig, CompactManager
 from kohakuterrarium.core.config import AgentConfig, load_agent_config
 from kohakuterrarium.core.events import TriggerEvent, create_user_input_event
 from kohakuterrarium.core.loader import ModuleLoader
@@ -246,8 +247,6 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         self._shutdown_event.clear()
 
         # Initialize auto-compact manager
-        from kohakuterrarium.core.compact import CompactConfig, CompactManager
-
         compact_data = self.config.compact or {}
         compact_cfg = CompactConfig(
             max_tokens=compact_data.get("max_tokens", CompactConfig.max_tokens),

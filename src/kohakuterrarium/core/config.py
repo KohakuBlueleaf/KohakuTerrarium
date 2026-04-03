@@ -13,6 +13,8 @@ from typing import Any
 
 import yaml
 
+from kohakuterrarium.packages import resolve_package_path
+
 try:
     import tomllib
 except ImportError:
@@ -265,8 +267,6 @@ def _resolve_base_config_path(base_config: str, child_dir: Path) -> Path | None:
     # Strip quotes first (YAML may quote the @ as "@...")
     clean = base_config.strip('"').strip("'")
     if clean.startswith("@"):
-        from kohakuterrarium.packages import resolve_package_path
-
         try:
             return resolve_package_path(clean)
         except (FileNotFoundError, ValueError) as e:
