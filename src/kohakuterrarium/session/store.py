@@ -293,6 +293,14 @@ class SessionStore:
         except KeyError:
             return {}
 
+    def load_triggers(self, agent: str) -> list[dict]:
+        """Load saved resumable triggers for an agent."""
+        try:
+            val = self.state[f"{agent}:triggers"]
+            return val if isinstance(val, list) else []
+        except KeyError:
+            return []
+
     # ─── Channel Messages ───────────────────────────────────────────
 
     def _next_channel_seq(self, channel: str) -> int:

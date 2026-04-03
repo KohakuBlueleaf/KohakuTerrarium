@@ -128,6 +128,16 @@ def resume_agent(
         agent._pending_resume_events = resume_events
         logger.info("Resume events loaded", agent=agent_name, count=len(resume_events))
 
+    # Load resumable triggers
+    saved_triggers = store.load_triggers(agent_name)
+    if saved_triggers:
+        agent._pending_resume_triggers = saved_triggers
+        logger.info(
+            "Resumable triggers loaded",
+            agent=agent_name,
+            count=len(saved_triggers),
+        )
+
     # Re-attach session store for continued recording
     store.update_status("running")
     agent.attach_session_store(store)
@@ -185,6 +195,7 @@ def resume_terrarium(
     agents = meta.get("agents", [])
     resume_data = {}
     resume_events = {}
+    resume_triggers = {}
     for name in agents:
         resume_data[name] = {
             "conversation": store.load_conversation(name),
@@ -193,9 +204,13 @@ def resume_terrarium(
         events = store.get_events(name)
         if events:
             resume_events[name] = events
+        triggers = store.load_triggers(name)
+        if triggers:
+            resume_triggers[name] = triggers
 
     runtime._pending_session_store = store
     runtime._pending_resume_data = resume_data
+    runtime._pending_resume_triggers = resume_triggers
     runtime._pending_resume_events = resume_events
 
     store.update_status("running")

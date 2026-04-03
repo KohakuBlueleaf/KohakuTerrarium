@@ -46,6 +46,49 @@ class AgentHandlersMixin:
     and background job status management.
     """
 
+    async def _restore_triggers(self, saved_triggers: list[dict]) -> None:
+        """Re-create resumable triggers from saved state."""
+        import importlib
+
+        for saved in saved_triggers:
+            trigger_id = saved.get("trigger_id", "")
+            type_name = saved.get("type", "")
+            module_path = saved.get("module", "")
+            data = saved.get("data", {})
+
+            if not type_name or not module_path:
+                continue
+
+            # Skip triggers that already exist (e.g. config-defined ones)
+            if trigger_id and trigger_id in self.trigger_manager._triggers:
+                continue
+
+            try:
+                mod = importlib.import_module(module_path)
+                cls = getattr(mod, type_name)
+                trigger = cls.from_resume_dict(data)
+
+                # Wire registry/session for ChannelTrigger
+                if hasattr(trigger, "_registry") and trigger._registry is None:
+                    if hasattr(self, "environment") and self.environment:
+                        trigger._registry = self.environment.shared_channels
+                    elif hasattr(self, "session") and self.session:
+                        trigger._registry = self.session.channels
+
+                await self.trigger_manager.add(trigger, trigger_id=trigger_id)
+                logger.info(
+                    "Trigger restored",
+                    trigger_id=trigger_id,
+                    trigger_type=type_name,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Failed to restore trigger",
+                    trigger_id=trigger_id,
+                    trigger_type=type_name,
+                    error=str(e),
+                )
+
     async def _fire_startup_trigger(self) -> None:
         """Fire startup trigger if configured."""
         startup_trigger = self.config.startup_trigger

@@ -116,6 +116,20 @@ def attach_session_store(runtime: TerrariumRuntime, store: Any) -> None:
             logger.info("Resume events set on root agent", count=len(root_events))
         runtime._pending_resume_events = None
 
+    # Set resumable triggers on root agent
+    if (
+        hasattr(runtime, "_pending_resume_triggers")
+        and runtime._pending_resume_triggers
+        and runtime._root_agent is not None
+    ):
+        root_triggers = runtime._pending_resume_triggers.get("root")
+        if root_triggers:
+            runtime._root_agent._pending_resume_triggers = root_triggers
+            logger.info(
+                "Resumable triggers set on root agent", count=len(root_triggers)
+            )
+        runtime._pending_resume_triggers = None
+
     logger.info(
         "Session store attached to terrarium",
         creatures=list(runtime._creatures.keys()),

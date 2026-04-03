@@ -58,6 +58,9 @@ class BaseTrigger(ABC):
     Provides common functionality for trigger handling.
     """
 
+    # Override in subclass to enable resume persistence
+    resumable: bool = False
+
     def __init__(
         self,
         prompt: str | None = None,
@@ -74,6 +77,22 @@ class BaseTrigger(ABC):
         self.options = options
         self._running = False
         self._context: dict[str, Any] = {}
+
+    def to_resume_dict(self) -> dict[str, Any]:
+        """Serialize trigger config for session persistence.
+
+        Override in subclass to save constructor args needed for re-creation.
+        Only called if resumable=True.
+        """
+        return {"prompt": self.prompt, **self.options}
+
+    @classmethod
+    def from_resume_dict(cls, data: dict[str, Any]) -> "BaseTrigger":
+        """Re-create trigger from saved config.
+
+        Override in subclass if constructor signature differs from data keys.
+        """
+        return cls(**data)
 
     @property
     def is_running(self) -> bool:

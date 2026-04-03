@@ -32,6 +32,8 @@ class ChannelTrigger(BaseTrigger):
         event = await trigger.wait_for_trigger()
     """
 
+    resumable = True
+
     def __init__(
         self,
         channel_name: str,
@@ -73,6 +75,27 @@ class ChannelTrigger(BaseTrigger):
             else:
                 self._registry = get_channel_registry()
         logger.debug("Channel trigger started", channel=self.channel_name)
+
+    def to_resume_dict(self) -> dict[str, Any]:
+        """Serialize for session persistence."""
+        return {
+            "channel_name": self.channel_name,
+            "subscriber_id": self.subscriber_id,
+            "prompt": self.prompt,
+            "filter_sender": self.filter_sender,
+            "ignore_sender": self.ignore_sender,
+        }
+
+    @classmethod
+    def from_resume_dict(cls, data: dict[str, Any]) -> "ChannelTrigger":
+        """Re-create from saved config. Registry/session set later by caller."""
+        return cls(
+            channel_name=data["channel_name"],
+            subscriber_id=data.get("subscriber_id"),
+            prompt=data.get("prompt"),
+            filter_sender=data.get("filter_sender"),
+            ignore_sender=data.get("ignore_sender"),
+        )
 
     async def _on_stop(self) -> None:
         """Clean up subscription and log stop."""

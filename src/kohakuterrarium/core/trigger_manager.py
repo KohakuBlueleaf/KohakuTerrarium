@@ -47,6 +47,9 @@ class TriggerManager:
         self._process_event = process_event
         # Optional callback: (trigger_id, event) -> None
         self.on_trigger_fired: Callable[[str, Any], None] | None = None
+        # Session store ref for saving resumable triggers (set by agent)
+        self._session_store: Any = None
+        self._agent_name: str = ""
 
     async def add(
         self,
@@ -86,6 +89,25 @@ class TriggerManager:
                 trigger_id=trigger_id,
                 trigger_type=type(trigger).__name__,
             )
+
+        # Persist resumable triggers to session store
+        if getattr(trigger, "resumable", False) and self._session_store:
+            try:
+                self._session_store.save_state(
+                    self._agent_name,
+                    triggers=[
+                        {
+                            "trigger_id": tid,
+                            "type": type(t).__name__,
+                            "module": type(t).__module__,
+                            "data": t.to_resume_dict(),
+                        }
+                        for tid, t in self._triggers.items()
+                        if getattr(t, "resumable", False)
+                    ],
+                )
+            except Exception as e:
+                logger.debug("Failed to save trigger state", error=str(e))
         else:
             logger.debug(
                 "Trigger registered (not started)",

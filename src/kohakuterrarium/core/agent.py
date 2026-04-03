@@ -293,6 +293,12 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
                 await self.output_router.on_resume(self._pending_resume_events)
                 self._pending_resume_events = None
 
+            # Re-create resumable triggers from saved state
+            pending_triggers = getattr(self, "_pending_resume_triggers", None)
+            if pending_triggers:
+                await self._restore_triggers(pending_triggers)
+                self._pending_resume_triggers = None
+
             # Fire startup trigger if configured
             await self._fire_startup_trigger()
 
@@ -404,6 +410,10 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         if hasattr(self, "subagent_manager"):
             self.subagent_manager._session_store = store
             self.subagent_manager._parent_name = self.config.name
+
+        # Wire session store to trigger manager for resumable trigger persistence
+        self.trigger_manager._session_store = store
+        self.trigger_manager._agent_name = self.config.name
 
         logger.debug("Session store attached", agent=self.config.name)
 
