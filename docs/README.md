@@ -23,6 +23,7 @@ Understand how the system works internally.
 - [Execution Model](architecture/execution-model.md): event sources, processing loop, tool modes
 - [Terrarium Runtime](architecture/terrarium-runtime.md): config, lifecycle, hot-plug, session persistence
 - [Serving Layer](architecture/serving.md): KohakuManager, unified WebSocket, session recording
+- [Prompt System](architecture/prompt-system.md): system prompt aggregation, skill modes, terrarium topology injection
 
 ## API Reference
 Look up specific methods, endpoints, and commands.
