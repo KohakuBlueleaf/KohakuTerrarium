@@ -110,8 +110,8 @@ def main() -> int:
     resume_parser.add_argument(
         "--mode",
         choices=["cli", "tui"],
-        default=None,
-        help="Override input/output mode (cli=stdout, inline=rich+prompt_toolkit, tui=textual)",
+        default="tui",
+        help="Input/output mode (default: tui)",
     )
     resume_parser.add_argument(
         "--log-level",
