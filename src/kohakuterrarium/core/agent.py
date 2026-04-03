@@ -206,6 +206,11 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         await self.input.start()
         await self.output_router.start()
 
+        # Wire Escape key to agent.interrupt() for TUI mode
+        tui_input = getattr(self.input, "_tui", None)
+        if tui_input and tui_input._app:
+            tui_input._app.on_interrupt = self.interrupt
+
         # Wire trigger fired notification to output
         def _on_trigger_fired(trigger_id, event):
             ctx = event.context or {}
