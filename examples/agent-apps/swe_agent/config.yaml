@@ -9,7 +9,7 @@ controller:
   auth_mode: codex-oauth
   model: gpt-5.4
   temperature: 0.5
-  max_tokens: 512000
+  max_tokens: 65536
   tool_format: native
 
   # --- Codex OAuth (ChatGPT subscription) ---
@@ -26,3 +26,6 @@ input:
 output:
   type: stdout
   controller_direct: true
+
+compact:
+  max_tokens: 272000

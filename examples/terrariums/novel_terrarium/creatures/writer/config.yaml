@@ -27,3 +27,6 @@ tools:
   - name: write
     type: builtin
 
+
+compact:
+  max_tokens: 272000

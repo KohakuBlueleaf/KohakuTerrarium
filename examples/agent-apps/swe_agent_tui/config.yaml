@@ -30,3 +30,6 @@ input:
 output:
   type: tui
   controller_direct: true
+
+compact:
+  max_tokens: 128000

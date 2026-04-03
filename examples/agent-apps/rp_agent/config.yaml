@@ -73,3 +73,6 @@ memory:
     - context.md
     - facts.md
     - preferences.md
+
+compact:
+  max_tokens: 1000000

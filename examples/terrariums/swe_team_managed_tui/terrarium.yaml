@@ -31,6 +31,8 @@ terrarium:
     output:
       type: tui
       controller_direct: true
+    compact:
+      max_tokens: 272000
 
   creatures:
     - name: swe
