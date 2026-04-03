@@ -33,8 +33,12 @@ If you can't fix formatting, present correct code and note the issue.
 If you can't run tests, say so explicitly rather than implying success.
 
 ## Team Workflow (when in a terrarium)
-When triggered by a message on a team channel:
-1. Read the task from the trigger message
+You automatically listen to channels assigned to you. Messages arrive as
+trigger events showing [Channel 'name' from sender].
+
+When triggered by a channel message:
+1. Read the task from the trigger message (note which channel it came from)
 2. Do the implementation work using your tools and sub-agents
 3. Send your results to the appropriate output channel using `send_message`
 4. Do NOT just output text. Other creatures cannot see your text output
+5. Broadcast messages are informational. Only act if directly relevant to you

@@ -98,6 +98,40 @@ def build_root_agent(
     awareness = build_root_awareness_prompt(config)
     inject_prompt_section(agent, awareness)
 
+    # Auto-inject channel triggers for ALL channels (root hears everything)
+    broadcast_names = {
+        ch.name for ch in config.channels if ch.channel_type == "broadcast"
+    }
+    for ch in config.channels:
+        if ch.channel_type == "broadcast":
+            prompt = (
+                "[Channel '{channel}' (broadcast) from {sender}]: {content}\n\n"
+                "You are listening to all channels as the team coordinator. "
+                "This was broadcast on '{channel}'. "
+                "You do NOT need to respond to every message."
+            )
+        else:
+            prompt = (
+                "[Channel '{channel}' from {sender}]: {content}\n\n"
+                "A message arrived on '{channel}'. "
+                "Evaluate if you need to act on it or relay information."
+            )
+        trigger = ChannelTrigger(
+            channel_name=ch.name,
+            subscriber_id=f"root_{ch.name}",
+            prompt=prompt,
+            ignore_sender="root",
+            registry=environment.shared_channels,
+        )
+        trigger_id = f"channel_root_{ch.name}"
+        agent.trigger_manager._triggers[trigger_id] = trigger
+        agent.trigger_manager._created_at[trigger_id] = datetime.now()
+        logger.debug(
+            "Injected root channel trigger",
+            channel=ch.name,
+            broadcast=ch.name in broadcast_names,
+        )
+
     return agent
 
 
@@ -114,12 +148,12 @@ def force_register_terrarium_tools(agent: Agent) -> None:
         "terrarium_status",
         "terrarium_stop",
         "terrarium_send",
-        "terrarium_observe",
         "terrarium_history",
         "creature_start",
         "creature_stop",
         "creature_interrupt",
         "list_triggers",
+        "create_trigger",
     ]
     for name in terrarium_tool_names:
         if agent.registry.get_tool(name) is None:
@@ -215,13 +249,14 @@ def build_creature(
         all_listen.append(creature_cfg.name)
 
     for ch_name in all_listen:
-        prompt = None
         if ch_name in broadcast_names:
             prompt = (
-                "[Broadcast on '{channel}' from '{sender}']: {content}\n\n"
-                "This message was broadcast to all team members on '{channel}'. "
-                "Only act on it if it is relevant to your current task."
+                "[Channel '{channel}' (broadcast) from {sender}]: {content}\n\n"
+                "This was broadcast to all listeners on '{channel}'. "
+                "Only respond if relevant to your current task."
             )
+        else:
+            prompt = "[Channel '{channel}' from {sender}]: {content}"
         trigger = ChannelTrigger(
             channel_name=ch_name,
             subscriber_id=creature_cfg.name,
