@@ -53,6 +53,39 @@ def list_sessions(limit: int = 20):
     return results
 
 
+@router.delete("/{session_name}")
+def delete_session(session_name: str):
+    """Delete a saved session file."""
+    path = None
+    for ext in (".kohakutr", ".kt"):
+        candidate = _SESSION_DIR / f"{session_name}{ext}"
+        if candidate.exists():
+            path = candidate
+            break
+
+    if path is None:
+        # Prefix match
+        matches = [
+            p
+            for p in list(_SESSION_DIR.glob("*.kohakutr"))
+            + list(_SESSION_DIR.glob("*.kt"))
+            if p.stem == session_name
+        ]
+        if len(matches) == 1:
+            path = matches[0]
+
+    if path is None:
+        raise HTTPException(
+            status_code=404, detail=f"Session not found: {session_name}"
+        )
+
+    try:
+        path.unlink()
+        return {"status": "deleted", "name": session_name}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Delete failed: {e}")
+
+
 @router.post("/{session_name}/resume")
 async def resume_session(session_name: str):
     """Resume a saved session. Returns the created instance ID.

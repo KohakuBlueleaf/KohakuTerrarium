@@ -68,6 +68,63 @@ async def interrupt_creature(
         raise HTTPException(404, str(e))
 
 
+@router.get("/{name}/jobs")
+def creature_jobs(terrarium_id: str, name: str, manager=Depends(get_manager)):
+    """List running background jobs for a creature (or root agent)."""
+    try:
+        runtime = manager._get_runtime(terrarium_id)
+        if name == "root":
+            agent = runtime.root_agent
+        else:
+            agent = runtime.get_creature_agent(name)
+        if not agent:
+            raise HTTPException(404, f"Creature not found: {name}")
+        jobs = []
+        for j in agent.executor.get_running_jobs():
+            jobs.append(_creature_job_to_dict(j))
+        if hasattr(agent, "subagent_manager") and agent.subagent_manager:
+            for j in agent.subagent_manager.get_running_jobs():
+                jobs.append(_creature_job_to_dict(j))
+        return jobs
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+@router.post("/{name}/tasks/{job_id}/stop")
+async def stop_creature_task(
+    terrarium_id: str, name: str, job_id: str, manager=Depends(get_manager)
+):
+    """Stop a specific background task on a creature."""
+    try:
+        runtime = manager._get_runtime(terrarium_id)
+        if name == "root":
+            agent = runtime.root_agent
+        else:
+            agent = runtime.get_creature_agent(name)
+        if not agent:
+            raise HTTPException(404, f"Creature not found: {name}")
+        if await agent.executor.cancel(job_id):
+            return {"status": "cancelled", "job_id": job_id}
+        if hasattr(agent, "subagent_manager") and agent.subagent_manager:
+            if await agent.subagent_manager.cancel(job_id):
+                return {"status": "cancelled", "job_id": job_id}
+        raise HTTPException(404, f"Task not found: {job_id}")
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+
+
+def _creature_job_to_dict(j) -> dict:
+    return {
+        "job_id": j.job_id,
+        "job_type": j.job_type.value,
+        "type_name": j.type_name,
+        "state": j.state.value,
+        "start_time": j.start_time.isoformat() if j.start_time else "",
+        "duration": j.duration,
+        "preview": j.preview,
+    }
+
+
 @router.post("/{name}/wire")
 async def wire_channel(
     terrarium_id: str, name: str, req: WireChannel, manager=Depends(get_manager)

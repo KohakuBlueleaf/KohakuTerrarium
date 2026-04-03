@@ -275,6 +275,10 @@ export const useChatStore = defineStore("chat", {
     processing: false,
     /** @type {Object<string, {prompt: number, completion: number, total: number}>} Per-source token usage */
     tokenUsage: {},
+    /** @type {Object<string, {name: string, type: string, startedAt: number}>} Running background jobs */
+    runningJobs: {},
+    /** @type {Object<string, number>} Unread message counts per tab */
+    unreadCounts: {},
     /** @type {string | null} */
     _instanceId: null,
     /** @type {string | null} */
@@ -288,6 +292,7 @@ export const useChatStore = defineStore("chat", {
       if (!state.activeTab) return [];
       return state.messagesByTab[state.activeTab] || [];
     },
+    hasRunningJobs: (state) => Object.keys(state.runningJobs).length > 0,
   },
 
   actions: {
@@ -334,6 +339,8 @@ export const useChatStore = defineStore("chat", {
 
     setActiveTab(tab) {
       this.activeTab = tab;
+      // Clear unread count for the tab we're switching to
+      if (tab) delete this.unreadCounts[tab];
       // Load history if tab has no messages yet (tab switch catch-up)
       if (tab && !tab.startsWith("ch:") && this._instanceType === "terrarium") {
         const msgs = this.messagesByTab[tab];
@@ -553,16 +560,22 @@ export const useChatStore = defineStore("chat", {
           const tail = last.parts[last.parts.length - 1];
           if (tail.type === "text") tail._streaming = false;
         }
+        const toolId = data.id || "tc_" + Date.now();
         last.parts.push({
           type: "tool",
-          id: data.id || "tc_" + Date.now(),
+          id: toolId,
           name,
           kind: at === "subagent_start" ? "subagent" : "tool",
           args: data.args || { info: data.detail },
           status: "running",
           result: "",
           tools_used: data.tools_used || [],
+          startedAt: Date.now(),
         });
+        // Track background jobs
+        if (data.background || at === "subagent_start") {
+          this.runningJobs[toolId] = { name, type: at === "subagent_start" ? "subagent" : "tool", startedAt: Date.now() };
+        }
       } else if (at === "tool_done" || at === "subagent_done") {
         const last = msgs[msgs.length - 1];
         if (last?.parts) {
@@ -576,6 +589,7 @@ export const useChatStore = defineStore("chat", {
             tc.status = "done";
             tc.result = data.result || data.detail || "";
             if (data.tools_used) tc.tools_used = data.tools_used;
+            delete this.runningJobs[tc.id];
           }
         }
       } else if (at === "tool_error" || at === "subagent_error") {
@@ -590,6 +604,7 @@ export const useChatStore = defineStore("chat", {
           if (tc) {
             tc.status = "error";
             tc.result = data.detail || "";
+            delete this.runningJobs[tc.id];
           }
         }
       } else if (at === "subagent_tool_start" || at === "subagent_tool_done") {
@@ -634,6 +649,10 @@ export const useChatStore = defineStore("chat", {
           content: data.content,
           timestamp: data.timestamp,
         });
+        // Track unread if not on this tab
+        if (this.activeTab !== tabKey) {
+          this.unreadCounts[tabKey] = (this.unreadCounts[tabKey] || 0) + 1;
+        }
       }
 
       // Update shared messages store (for inspector)
