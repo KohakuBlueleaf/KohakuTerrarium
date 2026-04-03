@@ -123,11 +123,24 @@ class CompactManager:
         return False
 
     def trigger_compact(self) -> None:
-        """Start compaction as a background task."""
+        """Start compaction as a background task.
+
+        Emits compact_start immediately, then runs background summarization.
+        compact_complete is emitted when done.
+        """
         if self._compacting or not self._controller:
             return
 
         self._compacting = True
+
+        # Emit compact_start immediately (before background task)
+        if self._output_router:
+            self._output_router.notify_activity(
+                "compact_start",
+                f"Compacting context (round {self._compact_count + 1})",
+                metadata={"round": self._compact_count + 1},
+            )
+
         self._compact_task = asyncio.create_task(self._run_compact())
         logger.info(
             "Auto-compact triggered",

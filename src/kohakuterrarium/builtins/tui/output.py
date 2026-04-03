@@ -202,18 +202,25 @@ class TUIOutput(BaseOutputModule):
             # ── Token usage ─────────────────────────────��───────
 
             case "token_usage":
+                prompt = metadata.get("prompt_tokens", 0)
+                completion = metadata.get("completion_tokens", 0)
                 total = metadata.get("total_tokens", 0)
-                if total:
-                    self._tui.add_tokens(total)
+                self._tui.update_token_usage(prompt, completion, total)
 
-            # ── Compact summary ────────────────────────────────
+            # ── Compact lifecycle ──────────────────────────────
 
-            case "compact_complete":
+            case "compact_start":
                 self._tui.end_streaming(target=t)
                 self._turn_started = False
                 round_num = metadata.get("round", 0)
+                self._tui.add_compact_summary(round_num, "(compacting...)", target=t)
+                self._tui.update_running("compact", "compacting context")
+
+            case "compact_complete":
+                round_num = metadata.get("round", 0)
                 summary = metadata.get("summary", "")
-                self._tui.add_compact_summary(round_num, summary, target=t)
+                self._tui.update_compact_summary(round_num, summary, target=t)
+                self._tui.update_running("compact", "", remove=True)
 
             # ── Interrupt ───────────────────────────────────────
 

@@ -321,8 +321,44 @@ class TUISession:
     def add_compact_summary(
         self, round_num: int, summary: str, target: str = ""
     ) -> None:
-        """Add a compact summary accordion to the chat."""
-        self._safe_mount(CompactSummaryBlock(round_num, summary), target=target)
+        """Add a compact summary accordion to the chat (shows immediately)."""
+        block = CompactSummaryBlock(round_num, summary)
+        self._last_compact_block = block
+        self._safe_mount(block, target=target)
+
+    def update_compact_summary(
+        self, round_num: int, summary: str, target: str = ""
+    ) -> None:
+        """Update the current compact block with final summary."""
+        block = getattr(self, "_last_compact_block", None)
+        if block:
+
+            def _do():
+                try:
+                    block._body.update(summary)
+                    block.title = f"\u25cf Context compacted (round {round_num})"
+                except Exception:
+                    pass
+
+            self._safe_call(_do)
+        else:
+            self.add_compact_summary(round_num, summary, target=target)
+
+    def update_token_usage(
+        self, prompt_tokens: int = 0, completion_tokens: int = 0, total: int = 0
+    ) -> None:
+        """Update session info with detailed token usage."""
+        if not self._app or not self._app.is_running:
+            return
+
+        def _do():
+            try:
+                panel = self._app.query_one("#session-panel", SessionInfoPanel)
+                panel.add_usage(prompt_tokens, completion_tokens, total)
+            except Exception:
+                pass
+
+        self._safe_call(_do)
 
     def add_tool_block(
         self,

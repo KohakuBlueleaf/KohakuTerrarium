@@ -480,18 +480,33 @@ class SessionInfoPanel(Static):
         super().__init__("", **kwargs)
         self.border_title = "Session"
         self._start_time = time.monotonic()
-        self._tokens = 0
+        self._input_tokens = 0
+        self._output_tokens = 0
+        self._last_prompt_tokens = 0
+        self._compact_threshold = 0
         self._model = ""
         self._session_id = ""
 
     def set_info(self, session_id: str = "", model: str = "", tokens: int = 0) -> None:
         self._session_id = session_id
         self._model = model
-        self._tokens = tokens
+        self._refresh()
+
+    def add_usage(
+        self, prompt_tokens: int = 0, completion_tokens: int = 0, total: int = 0
+    ) -> None:
+        self._input_tokens += prompt_tokens
+        self._output_tokens += completion_tokens
+        self._last_prompt_tokens = prompt_tokens
         self._refresh()
 
     def add_tokens(self, count: int) -> None:
-        self._tokens += count
+        """Backward compat: treat as total input tokens."""
+        self._input_tokens += count
+        self._refresh()
+
+    def set_compact_threshold(self, threshold_tokens: int) -> None:
+        self._compact_threshold = threshold_tokens
         self._refresh()
 
     def _refresh(self) -> None:
@@ -503,10 +518,18 @@ class SessionInfoPanel(Static):
         if self._model:
             lines.append(f"Model: {self._model}")
         lines.append(f"Runtime: {mins}m {secs}s")
-        if self._tokens >= 1000:
-            lines.append(f"Tokens: {self._tokens / 1000:.1f}k")
-        elif self._tokens > 0:
-            lines.append(f"Tokens: {self._tokens}")
+        total = self._input_tokens + self._output_tokens
+        if total > 0:
+            lines.append(
+                f"In: {_fmt_tokens(self._input_tokens)}  "
+                f"Out: {_fmt_tokens(self._output_tokens)}"
+            )
+        if self._compact_threshold > 0 and self._last_prompt_tokens > 0:
+            pct = int(self._last_prompt_tokens / self._compact_threshold * 100)
+            lines.append(
+                f"Context: {_fmt_tokens(self._last_prompt_tokens)}"
+                f"/{_fmt_tokens(self._compact_threshold)} ({pct}%)"
+            )
         self.update("\n".join(lines))
 
 
@@ -611,6 +634,15 @@ class TerrariumPanel(Static):
 
 
 # ── Helpers ─────────────────────────────────────────────────────
+
+
+def _fmt_tokens(n: int) -> str:
+    """Format token count as human-readable string."""
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1000:
+        return f"{n / 1000:.1f}k"
+    return str(n)
 
 
 def _summarize_output(output: str) -> str:
