@@ -201,7 +201,6 @@ class AgentInitMixin:
             include_job_status=True,
             include_tools_list=False,  # Already in aggregated prompt
             max_messages=self.config.max_messages,
-            max_context_chars=self.config.max_context_chars,
             ephemeral=self.config.ephemeral,
             known_outputs=getattr(self, "_known_outputs", set()),
             tool_format=tool_format_name,

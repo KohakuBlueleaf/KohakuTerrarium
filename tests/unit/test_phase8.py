@@ -604,7 +604,6 @@ class TestControllerConfig:
         assert config.include_job_status is True
         assert config.include_tools_list is True
         assert config.batch_stackable_events is True
-        assert config.max_context_chars == 100000
 
     def test_custom_config(self):
         """Test custom controller config."""

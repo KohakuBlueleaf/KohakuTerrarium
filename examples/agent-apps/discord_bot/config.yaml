@@ -17,7 +17,6 @@ controller:
 
   # Context limits
   max_messages: 256
-  max_context_chars: 2000000
 
   # Keep tool list and framework hints in system prompt
   # Context_format.md adds character/rules/instructions closer to generation

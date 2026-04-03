@@ -42,12 +42,10 @@ class ConversationConfig:
 
     Attributes:
         max_messages: Maximum number of messages to keep (0 = unlimited)
-        max_context_chars: Maximum context length in characters (0 = unlimited)
         keep_system: Always keep system message(s) even when truncating
     """
 
     max_messages: int = 0
-    max_context_chars: int = 0
     keep_system: bool = True
 
 
@@ -150,8 +148,8 @@ class Conversation:
         self._maybe_truncate()
 
     def _maybe_truncate(self) -> None:
-        """Truncate messages if limits exceeded."""
-        if self.config.max_messages <= 0 and self.config.max_context_chars <= 0:
+        """Truncate messages if message count limit exceeded."""
+        if self.config.max_messages <= 0:
             return
 
         # Keep system messages if configured
@@ -168,30 +166,10 @@ class Conversation:
             other_messages = list(self._messages)
 
         # Truncate by message count
-        if self.config.max_messages > 0:
-            max_other = self.config.max_messages - len(system_messages)
-            if len(other_messages) > max_other:
-                other_messages = other_messages[-max_other:]
-                logger.debug("Truncated by message count", kept=len(other_messages))
-
-        # Truncate by context chars
-        if self.config.max_context_chars > 0:
-            total = sum(_get_content_text_length(m.content) for m in system_messages)
-            kept = []
-            for msg in reversed(other_messages):
-                msg_len = _get_content_text_length(msg.content)
-                if total + msg_len <= self.config.max_context_chars:
-                    kept.insert(0, msg)
-                    total += msg_len
-                else:
-                    break
-            if len(kept) < len(other_messages):
-                logger.debug(
-                    "Truncated by context chars",
-                    kept=len(kept),
-                    dropped=len(other_messages) - len(kept),
-                )
-            other_messages = kept
+        max_other = self.config.max_messages - len(system_messages)
+        if len(other_messages) > max_other:
+            other_messages = other_messages[-max_other:]
+            logger.debug("Truncated by message count", kept=len(other_messages))
 
         # Rebuild messages list
         self._messages = system_messages + other_messages

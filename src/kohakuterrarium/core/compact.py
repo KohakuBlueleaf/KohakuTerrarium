@@ -23,8 +23,7 @@ from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Default: 320k tokens * ~4 chars/token = ~1.28M chars
-# We use token-based threshold from LLM usage when available
+# Default context limit in tokens (token-based only, no char estimation)
 DEFAULT_MAX_TOKENS = 320_000
 DEFAULT_THRESHOLD = 0.80  # trigger at 80% usage
 DEFAULT_TARGET = 0.40  # aim for 40% after compact
@@ -105,20 +104,14 @@ class CompactManager:
     def should_compact(self, prompt_tokens: int = 0) -> bool:
         """Check if compaction should be triggered.
 
-        Uses prompt_tokens from the last LLM call (most accurate).
-        Falls back to character-based estimation if not available.
+        Uses prompt_tokens from the last LLM call. Token-based only,
+        no character estimation fallback.
         """
         if not self.config.enabled or self._compacting:
             return False
 
         if prompt_tokens > 0:
             return prompt_tokens >= self.config.max_tokens * self.config.threshold
-
-        # Fallback: character-based estimation (~4 chars per token)
-        if self._controller:
-            chars = self._controller.conversation.get_context_length()
-            estimated_tokens = chars / 4
-            return estimated_tokens >= self.config.max_tokens * self.config.threshold
 
         return False
 
@@ -190,7 +183,7 @@ class CompactManager:
             if self._output_router:
                 self._output_router.notify_activity(
                     "compact_complete",
-                    f"Context compacted (round {self._compact_count})",
+                    f"Context auto-compact done (round {self._compact_count})",
                     metadata={
                         "round": self._compact_count,
                         "summary": summary,
@@ -198,7 +191,7 @@ class CompactManager:
                     },
                 )
 
-            # Save compact summary to session store
+            # Save to session store: event log + updated conversation snapshot
             if self._session_store:
                 try:
                     self._session_store.append_event(
@@ -209,6 +202,25 @@ class CompactManager:
                             "messages_compacted": boundary - 1,
                             "compact_round": self._compact_count,
                         },
+                    )
+                except Exception:
+                    pass
+
+                # Overwrite conversation snapshot with post-compact version
+                # so resume gets the compacted conversation, not the full one
+                try:
+                    self._session_store.save_conversation(
+                        self._agent_name,
+                        conversation.to_messages(),
+                    )
+                except Exception:
+                    pass
+
+                # Persist compact_count for resume continuity
+                try:
+                    self._session_store.save_state(
+                        self._agent_name,
+                        compact_count=self._compact_count,
                     )
                 except Exception:
                     pass
@@ -291,7 +303,7 @@ class CompactManager:
         assistant_count = sum(1 for m in messages if m.role == "assistant")
         tool_count = sum(1 for m in messages if m.role == "tool")
         return (
-            f"[Context compacted: {len(messages)} messages truncated "
+            f"[Context auto-compact: {len(messages)} messages truncated "
             f"({user_count} user, {assistant_count} assistant, {tool_count} tool). "
             f"Use search_memory to retrieve specific details from session history.]"
         )

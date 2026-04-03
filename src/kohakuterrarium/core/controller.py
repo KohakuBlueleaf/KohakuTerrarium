@@ -59,7 +59,6 @@ class ControllerConfig:
         include_job_status: Include job status in context
         include_tools_list: Include tool list in system prompt
         batch_stackable_events: Batch stackable events together
-        max_context_chars: Maximum context length
         max_messages: Maximum number of messages to keep
         ephemeral: If True, clear conversation after each interaction (keep system only)
         known_outputs: Set of known output target names (e.g., "discord")
@@ -70,7 +69,6 @@ class ControllerConfig:
     include_job_status: bool = True
     include_tools_list: bool = True
     batch_stackable_events: bool = True
-    max_context_chars: int = 100000  # ~25k tokens, reasonable default
     max_messages: int = 50  # Keep last 50 messages
     ephemeral: bool = False  # Clear after each interaction (for group chat bots)
     known_outputs: set[str] = field(default_factory=set)  # Output targets for parser
@@ -157,7 +155,6 @@ class Controller:
         # Conversation history (with limits from config)
         conv_config = ConversationConfig(
             max_messages=self.config.max_messages,
-            max_context_chars=self.config.max_context_chars,
             keep_system=True,
         )
         self.conversation = Conversation(conv_config)

@@ -154,7 +154,6 @@ class AgentConfig:
 
     # Context management - limits LLM conversation history
     max_messages: int = 0  # Max messages to keep (0 = unlimited)
-    max_context_chars: int = 0  # Max chars (0 = unlimited)
     ephemeral: bool = (
         False  # Clear conversation after each interaction (for group chat)
     )
@@ -599,7 +598,6 @@ def _construct_agent_config(
             "include_hints_in_prompt", config_data.get("include_hints_in_prompt", True)
         ),
         max_messages=controller_data.get("max_messages", 0),
-        max_context_chars=controller_data.get("max_context_chars", 0),
         ephemeral=controller_data.get("ephemeral", False),
         tool_format=controller_data.get("tool_format", "bracket"),
         input=_parse_input_config(config_data.get("input")),

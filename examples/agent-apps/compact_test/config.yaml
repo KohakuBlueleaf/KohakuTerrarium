@@ -7,9 +7,6 @@ controller:
   auth_mode: codex-oauth
   tool_format: native
 
-  # Very low context limit to trigger auto-compact quickly
-  max_context_chars: 40000  # ~10k tokens
-
 input:
   type: tui
   prompt: "> "
@@ -20,7 +17,7 @@ output:
 
 # Auto-compact config (override defaults)
 compact:
-  max_tokens: 10000
+  max_tokens: 15000
   threshold: 0.80      # trigger at 8k tokens
   target: 0.40         # aim for 4k after compact
   keep_recent_turns: 4

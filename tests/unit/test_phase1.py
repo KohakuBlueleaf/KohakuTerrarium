@@ -316,16 +316,13 @@ class TestConversationConfig:
         """Test default configuration."""
         config = ConversationConfig()
         assert config.max_messages == 0  # unlimited
-        assert config.max_context_chars == 0  # unlimited
         assert config.keep_system is True
 
     def test_custom_config(self):
         """Test custom configuration."""
         config = ConversationConfig(
             max_messages=100,
-            max_context_chars=50000,
             keep_system=False,
         )
         assert config.max_messages == 100
-        assert config.max_context_chars == 50000
         assert config.keep_system is False
