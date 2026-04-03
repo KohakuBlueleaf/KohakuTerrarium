@@ -33,6 +33,7 @@ class ChannelTrigger(BaseTrigger):
     """
 
     resumable = True
+    universal = True
 
     def __init__(
         self,

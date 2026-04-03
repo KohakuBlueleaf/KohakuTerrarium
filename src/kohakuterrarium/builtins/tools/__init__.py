@@ -26,6 +26,7 @@ from kohakuterrarium.builtins.tools.http_tool import HttpTool
 from kohakuterrarium.builtins.tools.info import InfoTool
 from kohakuterrarium.builtins.tools.json_read import JsonReadTool
 from kohakuterrarium.builtins.tools.json_write import JsonWriteTool
+from kohakuterrarium.builtins.tools.create_trigger import CreateTriggerTool
 from kohakuterrarium.builtins.tools.list_triggers import ListTriggersTool
 from kohakuterrarium.builtins.tools.read import ReadTool
 from kohakuterrarium.builtins.tools.scratchpad_tool import ScratchpadTool

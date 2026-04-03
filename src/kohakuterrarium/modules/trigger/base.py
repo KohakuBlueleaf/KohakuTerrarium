@@ -60,6 +60,8 @@ class BaseTrigger(ABC):
 
     # Override in subclass to enable resume persistence
     resumable: bool = False
+    # Override in subclass to allow creation via create_trigger tool
+    universal: bool = False
 
     def __init__(
         self,

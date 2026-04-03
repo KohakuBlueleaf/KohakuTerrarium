@@ -173,9 +173,11 @@ class BaseTool:
     """
 
     needs_context: bool = False  # Set True in subclass to receive ToolContext
+    require_manual_read: bool = False  # Block usage until info tool reads the manual
 
     def __init__(self, config: ToolConfig | None = None):
         self.config = config or ToolConfig()
+        self._manual_read = False  # Set to True after info tool reads this tool's docs
 
     @property
     @abstractmethod
