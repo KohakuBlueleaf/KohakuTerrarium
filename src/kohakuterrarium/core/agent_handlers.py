@@ -475,6 +475,12 @@ class AgentHandlersMixin:
         if controller.is_ephemeral:
             controller.flush()
 
+        # Check if auto-compact should trigger
+        if hasattr(self, "compact_manager") and self.compact_manager:
+            prompt_tokens = usage.get("prompt_tokens", 0)
+            if self.compact_manager.should_compact(prompt_tokens):
+                self.compact_manager.trigger_compact()
+
     # ------------------------------------------------------------------
     # Output helpers
     # ------------------------------------------------------------------

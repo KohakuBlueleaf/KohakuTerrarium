@@ -133,6 +133,9 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         # Interrupt flag: set to True to cancel current processing
         self._interrupt_requested = False
 
+        # Auto-compact (initialized after controller is ready)
+        self.compact_manager: Any = None
+
         # Environment and session (explicit or auto-created in _init_executor)
         self.environment: Environment | None = environment
         self._explicit_session: Session | None = session
@@ -241,6 +244,16 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
 
         self._running = True
         self._shutdown_event.clear()
+
+        # Initialize auto-compact manager
+        from kohakuterrarium.core.compact import CompactConfig, CompactManager
+
+        self.compact_manager = CompactManager(CompactConfig())
+        self.compact_manager._controller = self.controller
+        self.compact_manager._llm = self.llm
+        self.compact_manager._agent_name = self.config.name
+        if self.session_store:
+            self.compact_manager._session_store = self.session_store
 
         if self._termination_checker:
             self._termination_checker.start()
@@ -414,6 +427,10 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         # Wire session store to trigger manager for resumable trigger persistence
         self.trigger_manager._session_store = store
         self.trigger_manager._agent_name = self.config.name
+
+        # Wire session store to compact manager
+        if self.compact_manager:
+            self.compact_manager._session_store = store
 
         logger.debug("Session store attached", agent=self.config.name)
 
