@@ -1,8 +1,0 @@
-name: reviewer
-version: "1.0"
-base_config: ../general
-
-controller:
-  reasoning_effort: "${REASONING:high}"
-
-system_prompt_file: prompts/system.md
