@@ -29,9 +29,14 @@ const props = defineProps({
   initialSize: { type: Number, default: 50 },
   /** Minimum size in percent */
   minSize: { type: Number, default: 15 },
+  /** localStorage key for persisting size (optional) */
+  persistKey: { type: String, default: "" },
 });
 
-const size = ref(props.initialSize);
+const _saved = props.persistKey
+  ? parseFloat(localStorage.getItem(`split-${props.persistKey}`) || "0")
+  : 0;
+const size = ref(_saved || props.initialSize);
 const dragging = ref(false);
 const container = ref(null);
 
@@ -70,6 +75,9 @@ function onPointerMove(e) {
 function onPointerUp(e) {
   dragging.value = false;
   e.target.releasePointerCapture(e.pointerId);
+  if (props.persistKey) {
+    localStorage.setItem(`split-${props.persistKey}`, String(size.value));
+  }
   e.target.removeEventListener("pointermove", onPointerMove);
   e.target.removeEventListener("pointerup", onPointerUp);
   e.target.removeEventListener("pointercancel", onPointerUp);
