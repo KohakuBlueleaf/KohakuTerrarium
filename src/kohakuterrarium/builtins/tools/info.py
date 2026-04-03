@@ -50,6 +50,7 @@ class InfoTool(BaseTool):
         doc = get_builtin_tool_doc(name)
         if doc:
             logger.debug("Loaded tool doc", tool_name=name)
+            self._mark_manual_read(name, context)
             return ToolResult(output=doc, exit_code=0)
 
         # 2. Try builtin sub-agent docs
@@ -77,6 +78,7 @@ class InfoTool(BaseTool):
                 doc = tool.get_full_documentation(tool_format=fmt)
                 if doc:
                     logger.debug("Loaded doc from tool instance", tool_name=name)
+                    self._mark_manual_read(name, context)
                     return ToolResult(output=doc, exit_code=0)
 
             # 5. Try sub-agent config
@@ -89,6 +91,16 @@ class InfoTool(BaseTool):
             error=f"No documentation found for '{name}'. "
             "Check the tool/sub-agent name and try again."
         )
+
+    @staticmethod
+    def _mark_manual_read(name: str, context: ToolContext | None) -> None:
+        """Mark a tool as having its manual read (unlocks require_manual_read)."""
+        if not context or not context.agent:
+            return
+        tool = context.agent.registry.get_tool(name)
+        if tool and isinstance(tool, BaseTool) and tool.require_manual_read:
+            tool._manual_read = True
+            logger.debug("Manual read unlocked", tool_name=name)
 
     def get_full_documentation(self, tool_format: str = "native") -> str:
         return """# info

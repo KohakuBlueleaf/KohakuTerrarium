@@ -164,6 +164,22 @@ class Executor:
     ) -> JobResult:
         """Run a tool and update status."""
         try:
+            # Check require_manual_read: block if manual not read yet
+            if (
+                isinstance(tool, BaseTool)
+                and tool.require_manual_read
+                and not tool._manual_read
+            ):
+                return JobResult(
+                    job_id=job_id,
+                    output=(
+                        f"Tool '{tool.tool_name}' requires reading its manual first. "
+                        f"Use the info tool: info(name={tool.tool_name})"
+                    ),
+                    exit_code=1,
+                    error="Manual read required",
+                )
+
             # Build ToolContext for tools that need it
             context = None
             if isinstance(tool, BaseTool) and tool.needs_context:

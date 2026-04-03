@@ -25,6 +25,24 @@ class TimerTrigger(BaseTrigger):
         event = await trigger.wait_for_trigger()
     """
 
+    resumable = True
+    universal = True
+
+    def to_resume_dict(self) -> dict[str, Any]:
+        return {
+            "interval": self.interval,
+            "prompt": self.prompt,
+            "immediate": False,  # Don't fire immediately on resume
+        }
+
+    @classmethod
+    def from_resume_dict(cls, data: dict[str, Any]) -> "TimerTrigger":
+        return cls(
+            interval=data.get("interval", 60.0),
+            prompt=data.get("prompt"),
+            immediate=data.get("immediate", False),
+        )
+
     def __init__(
         self,
         interval: float = 60.0,
