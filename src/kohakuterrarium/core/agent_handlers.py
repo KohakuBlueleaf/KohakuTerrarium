@@ -150,20 +150,29 @@ class AgentHandlersMixin:
     ) -> None:
         """Process a single event through the specified controller.
 
-        Orchestrates the full cycle: push event, run LLM turns in a loop,
-        dispatch tools/sub-agents, collect results, push feedback, and
-        finalize output. See ``_run_controller_loop`` for the inner loop.
-
-        API errors (auth, rate limit, network) are caught and displayed
-        to the user via the output router instead of crashing.
+        The controller loop runs as a cancellable task. interrupt() cancels
+        it directly, which propagates CancelledError through whatever is
+        awaiting (LLM stream, tool gather, etc.) for immediate stop.
         """
         self._prepare_processing_cycle(event, controller)
         await controller.push_event(event)
         await self.output_router.on_processing_start()
 
         all_round_text: list[str] = []
+
+        # Run the loop as a separate task so interrupt() can cancel it
+        # immediately, regardless of what it's awaiting
+        loop_task = asyncio.create_task(
+            self._run_controller_loop(controller, all_round_text)
+        )
+        self._processing_task = loop_task
         try:
-            await self._run_controller_loop(controller, all_round_text)
+            await loop_task
+        except asyncio.CancelledError:
+            logger.info("Processing cancelled by interrupt")
+            self.output_router.notify_activity(
+                "interrupt", "[system] Processing interrupted"
+            )
         except Exception as e:
             error_type = type(e).__name__
             error_msg = str(e)
@@ -172,10 +181,11 @@ class AgentHandlersMixin:
                 error_type=error_type,
                 error=error_msg,
             )
-            # Display error in TUI/frontend instead of crashing
             await self.output_router.write(
                 f"\n[System Error] {error_type}: {error_msg}\n"
             )
+        finally:
+            self._processing_task = None
         await self._finalize_processing(event, controller, all_round_text)
 
     def _prepare_processing_cycle(

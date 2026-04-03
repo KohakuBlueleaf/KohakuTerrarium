@@ -131,8 +131,9 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         self._session_output: Any = None
         self._pending_resume_events: list[dict] | None = None
 
-        # Interrupt flag: set to True to cancel current processing
+        # Interrupt: flag + task reference for immediate cancellation
         self._interrupt_requested = False
+        self._processing_task: asyncio.Task | None = None
 
         # Auto-compact (initialized after controller is ready)
         self.compact_manager: Any = None
@@ -307,16 +308,21 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             self._termination_checker.start()
 
     def interrupt(self) -> None:
-        """Interrupt the current processing cycle.
+        """Interrupt the current processing cycle immediately.
 
-        Cancels the LLM stream and running direct tools.
-        The agent stays alive and ready for the next input.
-        Background tools continue running.
+        Cancels the processing task directly, which propagates
+        CancelledError through whatever is awaiting (LLM stream,
+        tool gather, etc.). The agent stays alive for the next input.
         """
         self._interrupt_requested = True
-        # Signal the controller to stop streaming
         self.controller._interrupted = True
-        # Cancel running direct tool tasks
+
+        # Cancel the processing task (immediate, not flag-based)
+        processing = getattr(self, "_processing_task", None)
+        if processing and not processing.done():
+            processing.cancel()
+
+        # Also cancel running direct tool tasks
         for job_id, task in list(self.executor._tasks.items()):
             status = self.executor.get_status(job_id)
             if status and status.state.value == "running" and not task.done():
