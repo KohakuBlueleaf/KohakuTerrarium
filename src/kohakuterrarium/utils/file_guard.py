@@ -267,8 +267,12 @@ def is_binary_file(path: str | Path, sample_size: int = 8192) -> bool:
     if not chunk:
         return False  # empty file is not binary
 
-    # Count non-printable bytes (outside ASCII printable range + common whitespace)
-    printable = set(range(0x20, 0x7F)) | {0x09, 0x0A, 0x0D}  # tab, LF, CR
-    non_printable = sum(1 for b in chunk if b not in printable)
+    # Null byte check: binary files contain null bytes, text files don't
+    # (even UTF-8 with non-ASCII chars has no null bytes in normal text)
+    if b"\x00" in chunk:
+        return True
 
-    return non_printable / len(chunk) > 0.10
+    # High ratio of control characters (excluding common whitespace + ANSI escape)
+    # suggests binary. UTF-8 high bytes (0x80+) are NOT counted as control chars.
+    control = sum(1 for b in chunk if b < 0x08 or (0x0E <= b <= 0x1F and b != 0x1B))
+    return control / len(chunk) > 0.10
