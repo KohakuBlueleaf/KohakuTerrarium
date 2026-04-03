@@ -26,6 +26,3 @@ input:
 output:
   type: stdout
   controller_direct: true
-
-compact:
-  max_tokens: 272000

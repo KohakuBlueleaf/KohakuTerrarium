@@ -23,11 +23,15 @@ from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Default context limit in tokens (token-based only, no char estimation)
-DEFAULT_MAX_TOKENS = 320_000
-DEFAULT_THRESHOLD = 0.80  # trigger at 80% usage
-DEFAULT_TARGET = 0.40  # aim for 40% after compact
-DEFAULT_KEEP_RECENT = 8  # keep last 8 turns raw
+# Defaults for auto-compaction.
+# max_tokens is the model's context window size. Set this to match
+# the model you are using (e.g. 272000 for gpt-5.4, 1000000 for Gemini 3).
+# threshold triggers compaction when prompt_tokens reaches this fraction
+# of max_tokens. If context somehow exceeds max_tokens, emergency truncation.
+DEFAULT_MAX_TOKENS = 256_000
+DEFAULT_THRESHOLD = 0.80  # compact when prompt_tokens >= 80% of max_tokens
+DEFAULT_TARGET = 0.40  # aim for 40% of max_tokens after compact
+DEFAULT_KEEP_RECENT = 8  # keep last 8 turns raw (not summarized)
 
 COMPACT_PROMPT = """You are summarizing a conversation between an AI agent and a user (or between agents in a team).
 
