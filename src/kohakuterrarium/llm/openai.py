@@ -5,6 +5,8 @@ Supports OpenAI API and compatible services like OpenRouter, Together AI, etc.
 Uses AsyncOpenAI for all API calls (streaming + non-streaming).
 """
 
+import re
+from html import unescape
 from typing import Any, AsyncIterator
 
 from openai import AsyncOpenAI
@@ -23,6 +25,83 @@ logger = get_logger(__name__)
 # Default API endpoints
 OPENAI_BASE_URL = "https://api.openai.com/v1"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _collapse_ws(text: str) -> str:
+    """Collapse repeated whitespace into a single space."""
+    return " ".join(text.split())
+
+
+def _sanitize_error_text(value: Any, limit: int = 280) -> str:
+    """Convert SDK/body text into a short, user-facing error snippet."""
+    if value is None:
+        return ""
+
+    if isinstance(value, (bytes, bytearray)):
+        text = value.decode("utf-8", errors="replace")
+    else:
+        text = str(value)
+
+    text = text.strip()
+    if not text:
+        return ""
+
+    lower = text.lower()
+    if "<html" in lower or "<body" in lower:
+        title_match = re.search(r"<title>(.*?)</title>", text, flags=re.I | re.S)
+        h1_match = re.search(r"<h1[^>]*>(.*?)</h1>", text, flags=re.I | re.S)
+        summary = title_match.group(1) if title_match else None
+        if not summary and h1_match:
+            summary = h1_match.group(1)
+        if summary:
+            clean = _collapse_ws(unescape(_HTML_TAG_RE.sub(" ", summary)))
+            return f"HTML error page: {clean[:limit]}"
+
+        clean = _collapse_ws(unescape(_HTML_TAG_RE.sub(" ", text)))
+        return f"HTML error page: {clean[:limit]}"
+
+    return _collapse_ws(text)[:limit]
+
+
+def _format_openai_api_error(exc: Exception, base_url: str) -> str:
+    """Build a concise, user-facing API error message."""
+    status_code = getattr(exc, "status_code", None)
+    response = getattr(exc, "response", None)
+    if status_code is None and response is not None:
+        status_code = getattr(response, "status_code", None)
+
+    body = getattr(exc, "body", None)
+    detail = _sanitize_error_text(body)
+    if not detail and response is not None:
+        try:
+            detail = _sanitize_error_text(response.text)
+        except Exception:
+            detail = ""
+
+    message_text = _sanitize_error_text(str(exc))
+    parts: list[str] = []
+
+    if status_code is not None:
+        parts.append(f"LLM API request failed with HTTP {status_code}")
+    else:
+        parts.append("LLM API request failed")
+
+    if base_url:
+        parts.append(f"(base_url: {base_url})")
+
+    if message_text and message_text != detail:
+        parts.append(message_text)
+
+    if detail:
+        parts.append(f"Detail: {detail}")
+
+    if status_code == 404 and detail.startswith("HTML error page:"):
+        parts.append(
+            "This usually means the configured base_url is not an OpenAI-compatible API endpoint."
+        )
+
+    return " ".join(parts)
 
 
 class OpenAIProvider(BaseLLMProvider):
@@ -91,6 +170,7 @@ class OpenAIProvider(BaseLLMProvider):
 
         self.extra_body = extra_body or {}
         self._last_usage: dict[str, int] = {}
+        self._base_url = base_url
 
         self._client = AsyncOpenAI(
             api_key=api_key,
@@ -160,7 +240,12 @@ class OpenAIProvider(BaseLLMProvider):
 
         pending_calls: dict[int, dict[str, str]] = {}
 
-        stream = await self._client.chat.completions.create(**create_kwargs)
+        try:
+            stream = await self._client.chat.completions.create(**create_kwargs)
+        except Exception as exc:
+            raise RuntimeError(
+                _format_openai_api_error(exc, self._base_url)
+            ) from exc
 
         async for chunk in stream:
             # Usage (usually in the final chunk)
@@ -252,7 +337,12 @@ class OpenAIProvider(BaseLLMProvider):
 
         logger.debug("Starting non-streaming request", model=create_kwargs["model"])
 
-        response = await self._client.chat.completions.create(**create_kwargs)
+        try:
+            response = await self._client.chat.completions.create(**create_kwargs)
+        except Exception as exc:
+            raise RuntimeError(
+                _format_openai_api_error(exc, self._base_url)
+            ) from exc
 
         choice = response.choices[0]
         message = choice.message

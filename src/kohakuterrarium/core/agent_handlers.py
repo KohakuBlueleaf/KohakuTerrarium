@@ -39,6 +39,15 @@ def _make_job_label(job_id: str) -> tuple[str, str]:
     return tool_name, label
 
 
+def _format_processing_error_message(error: Exception, limit: int = 500) -> str:
+    """Convert an exception into a concise user-facing message."""
+    text = str(error).strip() or error.__class__.__name__
+    text = " ".join(text.split())
+    if len(text) > limit:
+        text = text[: limit - 3] + "..."
+    return text
+
+
 class AgentHandlersMixin:
     """Mixin providing event handling and tool execution for the Agent class.
 
@@ -160,8 +169,14 @@ class AgentHandlersMixin:
         await self.output_router.on_processing_start()
 
         all_round_text: list[str] = []
-        await self._run_controller_loop(controller, all_round_text)
-        await self._finalize_processing(event, controller, all_round_text)
+        try:
+            await self._run_controller_loop(controller, all_round_text)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            await self._handle_processing_exception(controller, error)
+        else:
+            await self._finalize_processing(event, controller, all_round_text)
 
     def _prepare_processing_cycle(
         self, event: TriggerEvent, controller: Controller
@@ -474,6 +489,56 @@ class AgentHandlersMixin:
 
         if controller.is_ephemeral:
             controller.flush()
+
+    async def _handle_processing_exception(
+        self, controller: Controller, error: Exception
+    ) -> None:
+        """Render a processing error to outputs without crashing the agent/TUI."""
+        message = _format_processing_error_message(error)
+        logger.error(
+            "Processing cycle failed",
+            error_type=type(error).__name__,
+            error=message,
+        )
+
+        # Best-effort flush/reset so the UI doesn't remain stuck in "thinking".
+        try:
+            await self._flush_output()
+        except Exception as flush_error:
+            logger.error(
+                "Failed to flush output after processing error",
+                error=str(flush_error),
+            )
+
+        self.output_router.notify_activity(
+            "processing_error",
+            f"[error] {message}",
+            metadata={"error": message, "error_type": type(error).__name__},
+        )
+
+        error_text = (
+            "Error: "
+            f"{message}\n"
+            "The agent is still running. Please check your API endpoint/config and try again."
+        )
+
+        try:
+            # Route to the default output and secondary observers (session/web/etc.).
+            await self.output_router.default_output.write(error_text)
+            for secondary in getattr(self.output_router, "_secondary_outputs", []):
+                await secondary.write(error_text)
+        except Exception as output_error:
+            logger.error(
+                "Failed to emit processing error to outputs",
+                error=str(output_error),
+            )
+        finally:
+            try:
+                await self.output_router.on_processing_end()
+            finally:
+                self.output_router.clear_all()
+                if controller.is_ephemeral:
+                    controller.flush()
 
     # ------------------------------------------------------------------
     # Output helpers

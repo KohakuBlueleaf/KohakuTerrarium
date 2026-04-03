@@ -8,6 +8,7 @@ Tests for:
 - OpenAIProvider initialization and configuration
 """
 
+import httpx
 import pytest
 
 from kohakuterrarium.core.registry import Registry
@@ -315,3 +316,41 @@ class TestOpenAIProviderConfig:
         """Test that custom base_url is passed to the client."""
         provider = self._make_provider(base_url="https://openrouter.ai/api/v1")
         assert "openrouter" in str(provider._client.base_url)
+
+    @pytest.mark.anyio
+    async def test_streaming_404_html_error_is_humanized(self, monkeypatch):
+        """HTML 404 responses should become a concise RuntimeError."""
+        from openai import NotFoundError
+
+        provider = self._make_provider(base_url="https://bad.example/v1")
+        request = httpx.Request(
+            "POST", "https://bad.example/v1/chat/completions"
+        )
+        response = httpx.Response(
+            404,
+            request=request,
+            text=(
+                "<html><head><title>404 Not Found</title></head>"
+                "<body><h1>404 Not Found</h1></body></html>"
+            ),
+        )
+        error = NotFoundError(
+            "Error code: 404", response=response, body=response.text
+        )
+
+        async def _raise_404(**kwargs):
+            raise error
+
+        monkeypatch.setattr(provider._client.chat.completions, "create", _raise_404)
+
+        with pytest.raises(RuntimeError) as excinfo:
+            async for _ in provider._stream_chat(
+                [{"role": "user", "content": "hello"}]
+            ):
+                pass
+
+        message = str(excinfo.value)
+        assert "HTTP 404" in message
+        assert "base_url: https://bad.example/v1" in message
+        assert "OpenAI-compatible API endpoint" in message
+        assert "<html>" not in message.lower()

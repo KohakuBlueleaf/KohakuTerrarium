@@ -4,8 +4,11 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
+import pytest
 
+from kohakuterrarium.core.agent_handlers import AgentHandlersMixin
 from kohakuterrarium.core.events import create_tool_complete_event
+from kohakuterrarium.core.events import create_user_input_event
 from kohakuterrarium.core.session import Session
 from kohakuterrarium.modules.tool.base import (
     BaseTool,
@@ -14,6 +17,7 @@ from kohakuterrarium.modules.tool.base import (
     ToolResult,
 )
 from kohakuterrarium.testing import (
+    ScriptedLLM,
     TestAgentBuilder,
 )
 
@@ -62,6 +66,43 @@ class EchoTool(BaseTool):
         if not msg:
             return ToolResult(error="Missing required argument: message")
         return ToolResult(output=f"Echo: {msg}", exit_code=0)
+
+
+class ErrorLLM:
+    """LLM double that raises on every chat request."""
+
+    def __init__(self, message: str):
+        self.message = message
+        self.last_usage: dict[str, int] = {}
+
+    async def chat(self, messages, *, stream: bool = True, **kwargs):
+        raise RuntimeError(self.message)
+        yield ""  # pragma: no cover - keeps this as an async generator
+
+    async def close(self) -> None:
+        pass
+
+
+class _DummyTriggerManager:
+    """Minimal trigger manager stub for AgentHandlersMixin tests."""
+
+    def set_context_all(self, context):
+        self.context = context
+
+
+class ProcessingHarness(AgentHandlersMixin):
+    """Small harness that exercises AgentHandlersMixin directly."""
+
+    def __init__(self, controller, router):
+        self.controller = controller
+        self.output_router = router
+        self._interrupt_requested = False
+        self._termination_checker = None
+        self._running = True
+        self._processing_lock = asyncio.Lock()
+        self.trigger_manager = _DummyTriggerManager()
+        self.session_store = None
+        self.config = type("Config", (), {"name": "test_agent"})()
 
 
 async def _run_tool_and_get_feedback(env, tool_name: str) -> str:
@@ -217,6 +258,43 @@ class TestToolErrorFeedback:
             if isinstance(m.get("content"), str)
         )
         assert "Simulated failure: disk full" in combined_user_text
+
+
+@pytest.mark.anyio
+async def test_llm_api_error_does_not_crash_processing_loop():
+    """LLM/API failures should surface as text without crashing the processing loop."""
+    env = (
+        TestAgentBuilder()
+        .with_llm(
+            ErrorLLM(
+                "LLM API request failed with HTTP 404 "
+                "(base_url: https://bad.example/v1) "
+                "Detail: HTML error page: 404 Not Found"
+            )
+        )
+        .build()
+    )
+    harness = ProcessingHarness(env.controller, env.router)
+
+    await harness._process_event(create_user_input_event("hello", source="test"))
+
+    assert env.output.processing_starts == 1
+    assert env.output.processing_ends == 1
+    assert "HTTP 404" in env.output.all_text
+    assert "still running" in env.output.all_text
+    assert env.output.activity_types().count("processing_error") == 1
+
+    # The same harness/controller should remain usable for the next turn.
+    env.output.clear_all()
+    env.controller.llm = ScriptedLLM(["Recovered after error."])
+
+    await harness._process_event(create_user_input_event("try again", source="test"))
+
+    assert env.output.processing_starts == 1
+    assert env.output.processing_ends == 1
+    messages = env.controller.conversation.to_messages()
+    assert messages[-1]["role"] == "assistant"
+    assert "Recovered after error." in messages[-1]["content"]
 
 
 # =============================================================================
