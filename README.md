@@ -1,6 +1,6 @@
 <p align="center">
   <h1 align="center">KohakuTerrarium</h1>
-  <p align="center">Build agents that work alone. Compose them into teams that work together.</p>
+  <p align="center"><strong>Build self-contained agents that work alone. Wire them into teams that work together.</strong></p>
 </p>
 
 <p align="center">
@@ -11,14 +11,91 @@
 
 ---
 
-KohakuTerrarium is a Python framework for building AI agents and multi-agent teams, with persistent sessions, a full-screen TUI, a web dashboard, and a package system for sharing agent configs.
+KohakuTerrarium is built around one design choice: **single-agent orchestration and multi-agent coordination are different problems, and they should stay separate**.
 
-**Two levels of composition:**
+- A **creature** is a complete agent with its own LLM controller, tools, sub-agents, memory, triggers, input, and output.
+- A **terrarium** is a **pure wiring layer** that connects creatures through channels, manages lifecycle, and exposes observability. It is not another hidden planner or meta-agent.
+- The same creature config can run **standalone** or inside a terrarium **unchanged**.
 
-- **Creature** (single agent): self-contained with its own LLM, tools, sub-agents, and memory. Works standalone.
-- **Terrarium** (multi-agent team): wires creatures together via channels. Pure routing, no intelligence. Creatures don't know they're in a terrarium.
+That separation is the project’s core idea, and it drives the runtime, the TUI, the web dashboard, the API, and the session system.
 
-Build agents individually. Test them standalone. Place them in a terrarium to collaborate. The same creature config works in both contexts.
+## Why KohakuTerrarium Is Different
+
+<table>
+  <tr>
+    <td valign="top" width="50%">
+      <strong>Inside a creature</strong><br>
+      Vertical coordination<br>
+      One controller delegates to tools and sub-agents.
+    </td>
+    <td valign="top" width="50%">
+      <strong>Between creatures</strong><br>
+      Horizontal coordination<br>
+      Independent creatures communicate explicitly through channels.
+    </td>
+  </tr>
+</table>
+
+This gives you a cleaner split than frameworks that blur everything into one orchestration layer:
+
+- **Reusable creatures**: build once, run solo or in teams
+- **Opaque team members**: terrariums do not inspect creature internals
+- **Explicit communication**: creatures collaborate via named channels, not hidden routing magic
+- **Persistent by default**: sessions save rich runtime state, not just chat history
+- **One runtime, many surfaces**: CLI, TUI, HTTP API, and web UI sit on the same underlying system
+- **Shareable configs**: package and install creature / terrarium configs from Git or local sources
+
+## Key Capabilities
+
+Beyond the creature / terrarium philosophy, KohakuTerrarium already has a strong practical runtime surface:
+
+- **Frontier-style built-in working set**: the default `general` creature ships with file, shell, search, JSON, HTTP, channel, trigger, and introspection tools, plus built-in sub-agents for exploration, planning, implementation, review, summarization, and research.
+- **Non-blocking execution and compaction flow**: tools start immediately during LLM streaming, background jobs do not block the agent loop, and compaction / resume are built into the runtime instead of bolted on afterward.
+- **Session history as operational memory**: `.kohakutr` session files persist conversations, events, jobs, tool metadata, sub-agent state, scratchpad state, channel history, and resumable triggers in a structured store rather than a flat transcript.
+
+## Architecture at a Glance
+
+### Terrarium view
+
+```text
+  +---------+       +---------------------------+
+  |  User   |<----->|        Root Agent         |
+  +---------+       |  (terrarium tools, TUI)   |
+                    +---------------------------+
+                          |               ^
+            sends tasks   |               |  observes results
+                          v               |
+                    +---------------------------+
+                    |     Terrarium Layer       |
+                    |   (pure wiring, no LLM)   |
+                    ├-------┬----------┬--------┤
+                    |  swe  | reviewer |  ....  |
+                    +-------┴----------┴--------+
+```
+
+### Creature view
+
+```text
+    List, Create, Delete  +------------------+
+                    +-----|   Tools System   |
+      +---------+   |     +------------------+
+      |  Input  |   |          ^        |
+      +---------+   V          |        v
+        |   +---------+   +------------------+   +------------+
+        +-->| Trigger |-->|    Controller    |-->| Sub Agents |
+User input  | System  |   |    (Main LLM)    |<--| with tools |
+            +---------+   +------------------+   +------------+
+                ^             |          |
+                |             v          v
+                |         +--------+  +------+
+                +---------|Channels|  |Output|
+                 Receive  +--------+  +------+
+                             |  ^
+                             v  |
+                          +------------------+
+                          | Other Creatures  |
+                          +------------------+
+```
 
 ## Quick Start
 
@@ -28,24 +105,144 @@ git clone https://github.com/Kohaku-Lab/KohakuTerrarium.git
 cd KohakuTerrarium
 pip install -e .
 
-# Install default creatures
+# Install the default packaged creatures / terrariums
 kt install https://github.com/Kohaku-Lab/kohaku-creatures.git
 
-# Authenticate (uses ChatGPT subscription)
+# Authenticate for the bundled SWE configs (uses ChatGPT subscription via Codex OAuth)
 kt login codex
 
-# Run a single agent
+# Run a single creature
 kt run @kohaku-creatures/creatures/swe
 
-# Run a multi-agent team (full TUI with tabs)
+# Run a multi-agent terrarium (full TUI with tabs)
 kt terrarium run @kohaku-creatures/terrariums/swe_team
 ```
 
-## Features
+The framework is not limited to Codex OAuth. It also supports OpenRouter, OpenAI, and OpenAI-compatible APIs. The bundled `swe` and `swe_team` examples are configured for Codex OAuth; the bundled `general` creature defaults to OpenRouter-style configuration.
 
-### Session Persistence
+## Programmatic Usage
 
-Every session is automatically saved to `~/.kohakuterrarium/sessions/`. Resume anytime:
+KohakuTerrarium is not only a CLI / TUI application. It is also a Python framework you can embed inside your own scripts, services, and backends.
+
+### Use an agent inside your own script
+
+```python
+import asyncio
+
+from kohakuterrarium.core.agent import Agent
+
+
+async def main() -> None:
+    agent = Agent.from_path("creatures/general")
+    agent.set_output_handler(lambda text: print(text), replace_default=True)
+
+    await agent.start()
+    try:
+        await agent.inject_input("Summarize what this framework is for.")
+    finally:
+        await agent.stop()
+
+
+asyncio.run(main())
+```
+
+Use this style when you want to embed one creature inside an existing application and drive it directly from Python.
+
+### Start and control a terrarium programmatically
+
+```python
+import asyncio
+
+from kohakuterrarium.core.channel import ChannelMessage
+from kohakuterrarium.terrarium.config import load_terrarium_config
+from kohakuterrarium.terrarium.runtime import TerrariumRuntime
+
+
+async def main() -> None:
+    config = load_terrarium_config("terrariums/swe_team")
+    runtime = TerrariumRuntime(config)
+
+    await runtime.start()
+    try:
+        tasks = runtime.environment.shared_channels.get("tasks")
+        if tasks is not None:
+            await tasks.send(ChannelMessage(
+                sender="user",
+                content="Review the pagination logic for edge cases.",
+            ))
+
+        print(runtime.get_status())
+        await runtime.run()
+    finally:
+        await runtime.stop()
+
+
+asyncio.run(main())
+```
+
+Use this when you want the terrarium runtime as part of a Python workflow, automation script, or custom application loop.
+
+### Build your own backend on top of `KohakuManager`
+
+```python
+import asyncio
+
+from kohakuterrarium.serving.manager import KohakuManager
+
+
+async def main() -> None:
+    manager = KohakuManager(session_dir="./sessions")
+
+    agent_id = await manager.agent_create(config_path="creatures/general")
+    try:
+        async for chunk in manager.agent_chat(agent_id, "What tools do you have?"):
+            print(chunk, end="")
+    finally:
+        await manager.agent_stop(agent_id)
+
+
+asyncio.run(main())
+```
+
+`KohakuManager` is the transport-agnostic serving layer behind the HTTP API. Use it if you want to design your own API server, worker process, or UI on top of the framework.
+
+For more detail, see `docs/api-reference/python.md` and the examples in `examples/code/`.
+
+## Core Concepts
+
+### Creature
+
+A creature is a standalone agent: its own controller, tools, sub-agents, memory, triggers, and I/O. You can run it directly with `kt run <path>`.
+
+### Terrarium
+
+A terrarium connects creatures through shared channels, injects the wiring they need, and manages lifecycle and observability. It does **not** add another reasoning layer.
+
+### Root Agent
+
+A terrarium can optionally define a **root agent** that sits **outside** the terrarium and manages it through terrarium tools such as `terrarium_send`, `terrarium_observe`, `terrarium_status`, and the creature control tools.
+
+### Channels
+
+Channels are how creatures communicate:
+
+- **Queue**: one consumer per message
+- **Broadcast**: all subscribers receive every message
+
+Sending is explicit via `send_message`; receiving happens through injected channel triggers.
+
+### Sessions and Isolation
+
+- **Environment**: shared terrarium state, especially shared channels
+- **Session**: private creature state, including scratchpad and sub-agent state
+
+That keeps team communication shared while creature internals stay private.
+
+## Session Persistence
+
+Every session is automatically saved to `~/.kohakuterrarium/sessions/` unless disabled.
+
+Resume anytime:
 
 ```bash
 kt resume                    # list recent, pick interactively
@@ -53,18 +250,31 @@ kt resume --last             # most recent session
 kt resume swe_team           # prefix match
 ```
 
-What gets saved: conversation history (with full tool_calls metadata), event log, scratchpad state, token usage, sub-agent conversations, channel messages, resumable triggers.
+Session files use the `.kohakutr` format and contain far more than a plain chat transcript:
+
+- conversation history
+- full tool call metadata
+- append-only event log
+- scratchpad state
+- token usage
+- sub-agent conversations
+- channel messages
+- job records
+- resumable triggers
+- config and topology metadata
+
+## Runtime Surfaces
 
 ### TUI (Terminal UI)
 
 Full-screen Textual app with:
 
-- **Terrarium tabs**: root agent, each creature, each channel (same as web frontend)
-- **Accordion tools**: collapsible blocks showing tool name, args, output
-- **Right panel**: running tasks (live), scratchpad viewer, session info, terrarium overview
-- **Escape to interrupt**: cancels LLM generation, agent stays alive
-- **Sub-agent nesting**: tool lines inside sub-agent accordion
-- **Gemstone colors**: iolite, taaffeite, aquamarine, amber, sapphire
+- **Terrarium tabs**: root agent, each creature, each channel
+- **Accordion tools**: collapsible blocks showing tool name, args, and output
+- **Right panel**: running tasks, scratchpad viewer, session info, terrarium overview
+- **Escape to interrupt**: cancels current LLM generation while keeping the agent alive
+- **Sub-agent nesting**: tool lines appear inside sub-agent accordion blocks
+- **Shared model with web UI**: the TUI and web dashboard present the same runtime concepts
 
 ### Web Dashboard
 
@@ -76,11 +286,30 @@ python -m apps.api.main        # API on :8001
 cd apps/web && npm run dev     # Frontend on :5173
 ```
 
-Features: topology graph, multi-tab chat, tool accordion, running tasks panel, session resume, channel message feed, token tracking, dark/light mode.
+Features:
 
-### Package System
+- topology graph
+- multi-tab chat
+- tool accordion
+- running tasks panel
+- session resume
+- channel message feed
+- token tracking
+- dark / light mode
 
-Share and install creature/terrarium configs:
+### Interrupt System
+
+Interruption exists across all interfaces:
+
+- **TUI**: `Escape`
+- **Web**: stop button or `Escape`
+- **API**: `POST /api/agents/{id}/interrupt` or `POST /api/terrariums/{id}/creatures/{name}/interrupt`
+- **Tools**: `stop_task` cancels a background tool or sub-agent by job ID
+- **Root agent**: `creature_interrupt` interrupts a creature without stopping it
+
+## Package System
+
+Share and install creature / terrarium configs:
 
 ```bash
 # Install from git
@@ -107,101 +336,189 @@ Packages use `@package-name/path` references for cross-package inheritance:
 base_config: "@kohaku-creatures/creatures/swe"
 ```
 
-### Default Creatures (kohaku-creatures)
+A package typically looks like this:
+
+```text
+my-package/
+  kohaku.yaml
+  creatures/
+    my-agent/
+      config.yaml
+      prompts/
+  terrariums/
+    my-team/
+      terrarium.yaml
+```
+
+## Default Creatures and Terrariums
+
+The repository includes default configs under `creatures/` and `terrariums/`, and the same defaults are also distributed as the installable `kohaku-creatures` package.
+
+### Creatures
 
 | Creature | Description |
 |----------|-------------|
-| `general` | Base: 19 tools, 6 sub-agents, core personality |
-| `swe` | Software engineering (coding workflow, git safety) |
-| `reviewer` | Code review (severity levels, structured feedback) |
-| `ops` | Infrastructure and operations |
-| `researcher` | Research and analysis |
-| `creative` | Creative writing |
-| `root` | Terrarium management and task delegation |
+| `general` | Base creature with 20 built-in tools, 6 built-in sub-agents, and the core prompt / workflow style |
+| `swe` | Software engineering specialist with coding workflow and git safety rules |
+| `reviewer` | Code review specialist with structured severity-based feedback |
+| `ops` | Infrastructure and operations specialist |
+| `researcher` | Research and analysis specialist |
+| `creative` | Creative writing specialist |
+| `root` | Terrarium orchestration and delegation specialist |
 
-Terrarium: `swe_team` (root orchestrates, swe implements, reviewer approves)
+### Terrarium
 
-### Tools
+| Terrarium | Description |
+|-----------|-------------|
+| `swe_team` | A software engineering team with a root orchestrator, an implementing `swe` creature, and a `reviewer` creature |
 
-**19 general tools**: bash, python, read, write, edit, glob, grep, tree, think, scratchpad, send_message, wait_channel, http, ask_user, json_read, json_write, info, list_triggers, stop_task
+`swe_team` is wired roughly like this:
 
-**8 terrarium tools** (root agent): terrarium_create, terrarium_status, terrarium_stop, terrarium_send, terrarium_observe, terrarium_history, creature_start, creature_stop, creature_interrupt
+```text
+tasks -> swe -> review -> reviewer -> feedback / results
+              \______________________________/
+                     team_chat (broadcast)
+```
 
-### Interrupt System
+## Built-in Tools and Sub-Agents
 
-- **TUI**: Escape key interrupts current LLM generation
-- **Web**: Stop button (red) or Escape key
-- **API**: `POST /api/agents/{id}/interrupt` or `POST /api/terrariums/{id}/creatures/{name}/interrupt`
-- **Tools**: `stop_task` cancels background tools/sub-agents by job ID
-- **Root agent**: `creature_interrupt` tool interrupts a creature's processing
+### General built-in tools
 
-### API
+The default `general` creature ships with 20 built-in tools:
 
-REST + WebSocket endpoints for managing agents and terrariums:
+| Tool | Description |
+|------|-------------|
+| `bash` | Execute shell commands when no dedicated structured tool is a better fit |
+| `python` | Execute Python code and return its output |
+| `read` | Read file contents safely before editing |
+| `write` | Create or overwrite files |
+| `edit` | Modify files via search/replace or unified diff |
+| `glob` | Find files by glob pattern |
+| `grep` | Search file contents with regex patterns |
+| `tree` | Show directory structure as a tree |
+| `think` | Record an explicit reasoning step that stays in context |
+| `scratchpad` | Read and write session-scoped working memory |
+| `info` | Load full documentation for a tool or sub-agent |
+| `ask_user` | Ask the user a question mid-execution |
+| `http` | Make HTTP requests to APIs and web pages |
+| `json_read` | Read and query JSON files |
+| `json_write` | Modify JSON files at specific paths |
+| `send_message` | Send a message to a named channel |
+| `wait_channel` | Wait for a message on a named channel |
+| `stop_task` | Cancel a running background tool or sub-agent by job ID |
+| `list_triggers` | Inspect active triggers on the current agent |
+| `create_trigger` | Create timer, scheduler, or channel triggers dynamically |
+
+### Terrarium management tools
+
+The root agent is force-given the terrarium management surface for operating a team:
+
+| Tool | Description |
+|------|-------------|
+| `terrarium_create` | Create and start a terrarium from a config path |
+| `terrarium_status` | Inspect a running terrarium or list running terrariums |
+| `terrarium_stop` | Stop a running terrarium and all its creatures |
+| `terrarium_send` | Send a message into a terrarium channel |
+| `terrarium_observe` | Subscribe to a terrarium channel and receive messages as future events |
+| `terrarium_history` | Read recent terrarium channel history |
+| `creature_start` | Hot-add a creature to a running terrarium |
+| `creature_stop` | Stop and remove a creature from a running terrarium |
+| `creature_interrupt` | Interrupt a creature’s current processing without removing it |
+
+### Built-in sub-agents
+
+The default `general` creature also includes 6 built-in sub-agents:
+
+| Sub-agent | Description |
+|-----------|-------------|
+| `explore` | Search and explore the codebase in read-only mode |
+| `plan` | Create implementation plans and design decisions |
+| `worker` | Implement code changes, fix bugs, and refactor |
+| `critic` | Review and critique code, plans, or outputs |
+| `summarize` | Condense long content into concise summaries |
+| `research` | Perform deeper research using files and web access |
+
+## API
+
+KohakuTerrarium includes a FastAPI application plus WebSocket endpoints for managing standalone agents and terrariums.
+
+### REST surface
 
 | Category | Endpoints |
 |----------|-----------|
 | Agents | create, list, get, stop, interrupt, history, jobs, chat, stop task |
-| Terrariums | create, list, get, stop, channels, creatures, history, chat |
+| Terrariums | create, list, get, stop, channels, add channel, history, chat |
 | Creatures | list, add, remove, interrupt, wire, jobs, stop task |
+| Channels | list, send |
 | Sessions | list, resume, delete |
-| WebSocket | `/ws/terrariums/{id}`, `/ws/creatures/{id}` |
+| Config Discovery | `/api/configs/creatures`, `/api/configs/terrariums` |
+
+### WebSocket surface
+
+| Endpoint | Purpose |
+|----------|---------|
+| `/ws/terrariums/{id}` | Unified terrarium event stream: root, creatures, and channels |
+| `/ws/creatures/{id}` | Unified standalone creature event stream |
+| `/ws/terrariums/{id}/channels` | Channel-focused WebSocket stream |
+| `/ws/agents/{id}/chat` | Standalone agent chat stream |
+
+The HTTP API and web dashboard are application layers built on top of the serving layer in `src/kohakuterrarium/serving/`.
 
 ## CLI Reference
 
 | Command | Description |
 |---------|-------------|
-| `kt run <path>` | Run a single agent |
-| `kt terrarium run <path>` | Run a multi-agent team with TUI |
+| `kt run <path>` | Run a single creature / agent |
+| `kt terrarium run <path>` | Run a multi-agent terrarium with TUI |
+| `kt terrarium info <path>` | Show terrarium config details |
 | `kt resume [session]` | Resume a session (interactive picker if no arg) |
-| `kt install <source> [-e]` | Install creature/terrarium package |
+| `kt install <source> [-e]` | Install a creature / terrarium package |
 | `kt uninstall <name>` | Remove a package |
 | `kt list` | Show installed packages and agents |
-| `kt edit <@pkg/path>` | Edit a config in $EDITOR |
-| `kt login codex` | Authenticate with ChatGPT |
-| `kt logs [session]` | View session events |
+| `kt edit <@pkg/path>` | Edit a config in `$EDITOR` |
 | `kt info <path>` | Show agent config details |
-
-## Architecture
-
-```
-User <-> Root Agent (creature with terrarium tools)
-              |
-              v  (creates, manages, observes via tools)
-         +-----------+
-         | Terrarium |  <-- pure wiring, no intelligence
-         +-----------+
-         | swe | reviewer | ... |  <-- opaque creatures
-```
-
-**Vertical** (inside creature): controller delegates to sub-agents (private, hierarchical)
-**Horizontal** (terrarium): creatures communicate via channels (peer, opaque)
+| `kt login codex` | Authenticate with Codex OAuth / ChatGPT subscription |
 
 ## Project Structure
 
-```
+```text
 src/kohakuterrarium/
-  core/           # Agent, controller, executor, events, session
-  terrarium/      # Multi-agent runtime, config, hot-plug
-  builtins/       # Tools, sub-agents, inputs, outputs, TUI
-  session/        # Session persistence (.kohakutr files)
-  serving/        # HTTP API serving layer
-  modules/        # Plugin protocols (input, output, tool, trigger)
-  llm/            # LLM providers (OpenAI, Codex OAuth)
-  packages.py     # Package manager (kt install)
+  core/           # Agent runtime, controller, executor, events, environment
+  terrarium/      # Multi-agent runtime, config loading, hot-plug, topology wiring
+  builtins/       # Built-in tools, sub-agents, I/O modules, TUI
+  session/        # Session persistence (.kohakutr files), resume support
+  serving/        # Transport-agnostic service manager and event streaming
+  modules/        # Plugin protocols: input, output, tool, trigger
+  llm/            # LLM providers, including Codex OAuth support
+  parsing/        # Tool-call parsing and stream handling
+  prompt/         # Prompt assembly and injection
+  packages.py     # Package manager for kt install / resolve
 
 apps/
   api/            # FastAPI HTTP + WebSocket server
   web/            # Vue 3 frontend
 
-kohaku-creatures/ # Default creatures + terrariums (submodule)
+kohaku-creatures/ # Installable package form of the default configs
+examples/         # Example agent apps, terrariums, and code samples
+docs/             # Concepts, architecture, guides, API reference
 ```
+
+## Documentation Map
+
+If you want more detail after the README:
+
+- `docs/guide/getting-started.md` — installation, authentication, first agent
+- `docs/guide/configuration.md` — creature and terrarium YAML reference
+- `docs/concept/README.md` — core abstractions and why the split exists
+- `docs/architecture/README.md` — internal architecture and execution model
+- `docs/api-reference/http.md` — HTTP and WebSocket API reference
+- `docs/api-reference/cli.md` — CLI reference
 
 ## License
 
 [KohakuTerrarium License 1.0](LICENSE): based on Apache-2.0 with naming and attribution requirements.
 
-- Derivative works must include "Kohaku" or "Terrarium" in their name
-- Must provide visible attribution with link to this project
+- Derivative works must include `Kohaku` or `Terrarium` in their name
+- Derivative works must provide visible attribution with a link to this project
 
 Copyright 2024-2026 Shih-Ying Yeh (KohakuBlueLeaf) and contributors
