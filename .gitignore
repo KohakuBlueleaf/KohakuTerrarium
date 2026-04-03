@@ -5,6 +5,9 @@ ideas/
 example_output/
 novel_log.txt
 novel_out.txt
+.ruff_cache/
+.claude/
+.kohaku/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
