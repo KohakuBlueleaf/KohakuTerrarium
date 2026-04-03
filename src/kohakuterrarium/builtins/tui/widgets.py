@@ -513,6 +513,50 @@ class SessionInfoPanel(Static):
 # ── Helpers ─────────────────────────────────────────────────────
 
 
+class CompactSummaryBlock(Collapsible):
+    """Compact summary displayed as a collapsible accordion.
+
+    Sapphire color scheme to distinguish from tools (iolite) and
+    sub-agents (taaffeite).
+    """
+
+    DEFAULT_CSS = """
+    CompactSummaryBlock {
+        height: auto;
+        margin: 1 0;
+        padding: 0;
+    }
+    CompactSummaryBlock > Contents {
+        height: auto;
+        max-height: 12;
+        overflow-y: auto;
+        padding: 0 1;
+    }
+    CompactSummaryBlock > CollapsibleTitle {
+        color: #0F52BA;
+        background: transparent;
+    }
+    CompactSummaryBlock > CollapsibleTitle:hover {
+        background: #0F52BA 15%;
+    }
+    CompactSummaryBlock > CollapsibleTitle:focus {
+        background: #0F52BA 15%;
+    }
+    .compact-body {
+        height: auto;
+        color: $text-muted;
+    }
+    """
+
+    BUTTON_OPEN = "[-]"
+    BUTTON_CLOSED = "[+]"
+
+    def __init__(self, round_num: int, summary: str, **kwargs):
+        self._body = Static(summary, classes="compact-body")
+        title = f"\u25cf Context compacted (round {round_num})"
+        super().__init__(self._body, title=title, collapsed=True, **kwargs)
+
+
 class TerrariumPanel(Static):
     """Creature and channel overview for terrarium mode."""
 

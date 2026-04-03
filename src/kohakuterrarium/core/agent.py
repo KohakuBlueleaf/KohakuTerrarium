@@ -251,6 +251,7 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         self.compact_manager = CompactManager(CompactConfig())
         self.compact_manager._controller = self.controller
         self.compact_manager._llm = self.llm
+        self.compact_manager._output_router = self.output_router
         self.compact_manager._agent_name = self.config.name
         if self.session_store:
             self.compact_manager._session_store = self.session_store

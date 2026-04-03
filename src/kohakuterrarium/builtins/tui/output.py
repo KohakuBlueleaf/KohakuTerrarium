@@ -199,12 +199,21 @@ class TUIOutput(BaseOutputModule):
                 label = f"[{channel}] {sender}" if channel else name
                 self._tui.add_trigger_message(label, content[:500], target=t)
 
-            # ── Token usage ─────────────────────────────────────
+            # ── Token usage ─────────────────────────────��───────
 
             case "token_usage":
                 total = metadata.get("total_tokens", 0)
                 if total:
                     self._tui.add_tokens(total)
+
+            # ── Compact summary ────────────────────────────────
+
+            case "compact_complete":
+                self._tui.end_streaming(target=t)
+                self._turn_started = False
+                round_num = metadata.get("round", 0)
+                summary = metadata.get("summary", "")
+                self._tui.add_compact_summary(round_num, summary, target=t)
 
             # ── Interrupt ───────────────────────────────────────
 

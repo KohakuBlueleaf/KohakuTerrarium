@@ -17,6 +17,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Footer, Header, Input, Static, TabbedContent, TabPane
 
 from kohakuterrarium.builtins.tui.widgets import (
+    CompactSummaryBlock,
     RunningPanel,
     ScratchpadPanel,
     SessionInfoPanel,
@@ -316,6 +317,12 @@ class TUISession:
         self, label: str, content: str = "", target: str = ""
     ) -> None:
         self._safe_mount(TriggerMessage(label, content), target=target)
+
+    def add_compact_summary(
+        self, round_num: int, summary: str, target: str = ""
+    ) -> None:
+        """Add a compact summary accordion to the chat."""
+        self._safe_mount(CompactSummaryBlock(round_num, summary), target=target)
 
     def add_tool_block(
         self,

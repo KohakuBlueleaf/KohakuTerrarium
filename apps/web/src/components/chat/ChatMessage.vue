@@ -82,6 +82,37 @@
     </div>
   </div>
 
+  <!-- Compact summary (accordion) -->
+  <div
+    v-else-if="message.role === 'compact'"
+    class="w-full my-2 border border-sapphire/20 dark:border-sapphire/30 rounded-lg overflow-hidden"
+  >
+    <div
+      class="flex items-center gap-2 text-xs px-3 py-1.5 cursor-pointer select-none bg-sapphire/6 dark:bg-sapphire/10"
+      @click="compactExpanded = !compactExpanded"
+    >
+      <span class="text-sapphire">&bull;</span>
+      <span class="font-semibold text-sapphire dark:text-sapphire-light">
+        Context compacted (round {{ message.round }})
+      </span>
+      <span class="text-warm-400 text-[10px]">
+        {{ message.messagesCompacted }} messages summarized
+      </span>
+      <span class="flex-1" />
+      <span
+        class="text-warm-400 text-[10px] transition-transform"
+        :class="{ 'rotate-180': compactExpanded }"
+        >&#9660;</span
+      >
+    </div>
+    <div
+      v-if="compactExpanded"
+      class="border-t border-sapphire/15 dark:border-sapphire/20 px-3 py-2 bg-sapphire/3 dark:bg-sapphire/5 text-xs max-h-48 overflow-y-auto"
+    >
+      <MarkdownRenderer :content="message.summary" />
+    </div>
+  </div>
+
   <!-- Channel message (group chat style) -->
   <div v-else-if="message.role === 'channel'" class="max-w-[90%]">
     <div
@@ -116,6 +147,8 @@ const props = defineProps({
   prevMessage: { type: Object, default: null },
   isFirst: { type: Boolean, default: false },
 });
+
+const compactExpanded = ref(false);
 
 const expandedTools = reactive({});
 

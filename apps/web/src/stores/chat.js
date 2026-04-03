@@ -235,6 +235,16 @@ function _replayEvents(messages, events) {
         content: evt.content || "",
         timestamp: "",
       });
+    } else if (t === "compact_summary") {
+      cur = null;
+      result.push({
+        id: "compact_" + result.length,
+        role: "compact",
+        round: evt.compact_round || evt.round || 0,
+        summary: evt.summary || "",
+        messagesCompacted: evt.messages_compacted || 0,
+        timestamp: "",
+      });
     } else if (t === "token_usage" || t === "processing_complete") {
       // skip
     }
@@ -553,6 +563,19 @@ export const useChatStore = defineStore("chat", {
       // Ensure we have a tab for this source (non-usage events need it)
       if (!this.messagesByTab[source]) return;
       const msgs = this.messagesByTab[source];
+
+      // Compact complete: show summary accordion
+      if (at === "compact_complete") {
+        msgs.push({
+          id: "compact_" + Date.now(),
+          role: "compact",
+          round: data.round || 0,
+          summary: data.summary || "",
+          messagesCompacted: data.messages_compacted || 0,
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
 
       // Trigger fired: show with expandable message content
       if (at === "trigger_fired") {

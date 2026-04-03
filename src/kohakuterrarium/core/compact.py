@@ -93,6 +93,7 @@ class CompactManager:
         self._controller: Any = None
         self._llm: Any = None
         self._session_store: Any = None
+        self._output_router: Any = None
         self._agent_name: str = ""
 
     @property
@@ -169,6 +170,18 @@ class CompactManager:
 
             self._compact_count += 1
             self._last_compact_time = time.time()
+
+            # Notify output for TUI/frontend display
+            if self._output_router:
+                self._output_router.notify_activity(
+                    "compact_complete",
+                    f"Context compacted (round {self._compact_count})",
+                    metadata={
+                        "round": self._compact_count,
+                        "summary": summary,
+                        "messages_compacted": boundary - 1,
+                    },
+                )
 
             # Save compact summary to session store
             if self._session_store:
