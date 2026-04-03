@@ -210,6 +210,16 @@ class AgentHandlersMixin:
             round_result = await self._run_single_turn(controller)
             all_round_text.extend(round_result.text_output)
 
+            # Check interrupt after LLM turn (before waiting for tools)
+            if self._interrupt_requested:
+                self._cancel_direct_tasks(round_result.direct_tasks)
+                self._interrupt_requested = False
+                controller._interrupted = False
+                self.output_router.notify_activity(
+                    "interrupt", "[system] Processing interrupted"
+                )
+                break
+
             # Termination check
             if self._check_termination(round_result.text_output):
                 break
@@ -415,6 +425,9 @@ class AgentHandlersMixin:
 
         # Direct tool results
         native_results_added = False
+        if direct_tasks and self._interrupt_requested:
+            self._cancel_direct_tasks(direct_tasks)
+            return False
         if direct_tasks:
             logger.info("Waiting for %d direct tool(s)", len(direct_tasks))
             if native_mode and native_tool_call_ids:
@@ -495,6 +508,13 @@ class AgentHandlersMixin:
             prompt_tokens = usage.get("prompt_tokens", 0)
             if self.compact_manager.should_compact(prompt_tokens):
                 self.compact_manager.trigger_compact()
+
+    def _cancel_direct_tasks(self, tasks: dict[str, asyncio.Task]) -> None:
+        """Cancel all running direct tool tasks (on interrupt)."""
+        for job_id, task in tasks.items():
+            if not task.done():
+                task.cancel()
+                logger.debug("Cancelled direct task", job_id=job_id)
 
     # ------------------------------------------------------------------
     # Output helpers
