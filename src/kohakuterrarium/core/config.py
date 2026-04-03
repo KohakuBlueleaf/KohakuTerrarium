@@ -253,10 +253,25 @@ def _resolve_base_config_path(base_config: str, child_dir: Path) -> Path | None:
     Resolve base_config path to an actual directory.
 
     Resolution order:
-    1. If starts with 'creatures/', resolve relative to project root
+    1. If starts with '@', resolve as package reference (@package/path)
+    2. If starts with 'creatures/', resolve relative to project root
        (walk up from child_dir until we find a directory containing 'creatures/')
-    2. Otherwise resolve relative to child config's parent directory
+    3. Otherwise resolve relative to child config's parent directory
     """
+    # Package reference: @package-name/creatures/swe
+    # Strip quotes first (YAML may quote the @ as "@...")
+    clean = base_config.strip('"').strip("'")
+    if clean.startswith("@"):
+        from kohakuterrarium.packages import resolve_package_path
+
+        try:
+            return resolve_package_path(clean)
+        except (FileNotFoundError, ValueError) as e:
+            logger.warning(
+                "Package reference failed", base_config=base_config, error=str(e)
+            )
+            return None
+
     if base_config.startswith("creatures/"):
         # Walk up from child_dir to find project root (containing creatures/)
         search = child_dir

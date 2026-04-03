@@ -121,23 +121,71 @@ def main() -> int:
         help="Provider to authenticate with (codex = ChatGPT subscription)",
     )
 
+    # Install command
+    install_parser = subparsers.add_parser(
+        "install", help="Install a creature/terrarium package"
+    )
+    install_parser.add_argument("source", help="Git URL or local path to package")
+    install_parser.add_argument(
+        "-e",
+        "--editable",
+        action="store_true",
+        help="Install as editable (symlink, like pip -e)",
+    )
+    install_parser.add_argument("--name", default=None, help="Override package name")
+
+    # Uninstall command
+    uninstall_parser = subparsers.add_parser(
+        "uninstall", help="Remove an installed package"
+    )
+    uninstall_parser.add_argument("name", help="Package name to remove")
+
+    # Edit command
+    edit_parser = subparsers.add_parser(
+        "edit", help="Open a creature/terrarium config in editor"
+    )
+    edit_parser.add_argument(
+        "target",
+        help="@package/creatures/name or @package/terrariums/name",
+    )
+
     args = parser.parse_args()
 
     if args.command == "run":
+        # Resolve @package references in agent_path
+        agent_path = args.agent_path
+        if agent_path.startswith("@"):
+            from kohakuterrarium.packages import resolve_package_path
+
+            agent_path = str(resolve_package_path(agent_path))
         session = None if args.no_session else args.session
-        return run_agent_cli(args.agent_path, args.log_level, session=session)
+        return run_agent_cli(agent_path, args.log_level, session=session)
     elif args.command == "resume":
         return resume_cli(
             args.session, args.pwd, args.log_level, last=args.last, io_mode=args.mode
         )
+    elif args.command == "logs":
+        return logs_cli(args.session, args.agent, args.type, args.last, args.n)
     elif args.command == "list":
-        return list_agents_cli(args.path)
+        return list_cli(args.path)
     elif args.command == "info":
         return show_agent_info_cli(args.agent_path)
     elif args.command == "terrarium":
+        # Resolve @package references in terrarium path
+        if hasattr(args, "terrarium_path") and args.terrarium_path:
+            if args.terrarium_path.startswith("@"):
+                from kohakuterrarium.packages import resolve_package_path
+
+                args.terrarium_path = str(resolve_package_path(args.terrarium_path))
         return handle_terrarium_command(args)
     elif args.command == "login":
         return login_cli(args.provider)
+    elif args.command == "install":
+        return install_cli(args.source, args.editable, args.name)
+    elif args.command == "uninstall":
+        return uninstall_cli(args.name)
+    elif args.command == "edit":
+        return edit_cli(args.target)
     else:
         parser.print_help()
         return 0
@@ -360,41 +408,49 @@ def resume_cli(
             print(f"  kt resume {path.stem}")
 
 
-def list_agents_cli(agents_path: str) -> int:
-    """List available agents."""
+def list_cli(agents_path: str = "agents") -> int:
+    """List installed packages and available agents/terrariums."""
+    from kohakuterrarium.packages import list_packages, PACKAGES_DIR
+
+    # Show installed packages
+    packages = list_packages()
+    if packages:
+        print("Installed packages:")
+        print("=" * 50)
+        for pkg in packages:
+            editable_tag = " (editable)" if pkg["editable"] else ""
+            print(f"  {pkg['name']} v{pkg['version']}{editable_tag}")
+            print(f"    {pkg['path']}")
+            if pkg["description"]:
+                print(f"    {pkg['description']}")
+            if pkg["creatures"]:
+                names = [c["name"] for c in pkg["creatures"]]
+                print(f"    Creatures: {', '.join(names)}")
+            if pkg["terrariums"]:
+                names = [t["name"] for t in pkg["terrariums"]]
+                print(f"    Terrariums: {', '.join(names)}")
+            print()
+    else:
+        print(f"No packages installed in {PACKAGES_DIR}")
+        print()
+
+    # Also show local agents if directory exists
     path = Path(agents_path)
-    if not path.exists():
-        print(f"Agents directory not found: {agents_path}")
-        return 1
-
-    print(f"Available agents in {agents_path}:")
-    print("-" * 40)
-
-    found = False
-    for agent_dir in sorted(path.iterdir()):
-        if not agent_dir.is_dir():
-            continue
-
-        config_file = agent_dir / "config.yaml"
-        if not config_file.exists():
-            config_file = agent_dir / "config.yml"
-
-        if config_file.exists():
-            found = True
-            # Try to read name from config
-            try:
-
-                with open(config_file) as f:
-                    config = yaml.safe_load(f)
-                desc = config.get("description", "")
+    if path.exists():
+        print(f"Local agents in {agents_path}:")
+        print("-" * 40)
+        found = False
+        for agent_dir in sorted(path.iterdir()):
+            if not agent_dir.is_dir():
+                continue
+            config_file = agent_dir / "config.yaml"
+            if not config_file.exists():
+                config_file = agent_dir / "config.yml"
+            if config_file.exists():
+                found = True
                 print(f"  {agent_dir.name}")
-                if desc:
-                    print(f"    {desc[:60]}...")
-            except Exception:
-                print(f"  {agent_dir.name}")
-
-    if not found:
-        print("  No agents found")
+        if not found:
+            print("  (none)")
 
     return 0
 
@@ -458,6 +514,72 @@ def show_agent_info_cli(agent_path: str) -> int:
     except Exception as e:
         print(f"Error reading config: {e}")
         return 1
+
+
+def install_cli(source: str, editable: bool = False, name: str | None = None) -> int:
+    """Install a creature/terrarium package."""
+    from kohakuterrarium.packages import install_package
+
+    try:
+        pkg_name = install_package(source, editable=editable, name_override=name)
+        tag = " (editable)" if editable else ""
+        print(f"Installed: {pkg_name}{tag}")
+        print()
+        print("Usage:")
+        print(f"  kt run @{pkg_name}/creatures/<name>")
+        print(f"  kt terrarium run @{pkg_name}/terrariums/<name>")
+        print(f"  kt list")
+        return 0
+    except Exception as e:
+        print(f"Error: {e}")
+        return 1
+
+
+def uninstall_cli(name: str) -> int:
+    """Remove an installed package."""
+    from kohakuterrarium.packages import uninstall_package
+
+    if uninstall_package(name):
+        print(f"Uninstalled: {name}")
+        return 0
+    else:
+        print(f"Package not found: {name}")
+        return 1
+
+
+def edit_cli(target: str) -> int:
+    """Open a creature/terrarium config in editor."""
+    from kohakuterrarium.packages import resolve_package_path
+
+    if not target.startswith("@"):
+        target = "@" + target
+
+    try:
+        path = resolve_package_path(target)
+    except (FileNotFoundError, ValueError) as e:
+        print(f"Error: {e}")
+        return 1
+
+    # Find config file
+    config_file = None
+    for name in ("config.yaml", "config.yml", "terrarium.yaml", "terrarium.yml"):
+        candidate = path / name
+        if candidate.exists():
+            config_file = candidate
+            break
+
+    if not config_file:
+        # Maybe they pointed to the file directly
+        if path.is_file():
+            config_file = path
+        else:
+            print(f"No config file found in: {path}")
+            return 1
+
+    editor = os.environ.get("EDITOR", os.environ.get("VISUAL", "nano"))
+    print(f"Opening: {config_file}")
+    os.execvp(editor, [editor, str(config_file)])
+    return 0  # unreachable after execvp
 
 
 def login_cli(provider: str) -> int:
