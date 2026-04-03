@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 import yaml
+from dotenv import load_dotenv
 
 from kohakuterrarium.core.agent import Agent
 from kohakuterrarium.llm.codex_auth import CodexTokens, oauth_login
@@ -34,8 +35,24 @@ from kohakuterrarium.terrarium.cli import (
 from kohakuterrarium.utils.logging import set_level
 
 
+def _load_local_dotenv() -> None:
+    """Load the nearest .env from the current working directory upward."""
+    cwd = Path.cwd()
+    search_roots = [cwd, *cwd.parents]
+    for root in search_roots:
+        dotenv_path = root / ".env"
+        if dotenv_path.exists():
+            load_dotenv(dotenv_path=dotenv_path, override=False)
+            break
+
+
 def main() -> int:
     """Main CLI entry point."""
+    # Load environment variables from a local .env file if present.
+    # This lets commands like `kt run ...` and `kt terrarium run ...`
+    # pick up API keys/base URLs without requiring manual export first.
+    _load_local_dotenv()
+
     parser = argparse.ArgumentParser(
         prog="kt",
         description="KohakuTerrarium - Universal Agent Framework",

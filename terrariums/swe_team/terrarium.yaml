@@ -12,18 +12,22 @@ terrarium:
   root:
     base_config: creatures/root
     controller:
-      model: gpt-5.4
-      auth_mode: codex-oauth
-      reasoning_effort: high
+      model: "${OPENROUTER_MODEL:gpt-5.4}"
+      auth_mode: api-key
+      api_key_env: OPENROUTER_API_KEY
+      base_url: "${OPENROUTER_BASE_URL:https://openrouter.ai/api/v1}"
+      reasoning_effort: "${OPENROUTER_REASONING_EFFORT:high}"
       tool_format: native
 
   creatures:
     - name: swe
       base_config: creatures/swe
       controller:
-        model: gpt-5.4
-        auth_mode: codex-oauth
-        reasoning_effort: xhigh
+        model: "${OPENROUTER_MODEL:gpt-5.4}"
+        auth_mode: api-key
+        api_key_env: OPENROUTER_API_KEY
+        base_url: "${OPENROUTER_BASE_URL:https://openrouter.ai/api/v1}"
+        reasoning_effort: "${OPENROUTER_REASONING_EFFORT:xhigh}"
         service_tier: priority
         tool_format: native
       channels:
@@ -33,9 +37,11 @@ terrarium:
     - name: reviewer
       base_config: creatures/reviewer
       controller:
-        model: gpt-5.4
-        auth_mode: codex-oauth
-        reasoning_effort: high
+        model: "${OPENROUTER_MODEL:gpt-5.4}"
+        auth_mode: api-key
+        api_key_env: OPENROUTER_API_KEY
+        base_url: "${OPENROUTER_BASE_URL:https://openrouter.ai/api/v1}"
+        reasoning_effort: "${OPENROUTER_REASONING_EFFORT:high}"
         tool_format: native
       channels:
         listen: [review, team_chat]
