@@ -127,6 +127,9 @@ class SubAgent:
         # Optional callback for reporting tool activity to parent
         self.on_tool_activity: Any = None
 
+        # Parent's tool context builder (inherited environment, working_dir, etc.)
+        self._build_tool_context: Any = None
+
         # Optional session store for persisting sub-agent conversations
         self._session_store: Any = None
         self._parent_name: str = ""
@@ -562,7 +565,8 @@ class SubAgent:
             )
 
             try:
-                result = await tool.execute(tool_call.args)
+                context = self._build_tool_context() if self._build_tool_context else None
+                result = await tool.execute(tool_call.args, context=context)
                 if result.success:
                     text_output = result.get_text_output()
                     output = text_output if text_output else "(no output)"

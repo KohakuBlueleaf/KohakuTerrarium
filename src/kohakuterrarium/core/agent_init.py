@@ -129,6 +129,8 @@ class AgentInitMixin:
             max_depth=self.config.max_subagent_depth,
             tool_format=parent_tool_format,
         )
+        # Inherit parent's tool context builder (working_dir, file guards, etc.)
+        self.subagent_manager._parent_executor = self.executor
 
         init_subagents(self.config, self.subagent_manager, self.registry, self._loader)
 

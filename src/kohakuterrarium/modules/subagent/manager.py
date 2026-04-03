@@ -87,6 +87,8 @@ class SubAgentManager:
         self._on_complete: Callable[[Any], None] | None = None
         # Callback: (subagent_name, activity_type, tool_name, detail) -> None
         self._on_tool_activity: Callable[[str, str, str, str], None] | None = None
+        # Parent executor (for inheriting tool context builder)
+        self._parent_executor: Any = None
         # Session store for persisting sub-agent conversations
         self._session_store: Any = None
         self._parent_name: str = ""
@@ -244,6 +246,10 @@ class SubAgentManager:
                 parent_cb(sa_name, activity_type, tool_name, detail)
 
             subagent.on_tool_activity = _forward_activity
+
+        # Inherit parent's tool context builder (working_dir, file guards, etc.)
+        if self._parent_executor:
+            subagent._build_tool_context = self._parent_executor._build_tool_context
 
         # Pass session store for conversation persistence
         if self._session_store:
