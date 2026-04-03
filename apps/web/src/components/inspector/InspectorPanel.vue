@@ -34,15 +34,30 @@
             <div
               v-for="c in instance.creatures"
               :key="c.name"
-              class="flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-colors hover:bg-warm-100 dark:hover:bg-warm-800"
-              @click="inspector.selectCreature(c)"
+              class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors hover:bg-warm-100 dark:hover:bg-warm-800"
+              @click="openChat(c.name)"
             >
               <StatusDot :status="c.status" />
               <span class="font-medium text-warm-700 dark:text-warm-300">{{
                 c.name
               }}</span>
               <span class="flex-1" />
-              <span class="text-warm-400">{{ c.status }}</span>
+              <span
+                v-if="chat.tokenUsage[c.name]"
+                class="text-[10px] text-warm-400 font-mono"
+              >
+                {{ formatTokens(chat.tokenUsage[c.name]?.total || 0) }}
+              </span>
+              <span
+                class="text-[10px] px-1.5 py-0.5 rounded"
+                :class="
+                  c.status === 'running'
+                    ? 'bg-aquamarine/10 text-aquamarine'
+                    : 'bg-warm-100 dark:bg-warm-800 text-warm-400'
+                "
+              >
+                {{ c.status }}
+              </span>
             </div>
           </div>
         </div>
@@ -57,8 +72,8 @@
             <div
               v-for="ch in instance.channels"
               :key="ch.name"
-              class="flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-colors hover:bg-warm-100 dark:hover:bg-warm-800"
-              @click="inspector.selectChannel(ch)"
+              class="flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors hover:bg-warm-100 dark:hover:bg-warm-800"
+              @click="openChat('ch:' + ch.name)"
             >
               <span
                 class="w-2 h-2 rounded-sm shrink-0"
@@ -76,7 +91,11 @@
               >
                 {{ ch.message_count }}
               </GemBadge>
-              <span v-else class="text-warm-400">{{ ch.type }}</span>
+              <span
+                class="text-[10px] px-1.5 py-0.5 rounded bg-warm-100 dark:bg-warm-800 text-warm-400"
+              >
+                {{ ch.type }}
+              </span>
             </div>
           </div>
         </div>
@@ -274,6 +293,12 @@ const headerText = computed(() => {
 
 function openChat(tabKey) {
   chat.openTab(tabKey);
+}
+
+function formatTokens(n) {
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
+  if (n >= 1000) return (n / 1000).toFixed(1) + "K";
+  return String(n);
 }
 
 /** Assign consistent colors to different senders */
