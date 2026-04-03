@@ -3,7 +3,7 @@
 
 name: swe_agent
 version: "1.0"
-base_config: creatures/swe
+base_config: "@kohaku-creatures/creatures/swe"
 
 controller:
   auth_mode: codex-oauth

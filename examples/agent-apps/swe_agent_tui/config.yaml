@@ -3,7 +3,7 @@
 
 name: swe_agent_tui
 version: "1.0"
-base_config: creatures/swe
+base_config: "@kohaku-creatures/creatures/swe"
 
 controller:
   # --- OpenRouter (API credits) ---

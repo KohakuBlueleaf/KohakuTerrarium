@@ -10,7 +10,7 @@ terrarium:
 
   # Root agent - inline creature config with inheritance
   root:
-    base_config: creatures/root
+    base_config: "@kohaku-creatures/creatures/root"
 
     controller:
       # --- OpenRouter (API credits) ---
@@ -34,7 +34,7 @@ terrarium:
 
   creatures:
     - name: swe
-      base_config: creatures/swe
+      base_config: "@kohaku-creatures/creatures/swe"
       # Override controller per-creature (optional):
       controller:
         model: gpt-5.4
@@ -47,7 +47,7 @@ terrarium:
         can_send: [review, team_chat]
 
     - name: reviewer
-      base_config: creatures/reviewer
+      base_config: "@kohaku-creatures/creatures/reviewer"
       controller:
         model: gpt-5.4
         auth_mode: codex-oauth
