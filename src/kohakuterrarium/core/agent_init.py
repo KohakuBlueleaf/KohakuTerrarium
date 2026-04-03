@@ -9,6 +9,8 @@ Heavy initialization logic is delegated to bootstrap.* factory modules
 to reduce import fan-out.
 """
 
+from pathlib import Path
+
 from kohakuterrarium.bootstrap.io import create_input, create_output
 from kohakuterrarium.bootstrap.llm import create_llm_provider
 from kohakuterrarium.bootstrap.subagents import init_subagents
@@ -89,8 +91,9 @@ class AgentInitMixin:
             if isinstance(self.config.tool_format, str)
             else "bracket"
         )
-        if self.config.agent_path:
-            self.executor._working_dir = self.config.agent_path
+        # Working dir = where the user ran kt, NOT the agent config folder.
+        # agent_path is for resolving config-relative paths (prompts, custom tools).
+        self.executor._working_dir = Path.cwd()
         if hasattr(self.config, "agent_path") and self.config.agent_path:
             memory_config = getattr(self.config, "memory", None)
             if isinstance(memory_config, dict) and memory_config.get("path"):
