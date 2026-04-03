@@ -66,6 +66,12 @@ def main() -> int:
         action="store_true",
         help="Disable session persistence",
     )
+    run_parser.add_argument(
+        "--mode",
+        choices=["cli", "tui"],
+        default="tui",
+        help="Input/output mode (default: tui)",
+    )
 
     # List command
     list_parser = subparsers.add_parser("list", help="List available agents")
@@ -159,7 +165,9 @@ def main() -> int:
 
             agent_path = str(resolve_package_path(agent_path))
         session = None if args.no_session else args.session
-        return run_agent_cli(agent_path, args.log_level, session=session)
+        return run_agent_cli(
+            agent_path, args.log_level, session=session, io_mode=args.mode
+        )
     elif args.command == "resume":
         return resume_cli(
             args.session, args.pwd, args.log_level, last=args.last, io_mode=args.mode
@@ -194,7 +202,12 @@ def main() -> int:
 _SESSION_DIR = Path.home() / ".kohakuterrarium" / "sessions"
 
 
-def run_agent_cli(agent_path: str, log_level: str, session: str | None = None) -> int:
+def run_agent_cli(
+    agent_path: str,
+    log_level: str,
+    session: str | None = None,
+    io_mode: str | None = None,
+) -> int:
     """Run an agent from CLI."""
 
     # Setup logging
@@ -216,8 +229,17 @@ def run_agent_cli(agent_path: str, log_level: str, session: str | None = None) -
     store = None
     session_file = None
     try:
+        # Create IO module overrides if mode specified
+        io_kwargs: dict = {}
+        if io_mode:
+            from kohakuterrarium.session.resume import _create_io_modules
+
+            inp, out = _create_io_modules(io_mode)
+            io_kwargs["input_module"] = inp
+            io_kwargs["output_module"] = out
+
         # Create agent
-        agent = Agent.from_path(str(path))
+        agent = Agent.from_path(str(path), **io_kwargs)
 
         # Attach session store (default: ON)
         if session is not None:

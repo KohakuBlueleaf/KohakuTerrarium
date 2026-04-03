@@ -153,13 +153,29 @@ class AgentHandlersMixin:
         Orchestrates the full cycle: push event, run LLM turns in a loop,
         dispatch tools/sub-agents, collect results, push feedback, and
         finalize output. See ``_run_controller_loop`` for the inner loop.
+
+        API errors (auth, rate limit, network) are caught and displayed
+        to the user via the output router instead of crashing.
         """
         self._prepare_processing_cycle(event, controller)
         await controller.push_event(event)
         await self.output_router.on_processing_start()
 
         all_round_text: list[str] = []
-        await self._run_controller_loop(controller, all_round_text)
+        try:
+            await self._run_controller_loop(controller, all_round_text)
+        except Exception as e:
+            error_type = type(e).__name__
+            error_msg = str(e)
+            logger.error(
+                "Processing error",
+                error_type=error_type,
+                error=error_msg,
+            )
+            # Display error in TUI/frontend instead of crashing
+            await self.output_router.write(
+                f"\n[System Error] {error_type}: {error_msg}\n"
+            )
         await self._finalize_processing(event, controller, all_round_text)
 
     def _prepare_processing_cycle(
