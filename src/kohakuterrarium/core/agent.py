@@ -248,7 +248,16 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         # Initialize auto-compact manager
         from kohakuterrarium.core.compact import CompactConfig, CompactManager
 
-        self.compact_manager = CompactManager(CompactConfig())
+        compact_data = self.config.compact or {}
+        compact_cfg = CompactConfig(
+            max_tokens=compact_data.get("max_tokens", CompactConfig.max_tokens),
+            threshold=compact_data.get("threshold", CompactConfig.threshold),
+            target=compact_data.get("target", CompactConfig.target),
+            keep_recent_turns=compact_data.get(
+                "keep_recent_turns", CompactConfig.keep_recent_turns
+            ),
+        )
+        self.compact_manager = CompactManager(compact_cfg)
         self.compact_manager._controller = self.controller
         self.compact_manager._llm = self.llm
         self.compact_manager._output_router = self.output_router
