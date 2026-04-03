@@ -67,6 +67,31 @@ def terrarium_history(terrarium_id: str, target: str, manager=Depends(get_manage
     with fallback to the in-memory event log.
     """
     try:
+        # Channel history: read from channels table
+        if target.startswith("ch:"):
+            ch_name = target[3:]
+            runtime = manager._get_runtime(terrarium_id)
+            store = runtime.session_store
+            messages = []
+            if store:
+                messages = store.get_channel_messages(ch_name)
+            return {
+                "terrarium_id": terrarium_id,
+                "target": target,
+                "messages": [],
+                "events": [
+                    {
+                        "type": "channel_message",
+                        "channel": ch_name,
+                        "sender": m.get("sender", ""),
+                        "content": m.get("content", ""),
+                        "ts": m.get("ts", 0),
+                    }
+                    for m in messages
+                ],
+            }
+
+        # Agent/creature history
         session = manager.terrarium_mount(terrarium_id, target)
         mount_key = f"{terrarium_id}:{target}"
 
