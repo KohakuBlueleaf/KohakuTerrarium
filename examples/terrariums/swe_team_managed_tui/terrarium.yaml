@@ -14,7 +14,7 @@ terrarium:
 
     controller:
       # --- OpenRouter (API credits) ---
-      model: "${OPENROUTER_MODEL:google/gemini-3-flash-preview}"
+      model: "${OPENROUTER_MODEL:google/gemini-3.1-pro-preview}"
       api_key_env: OPENROUTER_API_KEY
       base_url: https://openrouter.ai/api/v1
       tool_format: native

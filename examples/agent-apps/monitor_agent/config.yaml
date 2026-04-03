@@ -5,7 +5,7 @@ name: monitor_agent
 version: "1.0"
 
 controller:
-  model: "${OPENROUTER_MODEL:google/gemini-3-flash-preview}"
+  model: "${OPENROUTER_MODEL:google/gemini-3.1-pro-preview}"
   temperature: 0.3
   max_tokens: 65536
   api_key_env: OPENROUTER_API_KEY

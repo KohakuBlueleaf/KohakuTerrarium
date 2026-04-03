@@ -7,7 +7,7 @@ description: Interactive streaming conversational agent with ASR input and TTS o
 
 # LLM Configuration
 controller:
-  model: "${OPENROUTER_MODEL:google/gemini-3-flash-preview}"
+  model: "${OPENROUTER_MODEL:google/gemini-3.1-pro-preview}"
   temperature: 0.8
   max_tokens: 65536
   api_key_env: OPENROUTER_API_KEY
