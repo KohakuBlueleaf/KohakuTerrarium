@@ -1,0 +1,230 @@
+"""Tests for the package manager (kt install/list/resolve)."""
+
+import shutil
+from pathlib import Path
+
+import pytest
+import yaml
+
+from kohakuterrarium.packages import (
+    PACKAGES_DIR,
+    install_package,
+    is_package_ref,
+    list_packages,
+    resolve_package_path,
+    uninstall_package,
+)
+
+
+@pytest.fixture
+def tmp_packages(tmp_path, monkeypatch):
+    """Use a temporary directory for packages instead of ~/.kohakuterrarium/packages."""
+    import kohakuterrarium.packages as pkg_mod
+
+    monkeypatch.setattr(pkg_mod, "PACKAGES_DIR", tmp_path / "packages")
+    (tmp_path / "packages").mkdir()
+    return tmp_path / "packages"
+
+
+@pytest.fixture
+def sample_package(tmp_path):
+    """Create a minimal package directory for testing."""
+    pkg = tmp_path / "test-pack"
+    pkg.mkdir()
+    (pkg / "creatures").mkdir()
+    (pkg / "creatures" / "my-agent").mkdir()
+    (pkg / "creatures" / "my-agent" / "config.yaml").write_text(
+        yaml.dump({"name": "my-agent", "version": "1.0"})
+    )
+    (pkg / "creatures" / "my-agent" / "prompts").mkdir()
+    (pkg / "creatures" / "my-agent" / "prompts" / "system.md").write_text(
+        "# My Agent\nYou are helpful."
+    )
+    (pkg / "terrariums").mkdir()
+    (pkg / "terrariums" / "my-team").mkdir()
+    (pkg / "terrariums" / "my-team" / "terrarium.yaml").write_text(
+        yaml.dump({"terrarium": {"name": "my-team", "creatures": []}})
+    )
+    (pkg / "kohaku.yaml").write_text(
+        yaml.dump(
+            {
+                "name": "test-pack",
+                "version": "1.0.0",
+                "description": "Test package",
+                "creatures": [
+                    {"name": "my-agent", "path": "creatures/my-agent"},
+                ],
+                "terrariums": [
+                    {"name": "my-team", "path": "terrariums/my-team"},
+                ],
+            }
+        )
+    )
+    return pkg
+
+
+class TestIsPackageRef:
+    def test_at_prefix(self):
+        assert is_package_ref("@kohaku-creatures/creatures/swe")
+
+    def test_no_prefix(self):
+        assert not is_package_ref("creatures/swe")
+
+    def test_relative_path(self):
+        assert not is_package_ref("../general")
+
+    def test_none(self):
+        assert not is_package_ref(None)
+
+    def test_empty(self):
+        assert not is_package_ref("")
+
+
+class TestInstallLocal:
+    def test_install_copy(self, tmp_packages, sample_package):
+        name = install_package(str(sample_package), editable=False)
+        assert name == "test-pack"
+        installed = tmp_packages / "test-pack"
+        assert installed.is_dir()
+        assert not installed.is_symlink()
+        assert (installed / "kohaku.yaml").exists()
+        assert (installed / "creatures" / "my-agent" / "config.yaml").exists()
+
+    def test_install_editable(self, tmp_packages, sample_package):
+        name = install_package(str(sample_package), editable=True)
+        assert name == "test-pack"
+        installed = tmp_packages / "test-pack"
+        assert installed.is_symlink()
+        assert installed.resolve() == sample_package.resolve()
+
+    def test_install_name_override(self, tmp_packages, sample_package):
+        name = install_package(str(sample_package), name_override="custom-name")
+        assert name == "custom-name"
+        assert (tmp_packages / "custom-name").exists()
+
+    def test_reinstall_overwrites(self, tmp_packages, sample_package):
+        install_package(str(sample_package))
+        # Modify source
+        (sample_package / "NEW_FILE").write_text("new")
+        install_package(str(sample_package))
+        # Should have the new file
+        assert (tmp_packages / "test-pack" / "NEW_FILE").exists()
+
+
+class TestUninstall:
+    def test_uninstall_copy(self, tmp_packages, sample_package):
+        install_package(str(sample_package))
+        assert uninstall_package("test-pack")
+        assert not (tmp_packages / "test-pack").exists()
+
+    def test_uninstall_editable(self, tmp_packages, sample_package):
+        install_package(str(sample_package), editable=True)
+        assert uninstall_package("test-pack")
+        assert not (tmp_packages / "test-pack").exists()
+        # Source should still exist
+        assert sample_package.exists()
+
+    def test_uninstall_nonexistent(self, tmp_packages):
+        assert not uninstall_package("no-such-package")
+
+
+class TestListPackages:
+    def test_empty(self, tmp_packages):
+        assert list_packages() == []
+
+    def test_list_installed(self, tmp_packages, sample_package):
+        install_package(str(sample_package))
+        pkgs = list_packages()
+        assert len(pkgs) == 1
+        assert pkgs[0]["name"] == "test-pack"
+        assert pkgs[0]["version"] == "1.0.0"
+        assert pkgs[0]["editable"] is False
+        assert len(pkgs[0]["creatures"]) == 1
+        assert len(pkgs[0]["terrariums"]) == 1
+
+    def test_list_editable(self, tmp_packages, sample_package):
+        install_package(str(sample_package), editable=True)
+        pkgs = list_packages()
+        assert len(pkgs) == 1
+        assert pkgs[0]["editable"] is True
+
+    def test_list_multiple(self, tmp_packages, sample_package, tmp_path):
+        install_package(str(sample_package))
+        # Create second package
+        pkg2 = tmp_path / "other-pack"
+        pkg2.mkdir()
+        (pkg2 / "creatures").mkdir()
+        (pkg2 / "kohaku.yaml").write_text(
+            yaml.dump({"name": "other-pack", "version": "2.0"})
+        )
+        install_package(str(pkg2))
+        pkgs = list_packages()
+        assert len(pkgs) == 2
+        names = {p["name"] for p in pkgs}
+        assert names == {"test-pack", "other-pack"}
+
+
+class TestResolvePackagePath:
+    def test_resolve_creature(self, tmp_packages, sample_package):
+        install_package(str(sample_package))
+        path = resolve_package_path("@test-pack/creatures/my-agent")
+        assert path.is_dir()
+        assert (path / "config.yaml").exists()
+
+    def test_resolve_terrarium(self, tmp_packages, sample_package):
+        install_package(str(sample_package))
+        path = resolve_package_path("@test-pack/terrariums/my-team")
+        assert path.is_dir()
+        assert (path / "terrarium.yaml").exists()
+
+    def test_resolve_package_root(self, tmp_packages, sample_package):
+        install_package(str(sample_package))
+        path = resolve_package_path("@test-pack")
+        assert path.is_dir()
+        assert (path / "kohaku.yaml").exists()
+
+    def test_resolve_not_installed(self, tmp_packages):
+        with pytest.raises(FileNotFoundError, match="Package not installed"):
+            resolve_package_path("@nonexistent/creatures/foo")
+
+    def test_resolve_bad_path(self, tmp_packages, sample_package):
+        install_package(str(sample_package))
+        with pytest.raises(FileNotFoundError, match="Path not found"):
+            resolve_package_path("@test-pack/no/such/path")
+
+    def test_resolve_no_at(self):
+        with pytest.raises(ValueError, match="must start with @"):
+            resolve_package_path("test-pack/creatures/foo")
+
+    def test_resolve_editable(self, tmp_packages, sample_package):
+        install_package(str(sample_package), editable=True)
+        path = resolve_package_path("@test-pack/creatures/my-agent")
+        # Resolved path should point to the actual source
+        assert path.is_dir()
+        assert (path / "config.yaml").exists()
+
+
+class TestConfigResolution:
+    """Test that @package refs work in config loading."""
+
+    def test_base_config_package_ref(self, tmp_packages, sample_package):
+        """Verify _resolve_base_config_path handles @package refs."""
+        install_package(str(sample_package))
+        from kohakuterrarium.core.config import _resolve_base_config_path
+
+        result = _resolve_base_config_path(
+            "@test-pack/creatures/my-agent", Path("/dummy")
+        )
+        assert result is not None
+        assert result.is_dir()
+        assert (result / "config.yaml").exists()
+
+    def test_base_config_quoted_ref(self, tmp_packages, sample_package):
+        """YAML may quote the @ symbol."""
+        install_package(str(sample_package))
+        from kohakuterrarium.core.config import _resolve_base_config_path
+
+        result = _resolve_base_config_path(
+            '"@test-pack/creatures/my-agent"', Path("/dummy")
+        )
+        assert result is not None
