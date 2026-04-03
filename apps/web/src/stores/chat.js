@@ -227,6 +227,14 @@ function _replayEvents(messages, events) {
       } else if (evt.activity === "tool_error") {
         updateSubagentTool(toolName, evt.detail || "", { error: true });
       }
+    } else if (t === "channel_message") {
+      result.push({
+        id: "ch_" + result.length,
+        role: "channel",
+        sender: evt.sender || "",
+        content: evt.content || "",
+        timestamp: "",
+      });
     } else if (t === "token_usage" || t === "processing_complete") {
       // skip
     }
@@ -325,7 +333,7 @@ export const useChatStore = defineStore("chat", {
       this.activeTab = tabKey;
 
       // Load history for creature/root tabs
-      if (!tabKey.startsWith("ch:") && this._instanceType === "terrarium") {
+      if (this._instanceType === "terrarium") {
         this._loadHistory(tabKey);
       }
     },
@@ -342,7 +350,7 @@ export const useChatStore = defineStore("chat", {
       // Clear unread count for the tab we're switching to
       if (tab) delete this.unreadCounts[tab];
       // Load history if tab has no messages yet (tab switch catch-up)
-      if (tab && !tab.startsWith("ch:") && this._instanceType === "terrarium") {
+      if (tab && this._instanceType === "terrarium") {
         const msgs = this.messagesByTab[tab];
         if (msgs && msgs.length === 0) {
           this._loadHistory(tab);
@@ -431,8 +439,15 @@ export const useChatStore = defineStore("chat", {
       this._ws = ws;
 
       // Load history for initial tab
-      if (this.tabs[0] && !this.tabs[0].startsWith("ch:")) {
+      // Load history for initial tab
+      if (this.tabs[0]) {
         this._loadHistory(this.tabs[0]);
+      }
+      // Also preload channel histories
+      for (const tab of this.tabs) {
+        if (tab.startsWith("ch:")) {
+          this._loadHistory(tab);
+        }
       }
     },
 
