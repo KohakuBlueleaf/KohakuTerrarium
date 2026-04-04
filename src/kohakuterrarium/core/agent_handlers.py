@@ -621,7 +621,10 @@ class AgentHandlersMixin:
                     "tool_error", f"[{label}] FAILED: {result}"
                 )
             elif result is not None and result.error:
+                output = result.output or ""
                 content = f"Error: {result.error}"
+                if output:
+                    content += f"\n{output}"
                 self.output_router.notify_activity(
                     "tool_error", f"[{label}] ERROR: {result.error}"
                 )
