@@ -319,9 +319,11 @@ class SubAgent:
             self._append_tool_results(tool_calls, tool_results)
 
             # Track consecutive all-error turns to prevent infinite retry loops
-            all_failed = all(
-                r.error or (r.exit_code and r.exit_code != 0)
-                for r in tool_results
+            # tool_results is a formatted string; check for error markers
+            all_failed = bool(tool_results) and all(
+                "Error:" in block
+                for block in tool_results.split("\n\n")
+                if block.strip()
             )
             if all_failed:
                 consecutive_errors += 1
@@ -565,8 +567,14 @@ class SubAgent:
             )
 
             try:
-                context = self._build_tool_context() if self._build_tool_context else None
+                context = (
+                    self._build_tool_context() if self._build_tool_context else None
+                )
                 result = await tool.execute(tool_call.args, context=context)
+                # Guard against tools that return str instead of ToolResult
+                if isinstance(result, str):
+                    results.append(f"[{tool_call.name}]\n{result}")
+                    continue
                 if result.success:
                     text_output = result.get_text_output()
                     output = text_output if text_output else "(no output)"

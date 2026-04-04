@@ -5,11 +5,16 @@ Tools are executable functions that can be called by the controller.
 Supports multimodal tool results (text + images).
 """
 
+import traceback
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+
+from kohakuterrarium.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from kohakuterrarium.llm.message import ContentPart
@@ -202,8 +207,19 @@ class BaseTool:
         """Execute with error handling."""
         try:
             if self.needs_context:
-                return await self._execute(args, context=context)
-            return await self._execute(args)
+                result = await self._execute(args, context=context)
+            else:
+                result = await self._execute(args)
+            # Guard: _execute must return ToolResult, not str
+            if isinstance(result, str):
+                logger.warning(
+                    "Tool _execute returned str instead of ToolResult",
+                    tool_name=self.tool_name,
+                    result_preview=result[:100],
+                    stack="".join(traceback.format_stack()[-4:-1]),
+                )
+                return ToolResult(output=result, exit_code=0)
+            return result
         except Exception as e:
             return ToolResult(error=str(e))
 
