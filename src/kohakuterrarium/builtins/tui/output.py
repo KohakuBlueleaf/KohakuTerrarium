@@ -4,12 +4,11 @@ import asyncio
 from typing import Any
 
 from textual.containers import VerticalScroll
-from textual.widgets import Markdown
+from textual.widgets import Markdown, Static
 
-from kohakuterrarium.builtins.tui.session import TUISession
+from kohakuterrarium.builtins.tui.session import CULL_KEEP, TUISession
 from kohakuterrarium.builtins.tui.widgets import (
     CompactSummaryBlock,
-    StreamingText,
     SubAgentBlock,
     ToolBlock,
     TriggerMessage,
@@ -277,7 +276,9 @@ class TUIOutput(BaseOutputModule):
                 total_cached += data.get("cached_tokens", 0)
                 last_prompt = data.get("prompt_tokens", 0)
         if total_in or total_out:
-            self._tui.restore_token_usage(total_in, total_out, last_prompt, total_cached)
+            self._tui.restore_token_usage(
+                total_in, total_out, last_prompt, total_cached
+            )
 
         # Build and mount widgets on the Textual thread.
         # Widgets MUST be created inside the app context (Textual requirement).
@@ -293,6 +294,15 @@ class TUIOutput(BaseOutputModule):
                     try:
                         ws = _build_resume_widgets(turns)
                         chat = app.query_one(f"#{scroll_id}", VerticalScroll)
+                        # Only mount the last N widgets to avoid perf issues
+                        if len(ws) > CULL_KEEP:
+                            hidden = len(ws) - CULL_KEEP
+                            header = Static(
+                                f"[{hidden} earlier messages hidden]",
+                                classes="cull-header",
+                            )
+                            header._is_cull_header = True  # type: ignore
+                            ws = [header] + ws[-CULL_KEEP:]
                         await chat.mount_all(ws)
                         chat.scroll_end(animate=False)
                     except Exception as e:
@@ -551,7 +561,6 @@ def _build_resume_widgets(turns: list[dict]) -> list:
                         )
 
             elif step_type == "compact_complete":
-                round_num = data.get("round", 0) if isinstance(data, dict) else 0
                 summary = data.get("summary", "") if isinstance(data, dict) else ""
                 widgets.append(CompactSummaryBlock(summary, done=True))
 
