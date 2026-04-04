@@ -39,7 +39,7 @@ class ReadTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Read file contents (required before write/edit)"
+        return "Read file contents: text, images, PDFs (required before write/edit)"
 
     @property
     def execution_mode(self) -> ExecutionMode:
@@ -157,32 +157,36 @@ class ReadTool(BaseTool):
 
 Read file contents with optional line range.
 
+## Supported file types
+
+- **Text files**: source code, config, markdown, etc. (returned with line numbers)
+- **Images**: png, jpg, gif, webp, svg, bmp, tiff, heif, avif (returned as visual input)
+- **PDFs**: returned as text content + page images (coming soon)
+- **Binary files**: other binary formats are rejected with a helpful message
+
 ## SAFETY
 
 - You MUST read files before writing or editing them. The write and edit tools
   will error if you haven't read the file first.
-- Binary files (images, PDFs, compiled files) are detected and rejected with
-  a helpful message.
 - Lines longer than 2000 characters are truncated.
 - Total output is capped at 200KB. Use offset/limit for large files.
+- Images are capped at 20MB.
 
 ## Arguments
 
 | Arg | Type | Description |
 |-----|------|-------------|
 | path | string | Path to file (required) |
-| offset | integer | Line to start from (0-based, default: 0) |
-| limit | integer | Max lines to read (default: all) |
+| offset | integer | Line to start from (0-based, default: 0, text files only) |
+| limit | integer | Max lines to read (default: all, text files only) |
 
 ## Behavior
 
-- Returns file contents with line numbers in the format `     1→content`.
-- If offset and limit are specified, only that range is returned.
-- Shows a truncation notice when the range does not cover the full file.
-
-## Output
-
-Line-numbered file contents. Line numbers are 1-indexed in the output.
+- **Text files**: returns contents with line numbers (`     1→content`).
+  Use offset/limit for specific ranges.
+- **Images**: returns the image for visual inspection. The model can see
+  and describe the image content.
+- **PDFs**: returns extracted text + rendered page images (coming soon).
 
 ## TIPS
 
@@ -190,8 +194,7 @@ Line-numbered file contents. Line numbers are 1-indexed in the output.
 - Use `grep` to locate relevant lines, then `read` with offset/limit to
   examine context.
 - For large files, read in chunks with offset/limit.
-- Image files (.png, .jpg, .gif, .webp, .svg) are returned as images
-  for visual inspection by the model.
+- For images, just `read(path="screenshot.png")` to see the content.
 """
 
     async def _read_image(self, file_path: Path, original_path: str) -> ToolResult:
