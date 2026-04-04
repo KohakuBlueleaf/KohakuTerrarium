@@ -40,8 +40,10 @@ class TerrariumRuntime(HotPlugMixin):
         config: TerrariumConfig,
         *,
         environment: Environment | None = None,
+        llm_override: str | None = None,
     ):
         self.config = config
+        self.llm_override = llm_override
         # Use provided environment or create one
         self.environment = environment or Environment(
             env_id=f"terrarium_{config.name}_{uuid4().hex[:8]}"
@@ -126,7 +128,12 @@ class TerrariumRuntime(HotPlugMixin):
 
         # 3. Build creatures
         for creature_cfg in self.config.creatures:
-            handle = build_creature(creature_cfg, self.environment, self.config)
+            handle = build_creature(
+                creature_cfg,
+                self.environment,
+                self.config,
+                llm_override=self.llm_override,
+            )
             self._creatures[creature_cfg.name] = handle
 
         # 4. Start all creature agents
@@ -137,7 +144,12 @@ class TerrariumRuntime(HotPlugMixin):
         # 5. Build root agent if configured (OUTSIDE the terrarium)
         # Don't start it here - run() will call agent.run() which handles start
         if self.config.root:
-            self._root_agent = build_root_agent(self.config, self.environment, self)
+            self._root_agent = build_root_agent(
+                self.config,
+                self.environment,
+                self,
+                llm_override=self.llm_override,
+            )
             logger.info(
                 "Root agent built",
                 base_config=self.config.root.config_data.get("base_config"),

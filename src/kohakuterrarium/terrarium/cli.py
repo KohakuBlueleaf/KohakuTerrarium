@@ -228,6 +228,11 @@ def add_terrarium_subparser(subparsers: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Disable session persistence",
     )
+    run_p.add_argument(
+        "--llm",
+        default=None,
+        help="Override LLM profile for all creatures (e.g., mimo-v2-pro, gemini)",
+    )
 
     # terrarium info <path>
     info_p = terrarium_sub.add_parser("info", help="Show terrarium info")
@@ -313,7 +318,8 @@ def _run_terrarium_cli(args: argparse.Namespace) -> int:
         print()
 
         async def _run_with_tui() -> None:
-            runtime = TerrariumRuntime(config)
+            llm = getattr(args, "llm", None)
+            runtime = TerrariumRuntime(config, llm_override=llm)
             if store:
                 runtime._pending_session_store = store
             await run_terrarium_with_tui(runtime)

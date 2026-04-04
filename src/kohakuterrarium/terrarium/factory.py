@@ -10,7 +10,7 @@ lifecycle orchestration.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from kohakuterrarium.builtins.inputs.none import NoneInput
 from kohakuterrarium.builtins.tool_catalog import get_builtin_tool
@@ -44,6 +44,7 @@ def build_root_agent(
     config: TerrariumConfig,
     environment: Environment,
     runtime: TerrariumRuntime,
+    **kwargs: Any,
 ) -> Agent:
     """
     Build the root agent OUTSIDE the terrarium.
@@ -87,6 +88,7 @@ def build_root_agent(
         input_module=NoneInput(),
         session=root_session,
         environment=root_env,
+        llm_override=kwargs.get("llm_override"),
     )
 
     # Force-add all terrarium tools regardless of creature config
@@ -213,6 +215,7 @@ def build_creature(
     creature_cfg: CreatureConfig,
     environment: Environment,
     config: TerrariumConfig,
+    **kwargs: Any,
 ) -> CreatureHandle:
     """
     Build a single creature: load config, create Agent, wire channels.
@@ -246,6 +249,7 @@ def build_creature(
         input_module=input_module,
         session=creature_session,
         environment=environment,
+        llm_override=kwargs.get("llm_override"),
     )
 
     # -- Inject ChannelTriggers for listen channels --
