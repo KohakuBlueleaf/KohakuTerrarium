@@ -95,6 +95,77 @@ Features: terrarium topology graph, multi-tab chat (root + creatures + channels)
 
 The API server uses `KohakuManager` (from `src/kohakuterrarium/serving/`) which automatically records sessions when `session_dir` is configured. See [Concepts: Serving](../concepts/serving.md) for the serving layer architecture.
 
+## Memory Search
+
+Sessions support full-text (FTS5) and semantic (vector) search over the event history. This lets agents recall specific details from earlier in the conversation, even after context compaction.
+
+### The `search_memory` Tool
+
+Agents automatically have access to `search_memory` when a session is active. It searches the session's indexed event log.
+
+Search modes:
+
+| Mode | Description |
+|------|-------------|
+| `fts` | Keyword search via SQLite FTS5. Fast, good for identifiers, error codes, file paths. |
+| `semantic` | Vector similarity search. Requires an embedding model. Good for natural-language queries. |
+| `hybrid` | Combines FTS + semantic with reciprocal rank fusion. Best overall quality. |
+| `auto` | Uses `hybrid` if vectors are available, otherwise falls back to `fts`. This is the default. |
+
+Example tool call (bracket format):
+
+```
+[/search_memory]
+query: authentication token refresh
+mode: auto
+k: 5
+[search_memory/]
+```
+
+Results include the matched content, round number, timestamp, block type (user, text, tool), and relevance score.
+
+### CLI: Searching Sessions
+
+Search a session file from the command line:
+
+```bash
+# Basic search (uses FTS by default)
+kt search .kohaku/sessions/my_session.kohakutr "auth bug"
+
+# Semantic search with result limit
+kt search .kohaku/sessions/my_session.kohakutr "how did we fix the login issue" --mode semantic -k 5
+
+# Filter by agent name (useful for terrarium sessions)
+kt search .kohaku/sessions/my_session.kohakutr "deploy" --agent swe
+```
+
+### CLI: Building Embeddings
+
+Before semantic or hybrid search works, you need to build embeddings for a session:
+
+```bash
+# Build embeddings with the default provider (model2vec if installed)
+kt embedding .kohaku/sessions/my_session.kohakutr
+
+# Use a specific provider and model
+kt embedding .kohaku/sessions/my_session.kohakutr --provider sentence-transformer --model jinaai/jina-embeddings-v5-text-nano
+
+# Use OpenAI API embeddings with custom dimensions
+kt embedding .kohaku/sessions/my_session.kohakutr --provider api --model text-embedding-3-small --dimensions 512
+```
+
+### Embedding Providers
+
+| Provider | Description | Install |
+|----------|-------------|---------|
+| `model2vec` | Lightweight static embeddings (~8 MB, microsecond inference). Default when available. | `pip install model2vec` |
+| `sentence-transformer` | Higher quality (Jina, Gemma, bge, etc.). Better for nuanced queries. | `pip install sentence-transformers` |
+| `api` | OpenAI-compatible `/v1/embeddings` endpoint. Works with OpenAI, Google, Jina. | (none, uses httpx) |
+
+FTS keyword search is always available without any embedding setup.
+
+For embedding configuration in agent YAML, see the `memory.embedding` section in [Configuration Reference](configuration.md).
+
 ## Programmatic Usage
 
 ```python

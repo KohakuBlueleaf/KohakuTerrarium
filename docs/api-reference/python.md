@@ -653,6 +653,146 @@ def detect_session_type(kt_path: str | Path) -> str  # "agent" or "terrarium"
 
 ---
 
+## Session Memory (`session/memory.py`)
+
+```python
+class SessionMemory:
+    """Search index over session event history (FTS5 + vector)."""
+    def __init__(self, db_path: str, embedder: BaseEmbedder | None = None, store: Any = None): ...
+
+    @property
+    def has_vectors(self) -> bool
+
+    def index_events(self, agent: str, events: list[dict], start_from: int = 0) -> int:
+        """Index session events into FTS + vector search. Returns new blocks indexed."""
+
+    def search(self, query: str, mode: str = "auto", k: int = 10, agent: str | None = None) -> list[SearchResult]:
+        """Search session memory. mode: "fts", "semantic", "hybrid", or "auto"."""
+
+    def get_stats(self) -> dict[str, Any]:
+        """Get index statistics (fts_blocks, vec_blocks, has_vectors, dimensions)."""
+
+@dataclass
+class SearchResult:
+    content: str
+    round_num: int
+    block_num: int
+    agent: str
+    block_type: str        # "text", "tool", "trigger", "user"
+    score: float
+    ts: float = 0.0
+    tool_name: str = ""
+    channel: str = ""
+
+    @property
+    def age_str(self) -> str
+```
+
+---
+
+## Embedding (`session/embedding.py`)
+
+```python
+class BaseEmbedder(ABC):
+    dimensions: int = 0
+    def encode(self, texts: list[str]) -> np.ndarray: ...
+    def encode_one(self, text: str) -> np.ndarray: ...
+
+class Model2VecEmbedder(BaseEmbedder):
+    """Static embeddings (~8 MB, microsecond speed). Default provider."""
+    def __init__(self, model_name: str = "minishlab/potion-base-8M"): ...
+
+class SentenceTransformerEmbedder(BaseEmbedder):
+    """HuggingFace sentence-transformers (Jina, Gemma, bge, etc.)."""
+    def __init__(self, model_name: str = "google/embeddinggemma-300m", dimensions: int | None = None, device: str = "cpu"): ...
+
+class APIEmbedder(BaseEmbedder):
+    """OpenAI-compatible /v1/embeddings endpoint."""
+    def __init__(self, api_key: str, model: str = "text-embedding-3-small", base_url: str = "https://api.openai.com/v1", dimensions: int | None = None): ...
+
+class NullEmbedder(BaseEmbedder):
+    """No-op. Only FTS keyword search is available."""
+
+def create_embedder(config: dict[str, Any] | None = None) -> BaseEmbedder:
+    """Create an embedder from config dict. provider: "auto" | "model2vec" | "sentence-transformer" | "api" | "none"."""
+```
+
+---
+
+## LLM Profiles (`llm/profiles.py`)
+
+Centralized model configuration. Profiles define complete LLM settings (provider, model, context limits, extra params). Stored in `~/.kohakuterrarium/llm_profiles.yaml`.
+
+```python
+@dataclass
+class LLMProfile:
+    name: str
+    provider: str              # "codex-oauth" | "openai" | "anthropic"
+    model: str
+    max_context: int = 256000
+    max_output: int = 65536
+    base_url: str = ""
+    api_key_env: str = ""
+    temperature: float | None = None
+    reasoning_effort: str = ""
+
+    def to_dict(self) -> dict[str, Any]
+    @classmethod
+    def from_dict(cls, name: str, data: dict[str, Any]) -> "LLMProfile"
+
+# Profile management
+def load_profiles() -> dict[str, LLMProfile]
+def get_profile(name: str) -> LLMProfile | None
+def get_preset(name: str) -> LLMProfile | None
+def save_profile(profile: LLMProfile) -> None
+def delete_profile(name: str) -> bool
+
+# Resolution
+def resolve_controller_llm(controller_config: dict[str, Any], llm_override: str | None = None) -> LLMProfile | None:
+    """Resolve LLM for a controller. Order: CLI override -> config["llm"] -> default_model -> None."""
+
+# API keys
+def save_api_key(provider: str, key: str) -> None
+def get_api_key(provider_or_env: str) -> str
+
+# Built-in presets (model-specific metadata)
+PRESETS: dict[str, dict[str, Any]]   # ~40 presets: OpenAI, Claude, Gemini, Qwen, Kimi, etc.
+ALIASES: dict[str, str]             # Short names -> canonical preset names
+```
+
+---
+
+## Auto-Compaction (`core/compact.py`)
+
+```python
+@dataclass
+class CompactConfig:
+    max_tokens: int = 256_000      # Model context window size
+    threshold: float = 0.80        # Compact when prompt_tokens >= this fraction
+    target: float = 0.40           # Aim for this fraction after compact
+    keep_recent_turns: int = 8     # Keep last N turns raw (not summarized)
+    enabled: bool = True
+    compact_model: str | None = None  # Optional different model for summarization
+
+class CompactManager:
+    """Non-blocking context compaction. Attached to an agent."""
+    def __init__(self, config: CompactConfig | None = None): ...
+
+    @property
+    def is_compacting(self) -> bool
+
+    def should_compact(self, prompt_tokens: int = 0) -> bool:
+        """Check if compaction should be triggered based on token usage."""
+
+    def trigger_compact(self) -> None:
+        """Start compaction as a background asyncio task."""
+
+    async def cancel(self) -> None:
+        """Cancel any running compaction."""
+```
+
+---
+
 ## Builtins
 
 ### Built-in Tools
@@ -660,7 +800,7 @@ def detect_session_type(kt_path: str | Path) -> str  # "agent" or "terrarium"
 | Name | Description | Execution Mode |
 |------|-------------|---------------|
 | `bash` | Execute shell commands | DIRECT |
-| `python` | Execute Python code | DIRECT |
+| `python` | Execute Python code and return output | DIRECT |
 | `read` | Read file contents | DIRECT |
 | `write` | Create/overwrite files | DIRECT |
 | `edit` | Search-replace in files | DIRECT |
@@ -669,6 +809,7 @@ def detect_session_type(kt_path: str | Path) -> str  # "agent" or "terrarium"
 | `tree` | Directory structure | DIRECT |
 | `think` | Extended reasoning step | DIRECT |
 | `scratchpad` | Session key-value memory | DIRECT |
+| `search_memory` | Search session history (keyword or semantic) | DIRECT |
 | `send_message` | Send to named channel | DIRECT |
 | `wait_channel` | Wait for channel message | BACKGROUND |
 | `http` | Make HTTP requests | DIRECT |
@@ -676,9 +817,11 @@ def detect_session_type(kt_path: str | Path) -> str  # "agent" or "terrarium"
 | `json_read` | Query JSON files | DIRECT |
 | `json_write` | Modify JSON files | DIRECT |
 | `info` | Load tool/sub-agent docs | DIRECT |
+| `create_trigger` | Create a trigger at runtime (timer, scheduler, channel) | DIRECT |
 | `list_triggers` | Show active triggers | DIRECT |
+| `stop_task` | Cancel a running background task by job ID | DIRECT |
 
-**Terrarium management tools (8):** Used by the `root` creature.
+**Terrarium management tools (9):** Used by the `root` creature.
 
 | Name | Description | Execution Mode |
 |------|-------------|---------------|
@@ -688,8 +831,9 @@ def detect_session_type(kt_path: str | Path) -> str  # "agent" or "terrarium"
 | `terrarium_send` | Send to a terrarium channel | DIRECT |
 | `terrarium_observe` | Observe channel traffic | BACKGROUND |
 | `terrarium_history` | Get channel message history | DIRECT |
-| `creature_start` | Start a creature | DIRECT |
-| `creature_stop` | Stop a creature | DIRECT |
+| `creature_start` | Add a new creature via hot-plug | DIRECT |
+| `creature_stop` | Stop and remove a creature | DIRECT |
+| `creature_interrupt` | Interrupt a creature's current LLM turn | DIRECT |
 
 ```python
 from kohakuterrarium.builtins.tools import get_builtin_tool, BUILTIN_TOOLS

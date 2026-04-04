@@ -211,6 +211,14 @@ Manages message history with OpenAI-compatible format.
 - JSON serialization/deserialization
 - Metadata tracking (creation time, message count, total chars)
 
+### Auto-Compaction (`core/compact.py`)
+
+When an agent's conversation approaches the model's token limit, the `CompactManager` triggers a background summarization task. An LLM call summarizes older messages into a structured summary, then atomically replaces them in the conversation. The controller keeps running during compaction; it is non-blocking.
+
+The two-zone model splits the conversation into a "compact zone" (old messages, eligible for summarization) and a "live zone" (recent turns, kept verbatim). After compaction, the compact zone is replaced by a single summary message.
+
+Configure auto-compaction in the agent's `compact` section. See [Configuration Reference](../guide/configuration.md) for all options (`max_tokens`, `threshold`, `target`, `keep_recent_turns`, `compact_model`).
+
 ### Session Registry (`core/session.py`)
 
 Keyed shared state for session-scoped objects. A `Session` holds channels, scratchpad, TUI state, and user-provided extras for one agent (or a group of cooperating agents).
