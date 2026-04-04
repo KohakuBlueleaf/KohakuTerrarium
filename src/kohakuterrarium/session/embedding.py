@@ -93,7 +93,13 @@ class SentenceTransformerEmbedder(BaseEmbedder):
         )
         # Use Matryoshka truncation if dimensions specified
         self._truncate_dim = dimensions
-        self.dimensions = dimensions or self._model.get_sentence_embedding_dimension()
+        # Some models (jina v5) return None from get_sentence_embedding_dimension;
+        # detect from a dummy encode in that case
+        auto_dim = self._model.get_sentence_embedding_dimension()
+        if auto_dim is None:
+            probe = self._model.encode(["test"], normalize_embeddings=True)
+            auto_dim = probe.shape[1]
+        self.dimensions = dimensions or auto_dim
         logger.info(
             "SentenceTransformer loaded",
             model=model_name,
