@@ -76,6 +76,7 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         output_module: OutputModule | None = None,
         session: Session | None = None,
         environment: Environment | None = None,
+        llm_override: str | None = None,
     ) -> Agent:
         """
         Create agent from config directory path.
@@ -86,6 +87,7 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             output_module: Custom output module (overrides config)
             session: Explicit session (creature-private state)
             environment: Shared environment (inter-creature state)
+            llm_override: Override LLM profile name (from --llm CLI flag)
 
         Returns:
             Configured Agent instance
@@ -97,6 +99,7 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             output_module=output_module,
             session=session,
             environment=environment,
+            llm_override=llm_override,
         )
 
     def __init__(
@@ -107,6 +110,7 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         output_module: OutputModule | None = None,
         session: Session | None = None,
         environment: Environment | None = None,
+        llm_override: str | None = None,
     ):
         """
         Initialize agent from config.
@@ -118,6 +122,7 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             session: Explicit session (creature-private state). Created from
                      session_key if not provided.
             environment: Shared environment (inter-creature state). None for
+            llm_override: Override LLM profile name (from --llm CLI flag)
                          standalone agents.
         """
         self.config = config
@@ -125,6 +130,9 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         self._shutdown_event = asyncio.Event()
         self._processing_lock = asyncio.Lock()
         self.trigger_manager = TriggerManager(self._process_event)
+
+        # LLM profile override (from --llm CLI flag)
+        self._llm_override = llm_override
 
         # Session persistence (set externally via attach_session_store)
         self.session_store: Any = None
@@ -162,7 +170,7 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         logger.info(
             "Agent initialized",
             agent_name=config.name,
-            model=config.model,
+            model=getattr(self.llm, "model", config.model),
             tools=len(self.registry.list_tools()),
             triggers=len(self.trigger_manager.list()),
             ephemeral=config.ephemeral,
@@ -253,9 +261,13 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         self._shutdown_event.clear()
 
         # Initialize auto-compact manager
+        # If compact.max_tokens not set, derive from LLM profile's max_context
         compact_data = self.config.compact or {}
+        default_compact_max = CompactConfig.max_tokens
+        if hasattr(self.llm, "_profile_max_context"):
+            default_compact_max = self.llm._profile_max_context
         compact_cfg = CompactConfig(
-            max_tokens=compact_data.get("max_tokens", CompactConfig.max_tokens),
+            max_tokens=compact_data.get("max_tokens", default_compact_max),
             threshold=compact_data.get("threshold", CompactConfig.threshold),
             target=compact_data.get("target", CompactConfig.target),
             keep_recent_turns=compact_data.get(
@@ -306,7 +318,12 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             if embed_cfg:
                 self.session_store.state["embedding_config"] = embed_cfg
 
-        model = getattr(self.config, "model", "") or ""
+        # Get the actual model name from the LLM provider (not config, which may be default)
+        model = (
+            getattr(self.llm, "model", "")
+            or getattr(getattr(self.llm, "config", None), "model", "")
+            or getattr(self.config, "model", "")
+        )
         self.output_router.notify_activity(
             "session_info",
             "",

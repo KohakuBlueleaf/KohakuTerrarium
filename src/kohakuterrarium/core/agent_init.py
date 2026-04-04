@@ -50,8 +50,9 @@ class AgentInitMixin:
     _loader: ModuleLoader
 
     def _init_llm(self) -> None:
-        """Initialize LLM provider based on auth_mode."""
-        self.llm = create_llm_provider(self.config)
+        """Initialize LLM provider from profile or inline config."""
+        llm_override = getattr(self, "_llm_override", None)
+        self.llm = create_llm_provider(self.config, llm_override=llm_override)
 
     def _init_registry(self) -> None:
         """Initialize module registry and register tools."""

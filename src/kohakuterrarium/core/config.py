@@ -117,7 +117,10 @@ class AgentConfig:
     # Inheritance: path to base creature/agent config directory
     base_config: str | None = None
 
-    # LLM settings
+    # LLM profile reference (resolves from ~/.kohakuterrarium/llm_profiles.yaml)
+    llm_profile: str = ""  # Profile name; empty = use inline settings or default
+
+    # LLM settings (inline, backward compat; overridden by llm_profile if set)
     model: str = "openai/gpt-4o-mini"
     auth_mode: str = "api-key"  # "api-key" (default) or "codex-oauth"
     api_key_env: str = "OPENROUTER_API_KEY"
@@ -560,6 +563,7 @@ def _construct_agent_config(
     return AgentConfig(
         name=config_data.get("name", agent_path.name),
         version=config_data.get("version", "1.0"),
+        llm_profile=controller_data.get("llm", config_data.get("llm", "")),
         model=controller_data.get(
             "model", config_data.get("model", "openai/gpt-4o-mini")
         ),
