@@ -185,18 +185,19 @@ DEFAULT_M2V_MODEL = "minishlab/potion-base-8M"
 def _detect_best_provider() -> str:
     """Detect the best available embedding provider.
 
-    Preference: sentence-transformers (jina v5) > model2vec > none.
+    Preference: model2vec (lightweight default) > sentence-transformers > none.
+    Users can override to sentence-transformer in config for better quality.
     """
-    try:
-        import sentence_transformers  # noqa: F401
-
-        return "sentence-transformer"
-    except ImportError:
-        pass
     try:
         import model2vec  # noqa: F401
 
         return "model2vec"
+    except ImportError:
+        pass
+    try:
+        import sentence_transformers  # noqa: F401
+
+        return "sentence-transformer"
     except ImportError:
         pass
     return "none"

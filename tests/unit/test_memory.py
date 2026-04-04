@@ -529,3 +529,64 @@ class TestSearchResult:
             ts=0,
         )
         assert r.age_str == ""
+
+
+# ── SearchMemoryTool ──────────────────────────────────────────
+
+
+class TestSearchMemoryTool:
+    """Tests for the search_memory builtin tool."""
+
+    def test_import(self):
+        from kohakuterrarium.builtins.tools.search_memory import SearchMemoryTool
+
+        tool = SearchMemoryTool()
+        assert tool.tool_name == "search_memory"
+        assert tool.needs_context is True
+
+    def test_description(self):
+        from kohakuterrarium.builtins.tools.search_memory import SearchMemoryTool
+
+        tool = SearchMemoryTool()
+        assert "search" in tool.description.lower()
+
+    def test_full_documentation(self):
+        from kohakuterrarium.builtins.tools.search_memory import SearchMemoryTool
+
+        tool = SearchMemoryTool()
+        doc = tool.get_full_documentation()
+        assert "query" in doc
+        assert "fts" in doc
+        assert "semantic" in doc
+
+    @pytest.mark.asyncio
+    async def test_no_query(self):
+        from kohakuterrarium.builtins.tools.search_memory import SearchMemoryTool
+
+        tool = SearchMemoryTool()
+        result = await tool._execute({}, context=None)
+        assert result.error
+        assert "query" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_no_context(self):
+        from kohakuterrarium.builtins.tools.search_memory import SearchMemoryTool
+
+        tool = SearchMemoryTool()
+        result = await tool._execute({"query": "test"}, context=None)
+        assert result.error
+        assert "context" in result.error.lower()
+
+    def test_registered_in_catalog(self):
+        from kohakuterrarium.builtins.tool_catalog import get_builtin_tool
+
+        tool_cls = get_builtin_tool("search_memory")
+        assert tool_cls is not None
+
+    def test_native_schema_exists(self):
+        from kohakuterrarium.llm.tools import _BUILTIN_SCHEMAS
+
+        assert "search_memory" in _BUILTIN_SCHEMAS
+        schema = _BUILTIN_SCHEMAS["search_memory"]
+        assert "query" in schema["properties"]
+        assert "query" in schema["required"]

@@ -30,6 +30,7 @@ from kohakuterrarium.builtins.tools.create_trigger import CreateTriggerTool
 from kohakuterrarium.builtins.tools.list_triggers import ListTriggersTool
 from kohakuterrarium.builtins.tools.read import ReadTool
 from kohakuterrarium.builtins.tools.scratchpad_tool import ScratchpadTool
+from kohakuterrarium.builtins.tools.search_memory import SearchMemoryTool
 from kohakuterrarium.builtins.tools.send_message import SendMessageTool
 from kohakuterrarium.builtins.tools.stop_task import StopTaskTool
 from kohakuterrarium.builtins.tools.think import ThinkTool
@@ -49,6 +50,7 @@ __all__ = [
     "PythonTool",
     "ReadTool",
     "ScratchpadTool",
+    "SearchMemoryTool",
     "SendMessageTool",
     "WriteTool",
     "EditTool",
@@ -58,6 +60,7 @@ __all__ = [
     "InfoTool",
     "JsonReadTool",
     "JsonWriteTool",
+    "CreateTriggerTool",
     "ListTriggersTool",
     "StopTaskTool",
     "ThinkTool",

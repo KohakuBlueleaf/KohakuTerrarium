@@ -297,6 +297,15 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             self.llm.prompt_cache_key = session_id
             logger.info("Prompt cache key set", cache_key=session_id[:16])
 
+        # Save embedding config to session state for search_memory tool and resume
+        if self.session_store:
+            memory_cfg = getattr(self.config, "memory", None)
+            embed_cfg = (
+                memory_cfg.get("embedding") if isinstance(memory_cfg, dict) else None
+            )
+            if embed_cfg:
+                self.session_store.state["embedding_config"] = embed_cfg
+
         model = getattr(self.config, "model", "") or ""
         self.output_router.notify_activity(
             "session_info",
@@ -420,9 +429,7 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             # Try to show error in output before stopping
             try:
                 error_type = type(e).__name__
-                await self.output_router.write(
-                    f"\n[Fatal Error] {error_type}: {e}\n"
-                )
+                await self.output_router.write(f"\n[Fatal Error] {error_type}: {e}\n")
                 await self.output_router.on_processing_end()
             except Exception:
                 pass
