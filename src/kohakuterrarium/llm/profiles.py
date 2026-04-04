@@ -420,6 +420,25 @@ PRESETS: dict[str, dict[str, Any]] = {
         "extra_body": {"reasoning": {"enabled": True}},
     },
     # ═══════════════════════════════════════════════════════
+    #  Xiaomi MiMo Direct API (kt login mimo)
+    # ═══════════════════════════════════════════════════════
+    "mimo-v2-pro-direct": {
+        "provider": "openai",
+        "model": "MiMo-V2-Pro",
+        "base_url": "https://api.xiaomimimo.com/v1",
+        "api_key_env": "MIMO_API_KEY",
+        "max_context": 1048576,
+        "extra_body": {"reasoning": {"enabled": True}},
+    },
+    "mimo-v2-flash-direct": {
+        "provider": "openai",
+        "model": "MiMo-V2-Flash",
+        "base_url": "https://api.xiaomimimo.com/v1",
+        "api_key_env": "MIMO_API_KEY",
+        "max_context": 262144,
+        "extra_body": {"reasoning": {"enabled": True}},
+    },
+    # ═══════════════════════════════════════════════════════
     #  GLM (Z.ai, via OpenRouter)
     # ═══════════════════════════════════════════════════════
     "glm-5": {
@@ -731,6 +750,7 @@ PROVIDER_KEY_MAP: dict[str, str] = {
     "openai": "OPENAI_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
     "gemini": "GEMINI_API_KEY",
+    "mimo": "MIMO_API_KEY",
 }
 
 
