@@ -173,11 +173,13 @@ class Executor:
                 return JobResult(
                     job_id=job_id,
                     output=(
-                        f"Tool '{tool.tool_name}' requires reading its manual first. "
-                        f"Use the info tool: info(name={tool.tool_name})"
+                        f"Tool '{tool.tool_name}' requires reading its documentation "
+                        f"before first use. Call: info(name={tool.tool_name})\n"
+                        f"This is NOT about reading a file. Use the 'info' tool to "
+                        f"load the tool's usage manual, then retry your call."
                     ),
                     exit_code=1,
-                    error="Manual read required",
+                    error=f"Call info(name={tool.tool_name}) first to read tool docs",
                 )
 
             # Build ToolContext for tools that need it
