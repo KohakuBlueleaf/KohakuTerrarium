@@ -164,6 +164,30 @@ _BUILTIN_SCHEMAS: dict[str, dict] = {
         },
         "required": ["query"],
     },
+    "web_fetch": {
+        "type": "object",
+        "properties": {
+            "url": {
+                "type": "string",
+                "description": "URL to fetch and read",
+            },
+        },
+        "required": ["url"],
+    },
+    "web_search": {
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "Search query",
+            },
+            "max_results": {
+                "type": "integer",
+                "description": "Max results (default: 10)",
+            },
+        },
+        "required": ["query"],
+    },
     "ask_user": {
         "type": "object",
         "properties": {
