@@ -147,7 +147,11 @@ class _SkipBackend(Exception):
 
 
 async def _fetch_crawl4ai(url: str) -> str:
-    """Fetch with Crawl4AI (full browser, JS, anti-bot)."""
+    """Fetch with Crawl4AI browser + trafilatura extraction.
+
+    Crawl4AI renders JS pages, then trafilatura extracts clean content.
+    If trafilatura is not installed, falls back to crawl4ai's raw markdown.
+    """
     if not _HAS_CRAWL4AI:
         raise _SkipBackend
 
@@ -158,11 +162,29 @@ async def _fetch_crawl4ai(url: str) -> str:
 
     async with AsyncWebCrawler(config=browser_cfg) as crawler:
         result = await crawler.arun(url=url, config=run_cfg)
-        if result.success and result.markdown_v2:
-            return result.markdown_v2.raw_markdown
-        if result.success and result.markdown:
-            return result.markdown
-        raise _SkipBackend
+        if not result.success:
+            raise _SkipBackend
+
+        # Best path: use trafilatura to extract content from rendered HTML
+        if _HAS_TRAFILATURA and result.html:
+            import trafilatura
+
+            content = trafilatura.extract(
+                result.html,
+                output_format="markdown",
+                include_links=True,
+                include_images=False,
+                include_tables=True,
+            )
+            if content and content.strip():
+                return content
+
+        # Fallback: crawl4ai's own markdown (includes page chrome)
+        md = result.markdown
+        text = str(md) if md else ""
+        if not text.strip():
+            raise _SkipBackend
+        return text
 
 
 async def _fetch_trafilatura(url: str) -> str:
