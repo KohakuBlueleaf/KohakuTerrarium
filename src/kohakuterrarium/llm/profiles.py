@@ -324,6 +324,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         "base_url": "https://openrouter.ai/api/v1",
         "api_key_env": "OPENROUTER_API_KEY",
         "max_context": 1000000,
+        "extra_body": {"reasoning": {"enabled": True}},
     },
     "qwen3.5-flash": {
         "provider": "openai",
@@ -331,6 +332,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         "base_url": "https://openrouter.ai/api/v1",
         "api_key_env": "OPENROUTER_API_KEY",
         "max_context": 1000000,
+        "extra_body": {"reasoning": {"enabled": True}},
     },
     "qwen3.5-397b": {
         "provider": "openai",
@@ -338,6 +340,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         "base_url": "https://openrouter.ai/api/v1",
         "api_key_env": "OPENROUTER_API_KEY",
         "max_context": 262144,
+        "extra_body": {"reasoning": {"enabled": True}},
     },
     "qwen3.5-27b": {
         "provider": "openai",
@@ -345,6 +348,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         "base_url": "https://openrouter.ai/api/v1",
         "api_key_env": "OPENROUTER_API_KEY",
         "max_context": 262144,
+        "extra_body": {"reasoning": {"enabled": True}},
     },
     "qwen3-coder": {
         "provider": "openai",
@@ -405,6 +409,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         "base_url": "https://openrouter.ai/api/v1",
         "api_key_env": "OPENROUTER_API_KEY",
         "max_context": 1048576,
+        "extra_body": {"reasoning": {"enabled": True}},
     },
     "mimo-v2-flash": {
         "provider": "openai",
@@ -412,6 +417,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         "base_url": "https://openrouter.ai/api/v1",
         "api_key_env": "OPENROUTER_API_KEY",
         "max_context": 262144,
+        "extra_body": {"reasoning": {"enabled": True}},
     },
     # ═══════════════════════════════════════════════════════
     #  GLM (Z.ai, via OpenRouter)
