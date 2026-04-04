@@ -135,13 +135,12 @@ class SessionMemory:
         """Clear FTS entries for an agent (before full re-index)."""
         try:
             to_delete = []
-            for key_bytes in self._fts.keys():
-                key = key_bytes.decode() if isinstance(key_bytes, bytes) else key_bytes
-                val = self._fts.get(key)
+            for row_id in self._fts.keys():
+                _, val = self._fts.get_by_id(row_id)
                 if isinstance(val, dict) and val.get("agent") == agent:
-                    to_delete.append(key)
-            for key in to_delete:
-                del self._fts[key]
+                    to_delete.append(row_id)
+            for row_id in to_delete:
+                self._fts.delete(row_id)
             logger.debug("Cleared FTS entries", agent=agent, count=len(to_delete))
         except Exception as e:
             logger.warning("Failed to clear FTS", error=str(e))
