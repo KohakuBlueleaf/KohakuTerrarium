@@ -69,6 +69,11 @@ def main() -> int:
         help="Disable session persistence",
     )
     run_parser.add_argument(
+        "--llm",
+        default=None,
+        help="Override LLM profile (e.g., gpt-5.4, gemini, claude-sonnet-4)",
+    )
+    run_parser.add_argument(
         "--mode",
         choices=["cli", "tui"],
         default="tui",
@@ -125,8 +130,8 @@ def main() -> int:
     login_parser = subparsers.add_parser("login", help="Authenticate with a provider")
     login_parser.add_argument(
         "provider",
-        choices=["codex"],
-        help="Provider to authenticate with (codex = ChatGPT subscription)",
+        choices=["codex", "openrouter", "openai", "anthropic", "gemini"],
+        help="Provider to authenticate with",
     )
 
     # Install command
@@ -190,6 +195,15 @@ def main() -> int:
         "-k", type=int, default=10, help="Max results (default: 10)"
     )
 
+    # Model command
+    model_parser = subparsers.add_parser("model", help="Manage LLM profiles")
+    model_sub = model_parser.add_subparsers(dest="model_command")
+    model_sub.add_parser("list", help="List all profiles and presets")
+    model_default_parser = model_sub.add_parser("default", help="Set default model")
+    model_default_parser.add_argument("name", help="Model/profile name")
+    model_show_parser = model_sub.add_parser("show", help="Show profile details")
+    model_show_parser.add_argument("name", help="Model/profile name")
+
     args = parser.parse_args()
 
     if args.command == "run":
@@ -199,7 +213,11 @@ def main() -> int:
             agent_path = str(resolve_package_path(agent_path))
         session = None if args.no_session else args.session
         return run_agent_cli(
-            agent_path, args.log_level, session=session, io_mode=args.mode
+            agent_path,
+            args.log_level,
+            session=session,
+            io_mode=args.mode,
+            llm_override=args.llm,
         )
     elif args.command == "resume":
         return resume_cli(
@@ -227,6 +245,8 @@ def main() -> int:
         return embedding_cli(args.session, args.provider, args.model, args.dimensions)
     elif args.command == "search":
         return search_cli(args.session, args.query, args.mode, args.agent, args.k)
+    elif args.command == "model":
+        return model_cli(args)
     else:
         parser.print_help()
         return 0
@@ -240,6 +260,7 @@ def run_agent_cli(
     log_level: str,
     session: str | None = None,
     io_mode: str | None = None,
+    llm_override: str | None = None,
 ) -> int:
     """Run an agent from CLI."""
 
@@ -272,7 +293,7 @@ def run_agent_cli(
             io_kwargs["output_module"] = out
 
         # Create agent
-        agent = Agent.from_path(str(path), **io_kwargs)
+        agent = Agent.from_path(str(path), llm_override=llm_override, **io_kwargs)
 
         # Attach session store (default: ON)
         if session is not None:
@@ -641,8 +662,51 @@ def login_cli(provider: str) -> int:
     """Authenticate with a provider."""
     if provider == "codex":
         return _login_codex()
+    if provider in ("openrouter", "openai", "anthropic", "gemini"):
+        return _login_api_key(provider)
     print(f"Unknown provider: {provider}")
     return 1
+
+
+def _login_api_key(provider: str) -> int:
+    """Store an API key for a provider."""
+    from kohakuterrarium.llm.profiles import (
+        PROVIDER_KEY_MAP,
+        get_api_key,
+        save_api_key,
+    )
+
+    env_var = PROVIDER_KEY_MAP.get(provider, "")
+    existing = get_api_key(provider)
+
+    if existing:
+        masked = f"{existing[:4]}...{existing[-4:]}" if len(existing) > 8 else "****"
+        print(f"Existing {provider} key: {masked}")
+        answer = input("Replace? [y/N]: ").strip().lower()
+        if answer != "y":
+            return 0
+
+    print(f"Enter your {provider} API key")
+    if env_var:
+        print(f"(get one from the provider's dashboard, usually starts with a prefix)")
+    print()
+
+    try:
+        key = input("API key: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print("\nCancelled")
+        return 0
+
+    if not key:
+        print("No key provided")
+        return 1
+
+    save_api_key(provider, key)
+    print(f"\nSaved {provider} API key to ~/.kohakuterrarium/api_keys.yaml")
+    print(f"You can now use {provider} models:")
+    print(f"  kt model list")
+    print(f"  kt run @kohaku-creatures/creatures/swe --llm <model>")
+    return 0
 
 
 def _login_codex() -> int:
@@ -811,6 +875,76 @@ def search_cli(
         return 1
     finally:
         store.close()
+
+
+def model_cli(args: argparse.Namespace) -> int:
+    """Manage LLM profiles."""
+    from kohakuterrarium.llm.profiles import (
+        get_default_model,
+        get_profile,
+        list_all,
+        set_default_model,
+    )
+
+    sub = getattr(args, "model_command", None)
+
+    if sub == "list" or sub is None:
+        default = get_default_model()
+        entries = list_all()
+        if default:
+            print(f"Default model: {default}")
+        else:
+            print("No default model set. Use: kt model default <name>")
+        print()
+        print(f"{'Name':<25} {'Model':<40} {'Provider':<14} {'Context':<10} {'Src':<6}")
+        print("-" * 97)
+        for e in entries:
+            marker = " *" if e.get("is_default") else ""
+            ctx = e.get("max_context", 0)
+            ctx_str = f"{ctx // 1000}k" if ctx else ""
+            provider = e.get("provider", "")
+            print(
+                f"{e['name']:<25} {e['model']:<40} {provider:<14} {ctx_str:<10} {e['source']:<6}{marker}"
+            )
+        return 0
+
+    elif sub == "default":
+        name = args.name
+        # Verify the profile exists
+        profile = get_profile(name)
+        if not profile:
+            print(f"Profile/preset not found: {name}")
+            print("Use 'kt model list' to see available options.")
+            return 1
+        set_default_model(name)
+        print(f"Default model set to: {name} ({profile.model})")
+        return 0
+
+    elif sub == "show":
+        name = args.name
+        profile = get_profile(name)
+        if not profile:
+            print(f"Profile/preset not found: {name}")
+            return 1
+        print(f"Name:       {profile.name}")
+        print(f"Provider:   {profile.provider}")
+        print(f"Model:      {profile.model}")
+        print(f"Context:    {profile.max_context:,} tokens")
+        print(f"Max output: {profile.max_output:,} tokens")
+        if profile.base_url:
+            print(f"Base URL:   {profile.base_url}")
+        if profile.api_key_env:
+            print(f"API key:    ${profile.api_key_env}")
+        if profile.temperature is not None:
+            print(f"Temperature: {profile.temperature}")
+        if profile.reasoning_effort:
+            print(f"Reasoning:  {profile.reasoning_effort}")
+        if profile.extra_body:
+            print(f"Extra body: {profile.extra_body}")
+        return 0
+
+    print("Usage: kt model [list|default <name>|show <name>]")
+    return 0
 
 
 if __name__ == "__main__":
