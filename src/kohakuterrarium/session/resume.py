@@ -67,6 +67,7 @@ def resume_agent(
     session_path: str | Path,
     pwd_override: str | None = None,
     io_mode: str | None = None,
+    llm_override: str | None = None,
 ) -> tuple[Agent, SessionStore]:
     """Resume a standalone agent from a session file.
 
@@ -74,6 +75,7 @@ def resume_agent(
         session_path: Path to the session file.
         pwd_override: Override the working directory (uses saved pwd if None).
         io_mode: Override input/output mode ("cli", "inline", "tui", or None for config default).
+        llm_override: Override LLM profile (from --llm flag or saved session).
 
     Returns:
         (agent, store) tuple. Caller should run agent.run() then store.close().
@@ -102,8 +104,18 @@ def resume_agent(
         io_kwargs["input_module"] = inp
         io_kwargs["output_module"] = out
 
+    # Restore LLM profile: CLI override > saved session > default
+    effective_llm = llm_override
+    if not effective_llm:
+        try:
+            effective_llm = store.state.get(
+                f"{meta.get('agents', ['agent'])[0]}:llm_profile"
+            )
+        except (KeyError, Exception):
+            pass
+
     # Rebuild agent from config
-    agent = Agent.from_path(config_path, **io_kwargs)
+    agent = Agent.from_path(config_path, llm_override=effective_llm, **io_kwargs)
     agent_name = meta.get("agents", [agent.config.name])[0]
 
     # Inject saved conversation

@@ -113,7 +113,13 @@ class ToolBlock(Collapsible):
         self.state = "done"
         self.result_summary = summary or _summarize_output(output)
         if output:
-            self._output_widget.update(output[:3000])
+            try:
+                self._output_widget.update(output[:3000])
+            except Exception:
+                # Escape markup-like content that Textual can't parse
+                from textual.content import Content
+
+                self._output_widget.update(Content(output[:3000]))
         self.remove_class("-running")
         self.add_class("-done")
         self.title = self._build_title()
@@ -122,7 +128,12 @@ class ToolBlock(Collapsible):
         self.state = "error"
         self.result_summary = error[:80]
         if error:
-            self._output_widget.update(error[:3000])
+            try:
+                self._output_widget.update(error[:3000])
+            except Exception:
+                from textual.content import Content
+
+                self._output_widget.update(Content(error[:3000]))
         self.remove_class("-running")
         self.add_class("-error")
         self.title = self._build_title()
@@ -619,9 +630,7 @@ class SessionInfoPanel(Static):
                     f"/{_fmt_tokens(self._compact_threshold)} ({pct}%)"
                 )
             else:
-                lines.append(
-                    f"Compact: {_fmt_tokens(self._compact_threshold)}"
-                )
+                lines.append(f"Compact: {_fmt_tokens(self._compact_threshold)}")
         self.update("\n".join(lines))
 
 

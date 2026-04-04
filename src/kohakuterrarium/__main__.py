@@ -121,6 +121,11 @@ def main() -> int:
         help="Input/output mode (default: tui)",
     )
     resume_parser.add_argument(
+        "--llm",
+        default=None,
+        help="Override LLM profile (e.g., gpt-5.4, gemini, claude-sonnet-4.6)",
+    )
+    resume_parser.add_argument(
         "--log-level",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         default="INFO",
@@ -221,7 +226,12 @@ def main() -> int:
         )
     elif args.command == "resume":
         return resume_cli(
-            args.session, args.pwd, args.log_level, last=args.last, io_mode=args.mode
+            args.session,
+            args.pwd,
+            args.log_level,
+            last=args.last,
+            io_mode=args.mode,
+            llm_override=args.llm,
         )
     elif args.command == "list":
         return list_cli(args.path)
@@ -444,6 +454,7 @@ def resume_cli(
     log_level: str,
     last: bool = False,
     io_mode: str | None = None,
+    llm_override: str | None = None,
 ) -> int:
     """Resume an agent or terrarium from a session file."""
     set_level(log_level)
@@ -467,7 +478,9 @@ def resume_cli(
 
             asyncio.run(run_terrarium_with_tui(runtime))
         else:
-            agent, store = resume_agent(path, pwd_override, io_mode=io_mode)
+            agent, store = resume_agent(
+                path, pwd_override, io_mode=io_mode, llm_override=llm_override
+            )
             asyncio.run(agent.run())
         return 0
     except KeyboardInterrupt:

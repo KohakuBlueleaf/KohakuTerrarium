@@ -304,6 +304,16 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             except Exception:
                 pass
 
+        # Save LLM profile name to session state for resume
+        if self.session_store and self._llm_override:
+            self.session_store.state[f"{self.config.name}:llm_profile"] = (
+                self._llm_override
+            )
+        elif self.session_store and self.config.llm_profile:
+            self.session_store.state[f"{self.config.name}:llm_profile"] = (
+                self.config.llm_profile
+            )
+
         # Set prompt_cache_key on LLM provider for cache routing
         if session_id and hasattr(self.llm, "prompt_cache_key"):
             self.llm.prompt_cache_key = session_id
