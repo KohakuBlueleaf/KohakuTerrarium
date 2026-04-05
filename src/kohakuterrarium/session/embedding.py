@@ -178,15 +178,68 @@ class NullEmbedder(BaseEmbedder):
         )
 
 
-DEFAULT_ST_MODEL = "jinaai/jina-embeddings-v5-text-nano"
-DEFAULT_M2V_MODEL = "minishlab/potion-base-8M"
+# ── Model presets ────────────────────────────────────────────────────
+# Use via config: { provider: model2vec, model: "@retrieval" }
+# or just:        { provider: model2vec, model: "minishlab/potion-retrieval-32M" }
+
+MODEL2VEC_PRESETS: dict[str, dict[str, Any]] = {
+    # Tiny (< 10M params, pure numpy, microsecond inference)
+    "tiny": {"model": "minishlab/potion-base-2M"},  # 64-dim, ~2MB
+    "base": {"model": "minishlab/potion-base-8M"},  # 256-dim, ~8MB
+    # Retrieval-optimized (default)
+    "retrieval": {"model": "minishlab/potion-retrieval-32M"},  # 512-dim, ~32MB
+    # Multilingual
+    "multilingual": {
+        "model": "minishlab/potion-multilingual-128M"
+    },  # 256-dim, 101 langs
+    # Science domain
+    "science": {"model": "minishlab/potion-science-32M"},  # 256-dim, arxiv+pubmed
+}
+
+ST_PRESETS: dict[str, dict[str, Any]] = {
+    # Tiny (< 50M params)
+    "tiny": {
+        "model": "ibm-granite/granite-embedding-30m-english",  # 384-dim, 512 ctx
+    },
+    "small": {
+        "model": "ibm-granite/granite-embedding-small-english-r2",  # 384-dim, 8K ctx
+    },
+    # Base (100-150M params)
+    "base": {
+        "model": "Alibaba-NLP/gte-modernbert-base",  # 768-dim, 8K ctx, BEIR 55.33
+    },
+    "nomic": {
+        "model": "nomic-ai/nomic-embed-text-v1.5",  # 768-dim, 8K ctx, Matryoshka
+    },
+    # Medium (300M+ params)
+    "gemma": {
+        "model": "google/embeddinggemma-300m",  # 768-dim, 2K ctx, 100+ langs
+    },
+    "multilingual": {
+        "model": "Alibaba-NLP/gte-multilingual-base",  # 768-dim, 8K ctx, 70+ langs
+    },
+}
+
+DEFAULT_M2V_MODEL = "minishlab/potion-retrieval-32M"
+DEFAULT_ST_MODEL = "Alibaba-NLP/gte-modernbert-base"
+
+
+def _resolve_preset(
+    model: str, presets: dict[str, dict[str, Any]]
+) -> dict[str, Any] | None:
+    """Resolve a @preset reference to a preset dict, or None."""
+    if model.startswith("@"):
+        name = model[1:]
+        if name in presets:
+            return presets[name]
+        logger.warning("Unknown embedding preset", preset=name)
+    return None
 
 
 def _detect_best_provider() -> str:
     """Detect the best available embedding provider.
 
     Preference: model2vec (lightweight default) > sentence-transformers > none.
-    Users can override to sentence-transformer in config for better quality.
     """
     try:
         import model2vec  # noqa: F401
@@ -203,19 +256,32 @@ def _detect_best_provider() -> str:
     return "none"
 
 
+def list_embedding_presets() -> dict[str, dict[str, dict[str, Any]]]:
+    """Return all available presets grouped by provider."""
+    return {"model2vec": MODEL2VEC_PRESETS, "sentence-transformer": ST_PRESETS}
+
+
 def create_embedder(config: dict[str, Any] | None = None) -> BaseEmbedder:
     """Create an embedder from config dict.
 
-    Config format:
+    Config format::
+
         provider: "auto" | "model2vec" | "sentence-transformer" | "api" | "none"
-        model: model name or path
-        dimensions: optional dimension override (Matryoshka)
+        model: model name, HuggingFace path, or "@preset" (e.g. "@retrieval")
+        dimensions: optional dimension override (Matryoshka truncation)
         api_key: for API providers
         base_url: for API providers
         device: "cpu" or "cuda" (for sentence-transformer)
 
-    "auto" (default): tries sentence-transformers (jina v5 nano) first,
-    falls back to model2vec, then NullEmbedder.
+    Preset examples::
+
+        { provider: model2vec, model: "@retrieval" }     # potion-retrieval-32M
+        { provider: model2vec, model: "@multilingual" }   # potion-multilingual-128M
+        { provider: sentence-transformer, model: "@base" } # gte-modernbert-base
+        { provider: sentence-transformer, model: "@gemma" } # embeddinggemma-300m
+
+    "auto" (default): tries model2vec first, falls back to
+    sentence-transformers, then NullEmbedder.
 
     Returns NullEmbedder if config is None or provider is "none".
     """
@@ -230,12 +296,19 @@ def create_embedder(config: dict[str, Any] | None = None) -> BaseEmbedder:
     match provider:
         case "model2vec":
             model = config.get("model", DEFAULT_M2V_MODEL)
+            preset = _resolve_preset(model, MODEL2VEC_PRESETS)
+            if preset:
+                model = preset["model"]
             return Model2VecEmbedder(model_name=model)
 
         case "sentence-transformer":
             model = config.get("model", DEFAULT_ST_MODEL)
             dims = config.get("dimensions")
             device = config.get("device", "cpu")
+            preset = _resolve_preset(model, ST_PRESETS)
+            if preset:
+                model = preset["model"]
+                dims = dims or preset.get("dimensions")
             return SentenceTransformerEmbedder(
                 model_name=model, dimensions=dims, device=device
             )
