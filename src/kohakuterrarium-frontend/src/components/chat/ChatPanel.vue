@@ -65,7 +65,7 @@
           <span class="text-warm-300 dark:text-warm-600">|</span>
           <span
             :class="contextPct >= 80 ? 'text-coral' : contextPct >= 60 ? 'text-amber' : ''"
-            :title="`Context: ${formatTokens(activeUsage.prompt)} / ${formatTokens(chat.sessionInfo.compactThreshold)}`"
+            :title="`Context: ${formatTokens(activeUsage.lastPrompt || 0)} / ${formatTokens(chat.sessionInfo.compactThreshold)}`"
           >Ctx: {{ contextPct }}%</span>
         </template>
       </div>
@@ -142,8 +142,8 @@
               job.name
             }}</span>
             <span class="text-warm-400">{{
-              Math.floor((Date.now() - job.startedAt) / 1000)
-            }}s</span>
+              chat.getJobElapsed(job)
+            }}</span>
             <button
               class="ml-0.5 text-warm-400 hover:text-coral transition-colors"
               title="Stop task"
@@ -225,8 +225,9 @@ const activeTokens = computed(() => activeUsage.value.total);
 
 const contextPct = computed(() => {
   const threshold = chat.sessionInfo.compactThreshold;
-  if (!threshold || !activeUsage.value.prompt) return 0;
-  return Math.min(100, Math.round((activeUsage.value.prompt / threshold) * 100));
+  const lastPrompt = activeUsage.value.lastPrompt || 0;
+  if (!threshold || !lastPrompt) return 0;
+  return Math.round((lastPrompt / threshold) * 100);
 });
 
 function formatTokens(n) {

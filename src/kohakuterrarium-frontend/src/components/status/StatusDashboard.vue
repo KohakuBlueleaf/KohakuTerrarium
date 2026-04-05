@@ -144,7 +144,7 @@
               <span
                 class="font-mono text-[10px]"
                 :class="contextPct >= 80 ? 'text-coral' : contextPct >= 60 ? 'text-amber' : 'text-warm-500'"
-              >{{ formatTokens(totalUsage.prompt) }} / {{ formatTokens(maxContext) }} ({{ contextPct }}%)</span>
+              >{{ formatTokens(totalUsage.lastPrompt) }} / {{ formatTokens(maxContext) }} ({{ contextPct }}%)</span>
             </div>
             <div class="relative w-full h-1.5 rounded-full bg-warm-100 dark:bg-warm-800 overflow-hidden">
               <!-- Usage fill -->
@@ -307,12 +307,15 @@ const totalUsage = computed(() => {
   let prompt = 0;
   let completion = 0;
   let cached = 0;
+  let lastPrompt = 0;
   for (const usage of Object.values(chat.tokenUsage)) {
     prompt += usage.prompt || 0;
     completion += usage.completion || 0;
     cached += usage.cached || 0;
+    // Context = last call's prompt_tokens (not accumulated sum)
+    if ((usage.lastPrompt || 0) > lastPrompt) lastPrompt = usage.lastPrompt || 0;
   }
-  return { prompt, completion, cached };
+  return { prompt, completion, cached, lastPrompt };
 });
 
 const maxContext = computed(
@@ -320,8 +323,8 @@ const maxContext = computed(
 );
 
 const contextPct = computed(() => {
-  if (!maxContext.value || !totalUsage.value.prompt) return 0;
-  return Math.min(100, Math.round((totalUsage.value.prompt / maxContext.value) * 100));
+  if (!maxContext.value || !totalUsage.value.lastPrompt) return 0;
+  return Math.round((totalUsage.value.lastPrompt / maxContext.value) * 100);
 });
 
 const compactThreshold = computed(
