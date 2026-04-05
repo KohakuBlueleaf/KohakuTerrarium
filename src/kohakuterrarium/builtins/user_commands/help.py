@@ -6,6 +6,7 @@ from kohakuterrarium.modules.user_command.base import (
     CommandLayer,
     UserCommandContext,
     UserCommandResult,
+    ui_list,
 )
 
 
@@ -19,15 +20,27 @@ class HelpCommand(BaseUserCommand):
     async def _execute(
         self, args: str, context: UserCommandContext
     ) -> UserCommandResult:
-        registry = context.extra.get("command_registry")
-        if not registry:
-            return UserCommandResult(output="No commands available.")
+        registry = context.extra.get("command_registry", {})
 
+        # Plain text
         lines = ["Available commands:", ""]
+        items = []
         for cmd in registry.values():
             alias_str = ""
             if cmd.aliases:
                 alias_str = f" (aliases: {', '.join('/' + a for a in cmd.aliases)})"
             lines.append(f"  /{cmd.name:<12} {cmd.description}{alias_str}")
+            items.append(
+                {
+                    "label": f"/{cmd.name}",
+                    "description": cmd.description,
+                    "aliases": [f"/{a}" for a in cmd.aliases],
+                    "layer": cmd.layer.value,
+                }
+            )
         lines.append("")
-        return UserCommandResult(output="\n".join(lines))
+
+        return UserCommandResult(
+            output="\n".join(lines),
+            data=ui_list("Commands", items),
+        )

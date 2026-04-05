@@ -6,6 +6,7 @@ from kohakuterrarium.modules.user_command.base import (
     CommandLayer,
     UserCommandContext,
     UserCommandResult,
+    ui_notify,
 )
 
 
@@ -25,6 +26,12 @@ class CompactCommand(BaseUserCommand):
         if not mgr:
             return UserCommandResult(error="Compaction not configured.")
         if mgr.is_compacting:
-            return UserCommandResult(output="Compaction already in progress.")
+            return UserCommandResult(
+                output="Compaction already in progress.",
+                data=ui_notify("Compaction already in progress", level="warning"),
+            )
         mgr.trigger_compact()
-        return UserCommandResult(output="Compaction triggered.")
+        return UserCommandResult(
+            output="Compaction triggered.",
+            data=ui_notify("Context compaction started", level="info"),
+        )

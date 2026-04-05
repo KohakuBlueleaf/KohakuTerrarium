@@ -6,6 +6,8 @@ from kohakuterrarium.modules.user_command.base import (
     CommandLayer,
     UserCommandContext,
     UserCommandResult,
+    ui_notify,
+    ui_select,
 )
 
 
@@ -40,7 +42,8 @@ class ModelCommand(BaseUserCommand):
             for e in available:
                 marker = " *" if e["model"] == current else ""
                 lines.append(
-                    f"  {e['name']:<25} {e['model']:<35} ({e['login_provider']}){marker}"
+                    f"  {e['name']:<25} {e['model']:<35} "
+                    f"({e['login_provider']}){marker}"
                 )
         else:
             lines.append("No models with API keys configured.")
@@ -48,26 +51,25 @@ class ModelCommand(BaseUserCommand):
         lines.append("")
         lines.append("Switch: /model <name>")
 
-        # Structured data for web frontend (renders as selector/modal)
-        data = {
-            "type": "select",
-            "title": "Switch Model",
-            "current": current,
-            "options": [
-                {
-                    "value": e["name"],
-                    "label": e["name"],
-                    "model": e["model"],
-                    "provider": e.get("login_provider", ""),
-                    "context": f"{e.get('max_context', 0) // 1000}k",
-                    "selected": e["model"] == current,
-                }
-                for e in available
-            ],
-            "action": "model",  # Frontend sends /model <selected_value>
-        }
-
-        return UserCommandResult(output="\n".join(lines), data=data)
+        return UserCommandResult(
+            output="\n".join(lines),
+            data=ui_select(
+                "Switch Model",
+                [
+                    {
+                        "value": e["name"],
+                        "label": e["name"],
+                        "model": e["model"],
+                        "provider": e.get("login_provider", ""),
+                        "context": f"{e.get('max_context', 0) // 1000}k",
+                        "selected": e["model"] == current,
+                    }
+                    for e in available
+                ],
+                current=current,
+                action="model",
+            ),
+        )
 
     def _switch_model(
         self, name: str, context: UserCommandContext
@@ -78,7 +80,7 @@ class ModelCommand(BaseUserCommand):
             model = context.agent.switch_model(name)
             return UserCommandResult(
                 output=f"Switched to: {model}",
-                data={"type": "notify", "message": f"Model switched to {model}"},
+                data=ui_notify(f"Model switched to {model}", level="success"),
             )
         except ValueError as e:
             return UserCommandResult(error=str(e))

@@ -6,6 +6,8 @@ from kohakuterrarium.modules.user_command.base import (
     CommandLayer,
     UserCommandContext,
     UserCommandResult,
+    ui_confirm,
+    ui_notify,
 )
 
 
@@ -21,5 +23,28 @@ class ClearCommand(BaseUserCommand):
     ) -> UserCommandResult:
         if not context.agent:
             return UserCommandResult(error="No agent context.")
-        context.agent.controller.conversation.clear()
-        return UserCommandResult(output="Conversation cleared.")
+
+        # --force skips confirmation (used by frontend after confirm dialog)
+        if args.strip() == "--force":
+            context.agent.controller.conversation.clear()
+            return UserCommandResult(
+                output="Conversation cleared.",
+                data=ui_notify("Conversation cleared", level="success"),
+            )
+
+        msgs = len(context.agent.controller.conversation.get_messages())
+
+        # CLI/TUI: clear immediately (no confirmation)
+        if context.input_module:
+            context.agent.controller.conversation.clear()
+            return UserCommandResult(output=f"Cleared {msgs} messages.")
+
+        # Web frontend: return confirm dialog
+        return UserCommandResult(
+            output=f"Clear {msgs} messages?",
+            data=ui_confirm(
+                f"Clear {msgs} messages from conversation history?",
+                action="clear",
+                action_args="--force",
+            ),
+        )

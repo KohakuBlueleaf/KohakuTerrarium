@@ -6,6 +6,7 @@ from kohakuterrarium.modules.user_command.base import (
     CommandLayer,
     UserCommandContext,
     UserCommandResult,
+    ui_confirm,
 )
 
 
@@ -19,7 +20,17 @@ class ExitCommand(BaseUserCommand):
     async def _execute(
         self, args: str, context: UserCommandContext
     ) -> UserCommandResult:
-        # Signal exit via the input module
+        # For CLI/TUI: exit immediately (no confirmation)
         if context.input_module and hasattr(context.input_module, "_exit_requested"):
             context.input_module._exit_requested = True
-        return UserCommandResult(output="", consumed=True)
+            return UserCommandResult(output="")
+
+        # For web frontend: return confirm payload
+        return UserCommandResult(
+            output="Exiting session.",
+            data=ui_confirm(
+                "Are you sure you want to exit this session?",
+                action="exit",
+                action_args="--force",
+            ),
+        )

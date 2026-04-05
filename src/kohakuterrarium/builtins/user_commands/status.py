@@ -6,6 +6,7 @@ from kohakuterrarium.modules.user_command.base import (
     CommandLayer,
     UserCommandContext,
     UserCommandResult,
+    ui_info_panel,
 )
 
 
@@ -31,12 +32,19 @@ class StatusCommand(BaseUserCommand):
             agent.compact_manager.is_compacting if agent.compact_manager else False
         )
 
-        lines = [
-            f"Agent:     {agent.config.name}",
-            f"Model:     {model}",
-            f"Messages:  {msgs}",
-            f"Tools:     {tools}",
-            f"Jobs:      {running_jobs} running",
-            f"Compacting: {'yes' if compacting else 'no'}",
+        fields = [
+            {"key": "Agent", "value": agent.config.name},
+            {"key": "Model", "value": model},
+            {"key": "Messages", "value": str(msgs)},
+            {"key": "Tools", "value": str(tools)},
+            {"key": "Running jobs", "value": str(running_jobs)},
+            {"key": "Compacting", "value": "yes" if compacting else "no"},
         ]
-        return UserCommandResult(output="\n".join(lines))
+
+        # Plain text
+        lines = [f"{f['key']:<14} {f['value']}" for f in fields]
+
+        return UserCommandResult(
+            output="\n".join(lines),
+            data=ui_info_panel("Agent Status", fields),
+        )
