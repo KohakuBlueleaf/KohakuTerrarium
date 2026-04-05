@@ -75,11 +75,23 @@ class CLIInput(BaseInputModule):
 
             line = line.strip()
 
-            # Check for exit commands
-            if line.lower() in self.exit_commands:
+            # Legacy exit check (fallback if command system not wired)
+            if not self._user_commands and line.lower() in self.exit_commands:
                 self._exit_requested = True
-                logger.debug("Exit command received")
                 return None
+
+            # Try slash command
+            if line.startswith("/"):
+                result = await self.try_user_command(line)
+                if result is not None:
+                    if result.output:
+                        print(result.output)
+                    if result.error:
+                        print(f"Error: {result.error}")
+                    if self._exit_requested:
+                        return None
+                    if result.consumed:
+                        return await self.get_input()
 
             # Return as trigger event
             return create_user_input_event(line)

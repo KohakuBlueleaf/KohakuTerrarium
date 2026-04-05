@@ -239,6 +239,31 @@ class AgentInitMixin:
 
         self.output_router = OutputRouter(default_output, named_outputs=named_outputs)
 
+    def _init_user_commands(self) -> None:
+        """Wire user commands (slash commands) into the input module."""
+        from kohakuterrarium.builtins.user_commands import (
+            get_builtin_user_command,
+            list_builtin_user_commands,
+        )
+        from kohakuterrarium.modules.user_command.base import UserCommandContext
+
+        # Load all builtins by default
+        commands: dict = {}
+        for name in list_builtin_user_commands():
+            cmd = get_builtin_user_command(name)
+            if cmd:
+                commands[name] = cmd
+
+        context = UserCommandContext(
+            agent=self,
+            session=getattr(self, "session", None),
+            input_module=self.input,
+        )
+
+        # Wire into input module (if it supports commands)
+        if hasattr(self.input, "set_user_commands"):
+            self.input.set_user_commands(commands, context)
+
     def _init_triggers(self) -> None:
         """Initialize trigger modules from config into trigger_manager."""
         session = getattr(self, "session", None)
