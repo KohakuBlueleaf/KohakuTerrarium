@@ -186,12 +186,19 @@ MODEL2VEC_PRESETS: dict[str, dict[str, Any]] = {
     # Tiny (< 10M params, pure numpy, microsecond inference)
     "tiny": {"model": "minishlab/potion-base-2M"},  # 64-dim, ~2MB
     "base": {"model": "minishlab/potion-base-8M"},  # 256-dim, ~8MB
-    # Retrieval-optimized (default)
+    # Retrieval-optimized
     "retrieval": {"model": "minishlab/potion-retrieval-32M"},  # 512-dim, ~32MB
+    # High-quality static (Matryoshka 1024/512/256/128/64/32)
+    "best": {
+        "model": "sentence-transformers/static-retrieval-mrl-en-v1",  # 1024-dim, ~120MB
+    },
     # Multilingual
     "multilingual": {
-        "model": "minishlab/potion-multilingual-128M"
-    },  # 256-dim, 101 langs
+        "model": "minishlab/potion-multilingual-128M",  # 256-dim, 101 langs, ~512MB
+    },
+    "multilingual-best": {
+        "model": "sentence-transformers/static-similarity-mrl-multilingual-v1",  # 1024-dim, 51 langs
+    },
     # Science domain
     "science": {"model": "minishlab/potion-science-32M"},  # 256-dim, arxiv+pubmed
 }
