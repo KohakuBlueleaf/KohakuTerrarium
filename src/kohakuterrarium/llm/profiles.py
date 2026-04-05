@@ -662,6 +662,7 @@ def resolve_controller_llm(
       1. llm_override (from --llm CLI flag)
       2. controller_config["llm"] (profile name in agent config)
       3. default_model from ~/.kohakuterrarium/llm_profiles.yaml
+         (only if agent has no explicit inline model)
       4. None (fall back to inline controller config, backward compat)
 
     Returns None if no profile found (caller should use inline config).
@@ -673,9 +674,13 @@ def resolve_controller_llm(
     if not name:
         name = controller_config.get("llm")
 
-    # 3. Default model
+    # 3. Default model (only when agent didn't set an explicit inline model)
     if not name:
-        name = get_default_model()
+        inline_model = controller_config.get("model", "")
+        default_model = "openai/gpt-4o-mini"
+        has_explicit_model = inline_model and inline_model != default_model
+        if not has_explicit_model:
+            name = get_default_model()
 
     if not name:
         return None
