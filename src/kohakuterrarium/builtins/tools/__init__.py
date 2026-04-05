@@ -34,7 +34,6 @@ from kohakuterrarium.builtins.tools.send_message import SendMessageTool
 from kohakuterrarium.builtins.tools.stop_task import StopTaskTool
 from kohakuterrarium.builtins.tools.think import ThinkTool
 from kohakuterrarium.builtins.tools.tree import TreeTool
-from kohakuterrarium.builtins.tools.wait_channel import WaitChannelTool
 from kohakuterrarium.builtins.tools.web_fetch import WebFetchTool
 from kohakuterrarium.builtins.tools.web_search import WebSearchTool
 from kohakuterrarium.builtins.tools.write import WriteTool
@@ -67,5 +66,4 @@ __all__ = [
     "TreeTool",
     "WebFetchTool",
     "WebSearchTool",
-    "WaitChannelTool",
 ]

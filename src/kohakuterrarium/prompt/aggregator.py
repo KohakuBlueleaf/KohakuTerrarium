@@ -347,9 +347,8 @@ def _build_channel_hints(
     """
     tool_names = set(registry.list_tools())
     has_send = "send_message" in tool_names
-    has_wait = "wait_channel" in tool_names
 
-    if not has_send and not has_wait:
+    if not has_send:
         return ""
 
     # If channel topology was already injected (terrarium creature),
@@ -365,18 +364,12 @@ def _build_channel_hints(
 
     lines = ["## Internal Channels", ""]
     lines.append(
-        "`send_message` and `wait_channel` are for communicating with your "
-        "own sub-agents through internal channels. They are NOT for talking "
-        "to the user or other team members."
+        "`send_message` is for communicating with other creatures through "
+        "team channels, or with your own sub-agents through internal channels."
     )
     lines.append("")
     lines.append("**Usage:**")
-    if has_send:
-        lines.append("- `send_message(channel, message)` -- send to a named channel")
-    if has_wait:
-        lines.append(
-            "- `wait_channel(channel, timeout)` -- wait for a reply on a channel"
-        )
+    lines.append("- `send_message(channel, message)` -- send to a named channel")
     lines.append("")
 
     return "\n".join(lines)

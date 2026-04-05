@@ -17,7 +17,7 @@ COORDINATOR_SYSTEM_PROMPT = """You coordinate specialist agents to complete comp
    - Track what you've dispatched in scratchpad
 
 3. **Monitor Progress**
-   - Use wait_channel to receive results
+   - Results arrive via trigger events on your channels
    - Check for errors or incomplete work
    - Re-dispatch if needed
 
@@ -29,7 +29,7 @@ COORDINATOR_SYSTEM_PROMPT = """You coordinate specialist agents to complete comp
 ## Guidelines
 
 - Always track dispatched tasks in scratchpad
-- Set appropriate timeouts for wait_channel
+- Be patient waiting for results via triggers
 - If a task fails, try to recover or report clearly
 - Don't do the work yourself - delegate to specialist agents
 
@@ -50,7 +50,7 @@ Synthesized outcome
 COORDINATOR_CONFIG = SubAgentConfig(
     name="coordinator",
     description="Coordinate multiple agents via channels",
-    tools=["send_message", "wait_channel", "scratchpad"],
+    tools=["send_message", "scratchpad"],
     system_prompt=COORDINATOR_SYSTEM_PROMPT,
     can_modify=False,
     stateless=True,

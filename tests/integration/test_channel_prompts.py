@@ -80,19 +80,13 @@ class TestChannelPromptHints:
     """
 
     def _registry_with_channel_tools(self) -> Registry:
-        """Create registry with send_message and wait_channel tools."""
+        """Create registry with send_message tool."""
         registry = Registry()
         mock_send = MagicMock()
         mock_send.tool_name = "send_message"
         mock_send.description = "Send a message to a channel"
         mock_send.get_parameters_schema.return_value = {}
         registry.register_tool(mock_send)
-
-        mock_wait = MagicMock()
-        mock_wait.tool_name = "wait_channel"
-        mock_wait.description = "Wait for a channel message"
-        mock_wait.get_parameters_schema.return_value = {}
-        registry.register_tool(mock_wait)
         return registry
 
     def test_no_hints_without_channel_tools(self):
@@ -108,7 +102,6 @@ class TestChannelPromptHints:
 
         assert "Internal Channels" in result
         assert "send_message" in result
-        assert "wait_channel" in result
 
     def test_hints_empty_when_channels_provided(self):
         """When channels are in extra_context, hints are empty (topology prompt handles it)."""

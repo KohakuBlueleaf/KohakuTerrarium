@@ -124,17 +124,6 @@ _BUILTIN_SCHEMAS: dict[str, dict] = {
         },
         "required": ["channel", "message"],
     },
-    "wait_channel": {
-        "type": "object",
-        "properties": {
-            "channel": {"type": "string", "description": "Channel name to listen on"},
-            "timeout": {
-                "type": "number",
-                "description": "Seconds to wait (default 30)",
-            },
-        },
-        "required": ["channel"],
-    },
     "info": {
         "type": "object",
         "properties": {

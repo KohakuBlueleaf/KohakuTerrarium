@@ -101,5 +101,4 @@ Cancel a running background tool or sub-agent.
 
 - Cancel a long-running sub-agent (e.g., explore taking too long)
 - Cancel a background tool (e.g., terrarium_observe you no longer need)
-- Cancel a wait_channel that is no longer relevant
 """

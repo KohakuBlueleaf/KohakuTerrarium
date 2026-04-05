@@ -356,7 +356,7 @@ def _format_args_preview(tool_name: str, args: dict) -> str:
             return f'"{p}" {path}'.strip()[:60]
         case "send_message" | "terrarium_send":
             return f"-> {args.get('channel', '')}"
-        case "terrarium_observe" | "wait_channel":
+        case "terrarium_observe":
             return f"<- {args.get('channel', '')}"
         case "think":
             return str(args.get("thought", args.get("content", "")))[:50]
