@@ -15,9 +15,9 @@
         instance.config_name
       }}</span>
       <span
-        v-if="chat.sessionInfo.model"
+        v-if="chat.sessionInfo.model || instance?.model"
         class="px-2 py-0.5 rounded-md text-[11px] font-mono bg-iolite/10 dark:bg-iolite/15 text-iolite dark:text-iolite-light"
-      >{{ chat.sessionInfo.model }}</span>
+      >{{ chat.sessionInfo.model || instance?.model }}</span>
       <span class="text-xs text-warm-400 font-mono truncate">{{
         instance.pwd
       }}</span>

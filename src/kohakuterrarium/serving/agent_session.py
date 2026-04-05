@@ -114,7 +114,11 @@ class AgentSession:
 
     def get_status(self) -> dict:
         """Get agent status including model/context info."""
-        model = getattr(self.agent.llm, "model", "") or self.agent.config.model
+        model = (
+            getattr(self.agent.llm, "model", "")
+            or getattr(getattr(self.agent.llm, "config", None), "model", "")
+            or self.agent.config.model
+        )
         max_context = getattr(self.agent.llm, "_profile_max_context", 0)
         compact_threshold = 0
         if self.agent.compact_manager and max_context:
