@@ -25,6 +25,7 @@ from kohakuterrarium.builtins.tui.widgets import (
     SessionInfoPanel,
     StreamingText,
     SubAgentBlock,
+    SystemNotice,
     TerrariumPanel,
     ToolBlock,
     TriggerMessage,
@@ -138,6 +139,10 @@ class AgentTUI(App):
     def on_chat_input_submitted(self, event: ChatInput.Submitted) -> None:
         text = event.value.strip()
         if not text:
+            return
+        # Slash commands: don't show in chat — command system handles display
+        if text.startswith("/"):
+            self._input_queue.put_nowait(text)
             return
         if self._is_processing:
             # Agent is busy: show in queued area (above input, not in chat)
@@ -476,6 +481,12 @@ class TUISession:
 
     def add_user_message(self, text: str, target: str = "") -> None:
         self._safe_mount(UserMessage(text), target=target)
+
+    def add_system_notice(
+        self, text: str, error: bool = False, target: str = ""
+    ) -> None:
+        """Add a non-collapsible system notice (for command results)."""
+        self._safe_mount(SystemNotice(text, error=error), target=target)
 
     def add_trigger_message(
         self, label: str, content: str = "", target: str = ""

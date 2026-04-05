@@ -117,9 +117,9 @@ class TUIInput(BaseInputModule):
                 result = await self.try_user_command(text)
                 if result is not None:
                     if result.output:
-                        self._tui.add_trigger_message("System", result.output)
+                        self._tui.add_system_notice(result.output)
                     if result.error:
-                        self._tui.add_trigger_message("Error", result.error)
+                        self._tui.add_system_notice(result.error, error=True)
                     if self._exit_requested:
                         return None
                     if result.consumed:

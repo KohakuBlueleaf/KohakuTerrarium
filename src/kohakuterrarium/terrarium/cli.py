@@ -13,7 +13,10 @@ from kohakuterrarium.builtins.user_commands import (
     list_builtin_user_commands,
 )
 from kohakuterrarium.modules.output.base import BaseOutputModule
-from kohakuterrarium.modules.user_command.base import UserCommandContext
+from kohakuterrarium.modules.user_command.base import (
+    UserCommandContext,
+    parse_slash_command,
+)
 from kohakuterrarium.session.store import SessionStore
 from kohakuterrarium.terrarium.config import load_terrarium_config
 from kohakuterrarium.terrarium.observer import ChannelObserver
@@ -254,19 +257,15 @@ async def run_terrarium_with_tui(runtime: TerrariumRuntime) -> None:
 
             # Handle slash commands
             if text.startswith("/"):
-                from kohakuterrarium.modules.user_command.base import (
-                    parse_slash_command,
-                )
-
                 cmd_name, cmd_args = parse_slash_command(text)
                 canonical = _cmd_aliases.get(cmd_name, cmd_name)
                 cmd = _commands.get(canonical)
                 if cmd:
                     result = await cmd.execute(cmd_args, _cmd_context)
                     if result.output:
-                        tui.add_trigger_message("System", result.output)
+                        tui.add_system_notice(result.output)
                     if result.error:
-                        tui.add_trigger_message("Error", result.error)
+                        tui.add_system_notice(result.error, error=True)
                     # Check if exit was requested (e.g. /exit command)
                     if canonical == "exit":
                         break

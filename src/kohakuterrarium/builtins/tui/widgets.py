@@ -390,6 +390,33 @@ class QueuedMessage(Static):
         self.styles.color = None
 
 
+class SystemNotice(Static):
+    """Non-collapsible system notice for command results.
+
+    Visually distinct from chat messages — dimmed, centered text,
+    clearly not part of the LLM conversation context.
+    """
+
+    DEFAULT_CSS = """
+    SystemNotice {
+        height: auto;
+        margin: 0;
+        padding: 0 2;
+        color: $text-muted;
+        text-align: center;
+        text-style: italic;
+    }
+    SystemNotice.--error {
+        color: #E74C3C;
+    }
+    """
+
+    def __init__(self, text: str, error: bool = False, **kwargs):
+        super().__init__(f"— {text} —", **kwargs)
+        if error:
+            self.add_class("--error")
+
+
 class TriggerMessage(Collapsible):
     """Channel/trigger message as a collapsible accordion.
 
