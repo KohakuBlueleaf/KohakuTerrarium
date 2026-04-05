@@ -293,8 +293,6 @@ class SubAgent:
 
         output_parts: list[str] = []
         tools_used: list[str] = []
-        consecutive_errors = 0
-        max_consecutive_errors = 3
 
         while self.config.max_turns == 0 or self._turns < self.config.max_turns:
             self._turns += 1
@@ -317,28 +315,6 @@ class SubAgent:
             tools_used.extend(tc.name for tc in tool_calls)
             tool_results = await self._execute_and_report_tools(tool_calls)
             self._append_tool_results(tool_calls, tool_results)
-
-            # Track consecutive all-error turns to prevent infinite retry loops
-            # tool_results is a formatted string; check for error markers
-            all_failed = bool(tool_results) and all(
-                "Error:" in block
-                for block in tool_results.split("\n\n")
-                if block.strip()
-            )
-            if all_failed:
-                consecutive_errors += 1
-                if consecutive_errors >= max_consecutive_errors:
-                    logger.warning(
-                        "Sub-agent hit consecutive error limit, aborting",
-                        subagent_name=self.config.name,
-                        consecutive_errors=consecutive_errors,
-                    )
-                    output_parts.append(
-                        f"(Aborted after {consecutive_errors} consecutive failed tool calls)"
-                    )
-                    break
-            else:
-                consecutive_errors = 0
 
         return self._build_result(output_parts, tools_used)
 
