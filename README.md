@@ -556,18 +556,19 @@ The HTTP API and web dashboard are application layers built on top of the servin
 src/kohakuterrarium/
   core/           # Agent runtime, controller, executor, events, environment
   terrarium/      # Multi-agent runtime, config loading, hot-plug, topology wiring
-  builtins/       # Built-in tools, sub-agents, I/O modules, TUI
-  session/        # Session persistence (.kohakutr files), resume support
+  builtins/       # Built-in tools, sub-agents, I/O modules, TUI, slash commands
+  builtin_skills/ # Markdown skill manifests for on-demand tool/subagent docs
+  session/        # Session persistence (.kohakutr files), memory search, embeddings
   serving/        # Transport-agnostic service manager and event streaming
-  modules/        # Plugin protocols: input, output, tool, trigger
+  api/            # FastAPI HTTP + WebSocket server (REST routes, WS handlers)
+  modules/        # Plugin protocols: input, output, tool, trigger, user_command
   llm/            # LLM providers, profiles (50+ presets), API key management
   parsing/        # Tool-call parsing and stream handling
-  prompt/         # Prompt assembly and injection
+  prompt/         # Prompt assembly, aggregation, plugins, skill loading
+  testing/        # Test infrastructure (ScriptedLLM, OutputRecorder, TestAgentBuilder)
   packages.py     # Package manager for kt install / resolve
 
-apps/
-  api/            # FastAPI HTTP + WebSocket server
-  web/            # Vue 3 frontend
+src/kohakuterrarium-frontend/  # Vue 3 web frontend (Vite + Element Plus + Pinia)
 
 kohaku-creatures/ # Installable package form of the default configs
 examples/         # Example agent apps, terrariums, and code samples
