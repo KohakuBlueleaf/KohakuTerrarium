@@ -28,6 +28,12 @@ export const configAPI = {
     const { data } = await api.get("/configs/terrariums");
     return data;
   },
+
+  /** @returns {Promise<{cwd: string, platform: string}>} */
+  async getServerInfo() {
+    const { data } = await api.get("/configs/server-info");
+    return data;
+  },
 };
 
 /** Terrarium lifecycle */

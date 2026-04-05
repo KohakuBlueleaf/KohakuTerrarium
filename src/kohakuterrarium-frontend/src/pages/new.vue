@@ -116,6 +116,7 @@
 </template>
 
 <script setup>
+import { configAPI } from "@/utils/api";
 import { useConfigsStore } from "@/stores/configs";
 import { useInstancesStore } from "@/stores/instances";
 import { ElMessage } from "element-plus";
@@ -125,7 +126,17 @@ const configs = useConfigsStore();
 const instances = useInstancesStore();
 configs.fetchAll();
 
-const pwd = ref("/Iolite/KohakuTerrarium");
+const pwd = ref("");
+
+// Fetch server cwd as default working directory
+onMounted(async () => {
+  try {
+    const info = await configAPI.getServerInfo();
+    if (info.cwd && !pwd.value) pwd.value = info.cwd;
+  } catch {
+    /* ignore — user can type manually */
+  }
+});
 const selectedType = ref("creature");
 const selectedConfig = ref(null);
 const starting = ref(false);

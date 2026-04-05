@@ -148,6 +148,18 @@ def list_terrarium_configs():
     return _scan_terrarium_configs()
 
 
+@router.get("/server-info")
+def server_info():
+    """Return server environment info (cwd, platform, etc.)."""
+    import os
+    import sys
+
+    return {
+        "cwd": os.getcwd(),
+        "platform": sys.platform,
+    }
+
+
 @router.get("/models")
 def list_models():
     """List available LLM models/profiles with availability status."""
