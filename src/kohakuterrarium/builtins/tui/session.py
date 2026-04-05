@@ -159,6 +159,17 @@ class AgentTUI(App):
                 chat.scroll_end(animate=False)
         self._input_queue.put_nowait(text)
 
+    def on_chat_input_command_hint(self, event: ChatInput.CommandHint) -> None:
+        """Show command completion hints in the quick-status line."""
+        try:
+            status = self.query_one("#quick-status", Static)
+            if event.hint:
+                status.update(event.hint)
+            elif not self._is_processing:
+                status.update(IDLE_STATUS)
+        except Exception:
+            pass
+
     def on_chat_input_edit_queued(self, event: ChatInput.EditQueued) -> None:
         """Pull the last queued message back into the input box for editing."""
         if not self._queued_widgets:
@@ -483,10 +494,12 @@ class TUISession:
         self._safe_mount(UserMessage(text), target=target)
 
     def add_system_notice(
-        self, text: str, error: bool = False, target: str = ""
+        self, text: str, command: str = "", error: bool = False, target: str = ""
     ) -> None:
         """Add a non-collapsible system notice (for command results)."""
-        self._safe_mount(SystemNotice(text, error=error), target=target)
+        self._safe_mount(
+            SystemNotice(text, command=command, error=error), target=target
+        )
 
     def add_trigger_message(
         self, label: str, content: str = "", target: str = ""

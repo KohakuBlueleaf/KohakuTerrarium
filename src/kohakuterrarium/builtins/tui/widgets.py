@@ -393,26 +393,30 @@ class QueuedMessage(Static):
 class SystemNotice(Static):
     """Non-collapsible system notice for command results.
 
-    Visually distinct from chat messages — dimmed, centered text,
-    clearly not part of the LLM conversation context.
+    Visually distinct from chat messages — dimmed with a left border
+    and command label, clearly not part of the LLM conversation context.
     """
 
     DEFAULT_CSS = """
     SystemNotice {
         height: auto;
         margin: 0;
-        padding: 0 2;
+        padding: 0 1;
         color: $text-muted;
-        text-align: center;
-        text-style: italic;
+        border-left: thick #0F52BA 40%;
+        border-title-color: #0F52BA;
+        border-title-align: left;
     }
     SystemNotice.--error {
         color: #E74C3C;
+        border-left: thick #E74C3C 40%;
+        border-title-color: #E74C3C;
     }
     """
 
-    def __init__(self, text: str, error: bool = False, **kwargs):
-        super().__init__(f"— {text} —", **kwargs)
+    def __init__(self, text: str, command: str = "", error: bool = False, **kwargs):
+        super().__init__(text, **kwargs)
+        self.border_title = f"/{command}" if command else "system"
         if error:
             self.add_class("--error")
 
@@ -830,6 +834,9 @@ class ChatInput(TextArea):
     }
     """
 
+    # Available commands — set by TUI app for hint display
+    command_names: list[str] = []
+
     class Submitted(Message):
         """Posted when the user presses Enter to send."""
 
@@ -841,6 +848,30 @@ class ChatInput(TextArea):
         """Posted when user presses Up on empty input to edit last queued message."""
 
         pass
+
+    class CommandHint(Message):
+        """Posted when user is typing a / command, for hint display."""
+
+        def __init__(self, hint: str) -> None:
+            super().__init__()
+            self.hint = hint
+
+    def on_text_area_changed(self) -> None:
+        """Show command hints when typing /."""
+        text = self.text.strip()
+        if text.startswith("/") and self.command_names:
+            partial = text.lstrip("/").split()[0].lower() if text.strip("/") else ""
+            matches = [n for n in self.command_names if n.startswith(partial)]
+            if matches and partial:
+                hint = "  ".join(f"/{m}" for m in matches[:6])
+                self.post_message(self.CommandHint(hint))
+            elif not partial:
+                hint = "  ".join(f"/{n}" for n in self.command_names[:8])
+                self.post_message(self.CommandHint(hint))
+            else:
+                self.post_message(self.CommandHint(""))
+        else:
+            self.post_message(self.CommandHint(""))
 
     def _on_key(self, event: Key) -> None:
         # Shift+Enter, Ctrl+Enter, Ctrl+J: insert newline
