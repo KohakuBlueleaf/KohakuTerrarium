@@ -227,7 +227,7 @@ ST_PRESETS: dict[str, dict[str, Any]] = {
     },
 }
 
-DEFAULT_M2V_MODEL = "minishlab/potion-retrieval-32M"
+DEFAULT_M2V_MODEL = "sentence-transformers/static-similarity-mrl-multilingual-v1"
 DEFAULT_ST_MODEL = "Alibaba-NLP/gte-modernbert-base"
 
 
