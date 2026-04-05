@@ -113,12 +113,42 @@ class AgentSession:
         await inject_task
 
     def get_status(self) -> dict:
-        """Get agent status."""
+        """Get agent status including model/context info."""
         model = getattr(self.agent.llm, "model", "") or self.agent.config.model
+        max_context = getattr(self.agent.llm, "_profile_max_context", 0)
+        compact_threshold = 0
+        if self.agent.compact_manager and max_context:
+            compact_threshold = int(
+                max_context * self.agent.compact_manager.config.threshold
+            )
+
+        # Resolve provider from profile
+        provider = ""
+        from kohakuterrarium.llm.profiles import _login_provider_for
+
+        profile_data = {"provider": getattr(self.agent.llm, "provider", "openai")}
+        api_key_env = getattr(self.agent.llm, "api_key_env", "")
+        if api_key_env:
+            profile_data["api_key_env"] = api_key_env
+        provider = _login_provider_for(profile_data)
+
+        # Session ID
+        session_id = ""
+        if self.agent.session_store:
+            try:
+                meta = self.agent.session_store.load_meta()
+                session_id = meta.get("session_id", "")
+            except Exception:
+                pass
+
         return {
             "agent_id": self.agent_id,
             "name": self.agent.config.name,
             "model": model,
+            "provider": provider,
+            "session_id": session_id,
+            "max_context": max_context,
+            "compact_threshold": compact_threshold,
             "running": self._running and self.agent.is_running,
             "tools": self.agent.tools,
             "subagents": self.agent.subagents,
