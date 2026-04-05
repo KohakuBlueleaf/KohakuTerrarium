@@ -43,6 +43,15 @@ class TUIInput(BaseInputModule):
         self._app_task: asyncio.Task | None = None
         self._exit_requested = False
 
+    def set_user_commands(self, commands: dict, context: Any) -> None:
+        """Override to also store command names for TUI hint display."""
+        super().set_user_commands(commands, context)
+        # Build command names list (including aliases) for later
+        all_names: list[str] = list(commands.keys())
+        for cmd in commands.values():
+            all_names.extend(getattr(cmd, "aliases", []))
+        self._command_hint_names = sorted(set(all_names))
+
     @property
     def exit_requested(self) -> bool:
         """Check if exit was requested."""
@@ -69,6 +78,18 @@ class TUIInput(BaseInputModule):
         await self._tui.start(self._prompt)
         self._app_task = asyncio.create_task(self._tui.run_app())
         await self._tui.wait_ready()
+
+        # Apply command hint names to ChatInput (now that app is ready)
+        hint_names = getattr(self, "_command_hint_names", [])
+        if hint_names and self._tui._app:
+            try:
+                from kohakuterrarium.builtins.tui.widgets import ChatInput
+
+                inp = self._tui._app.query_one("#input-box", ChatInput)
+                inp.command_names = hint_names
+            except Exception:
+                pass
+
         logger.debug("TUI input started", session_key=self._session_key)
 
     async def _on_stop(self) -> None:
@@ -114,12 +135,17 @@ class TUIInput(BaseInputModule):
 
             # Try slash command
             if text.startswith("/"):
+                cmd_name = (
+                    text.lstrip("/").split()[0].lower() if text.strip("/") else ""
+                )
                 result = await self.try_user_command(text)
                 if result is not None:
                     if result.output:
-                        self._tui.add_system_notice(result.output)
+                        self._tui.add_system_notice(result.output, command=cmd_name)
                     if result.error:
-                        self._tui.add_system_notice(result.error, error=True)
+                        self._tui.add_system_notice(
+                            result.error, command=cmd_name, error=True
+                        )
                     if self._exit_requested:
                         return None
                     if result.consumed:

@@ -263,9 +263,11 @@ async def run_terrarium_with_tui(runtime: TerrariumRuntime) -> None:
                 if cmd:
                     result = await cmd.execute(cmd_args, _cmd_context)
                     if result.output:
-                        tui.add_system_notice(result.output)
+                        tui.add_system_notice(result.output, command=cmd_name)
                     if result.error:
-                        tui.add_system_notice(result.error, error=True)
+                        tui.add_system_notice(
+                            result.error, command=cmd_name, error=True
+                        )
                     # Check if exit was requested (e.g. /exit command)
                     if canonical == "exit":
                         break
