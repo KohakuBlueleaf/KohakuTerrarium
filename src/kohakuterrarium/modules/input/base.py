@@ -67,9 +67,13 @@ class BaseInputModule(ABC):
                 self._command_alias_map[alias] = name
 
     async def try_user_command(self, text: str) -> Any | None:
-        """Try to execute a slash command. Returns UserCommandResult or None.
+        """Try to execute a slash command, handling rich UI data.
 
-        Call this from get_input() when text starts with "/".
+        For commands that return structured ``data`` (confirm, select, etc.),
+        this method handles the interactive flow in the terminal before
+        returning the final result.
+
+        Returns UserCommandResult or None if not a known command.
         """
         if not self._user_commands or not text.startswith("/"):
             return None
@@ -85,7 +89,81 @@ class BaseInputModule(ABC):
         # Update context with latest refs
         ctx = self._user_command_context
         ctx.extra["command_registry"] = self._user_commands
-        return await cmd.execute(args, ctx)
+        result = await cmd.execute(args, ctx)
+
+        # Handle interactive data payloads (confirm, select)
+        if result.data and not result.error:
+            followup = await self._handle_ui_data(result)
+            if followup is not None:
+                return followup
+
+        return result
+
+    async def _handle_ui_data(self, result: Any) -> Any | None:
+        """Handle rich UI payloads interactively in the terminal.
+
+        For ``confirm``: prompts [y/N], re-executes with action_args if yes.
+        For ``select``: shows numbered list, re-executes with chosen value.
+        Returns a new UserCommandResult if interaction happened, None otherwise.
+        """
+        import asyncio
+
+        from kohakuterrarium.modules.user_command.base import UserCommandResult
+
+        data = result.data
+        data_type = data.get("type", "")
+
+        if data_type == "confirm":
+            print(data.get("message", "Confirm?"))
+            loop = asyncio.get_event_loop()
+            answer = await loop.run_in_executor(None, lambda: input("[y/N]: ").strip())
+            if answer.lower() in ("y", "yes"):
+                action = data.get("action", "")
+                action_args = data.get("action_args", "")
+                if action:
+                    canonical = self._command_alias_map.get(action, action)
+                    cmd = self._user_commands.get(canonical)
+                    if cmd:
+                        ctx = self._user_command_context
+                        return await cmd.execute(action_args, ctx)
+            return UserCommandResult(output="Cancelled.", consumed=True)
+
+        if data_type == "select":
+            options = data.get("options", [])
+            if not options:
+                return None
+            print(data.get("title", "Select:"))
+            for i, opt in enumerate(options, 1):
+                marker = " *" if opt.get("selected") else ""
+                label = opt.get("label", opt.get("value", ""))
+                extra = opt.get("provider", "")
+                extra_str = f"  ({extra})" if extra else ""
+                print(f"  {i:>3}. {label}{extra_str}{marker}")
+            print(f"  Enter number (1-{len(options)}) or name, empty to cancel:")
+            loop = asyncio.get_event_loop()
+            choice = await loop.run_in_executor(None, lambda: input("> ").strip())
+            if not choice:
+                return UserCommandResult(output="Cancelled.", consumed=True)
+            # Resolve choice: number or name
+            selected = None
+            if choice.isdigit():
+                idx = int(choice) - 1
+                if 0 <= idx < len(options):
+                    selected = options[idx]["value"]
+            else:
+                selected = choice
+            if selected:
+                action = data.get("action", "")
+                if action:
+                    canonical = self._command_alias_map.get(action, action)
+                    cmd = self._user_commands.get(canonical)
+                    if cmd:
+                        ctx = self._user_command_context
+                        return await cmd.execute(selected, ctx)
+            return UserCommandResult(output="Cancelled.", consumed=True)
+
+        # Other types (notify, info_panel, list, text): no interaction needed
+        return None
 
     @property
     def is_running(self) -> bool:
