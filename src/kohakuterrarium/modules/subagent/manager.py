@@ -172,6 +172,7 @@ class SubAgentManager:
         name: str,
         task: str,
         job_id: str | None = None,
+        background: bool = True,
     ) -> str:
         """
         Spawn a sub-agent to execute a task.
@@ -180,6 +181,8 @@ class SubAgentManager:
             name: Sub-agent name
             task: Task description
             job_id: Optional job ID (generated if not provided)
+            background: If True (default), run as background task.
+                If False, run synchronously and return job_id after completion.
 
         Returns:
             Job ID
@@ -272,14 +275,19 @@ class SubAgentManager:
         )
         self.job_store.register(status)
 
-        # Start background task
-        task_obj = asyncio.create_task(self._run_subagent(job_id, job, task))
-        self._tasks[job_id] = task_obj
+        if background:
+            # Start background task — result delivered via callback
+            task_obj = asyncio.create_task(self._run_subagent(job_id, job, task))
+            self._tasks[job_id] = task_obj
+        else:
+            # Run synchronously — block until complete
+            await self._run_subagent(job_id, job, task)
 
         logger.info(
             "Spawned sub-agent",
             subagent_name=name,
             job_id=job_id,
+            background=background,
         )
 
         return job_id
@@ -295,7 +303,8 @@ class SubAgentManager:
             Job ID
         """
         task = event.args.get("task", event.args.get("content", ""))
-        return await self.spawn(event.name, task)
+        background = event.args.pop("run_in_background", True)
+        return await self.spawn(event.name, task, background=background)
 
     async def _run_subagent(
         self,
@@ -345,6 +354,9 @@ class SubAgentManager:
                     "tools_used": result.metadata.get("tools_used", []),
                     "turns": result.turns,
                     "duration": result.duration,
+                    "total_tokens": result.total_tokens,
+                    "prompt_tokens": result.prompt_tokens,
+                    "completion_tokens": result.completion_tokens,
                 }
                 self._on_complete(event)
 

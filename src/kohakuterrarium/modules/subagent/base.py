@@ -94,6 +94,9 @@ class SubAgentResult:
     error: str | None = None
     turns: int = 0
     duration: float = 0.0
+    total_tokens: int = 0  # Total tokens used across all turns
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def truncated(self, max_chars: int = 2000) -> str:
@@ -147,6 +150,11 @@ class SubAgent:
 
         # Conversation for this sub-agent
         self.conversation = Conversation()
+
+        # Token usage tracking
+        self._total_tokens = 0
+        self._prompt_tokens = 0
+        self._completion_tokens = 0
 
         # Resolve tool call format for the parser
         self._is_native = tool_format == "native"
@@ -384,6 +392,7 @@ class SubAgent:
             self.conversation.append("assistant", assistant_content)
 
         self._log_turn_preview(assistant_content)
+        self._accumulate_tokens()
         return tool_calls, output_parts
 
     async def _run_text_turn(
@@ -411,7 +420,16 @@ class SubAgent:
 
         self.conversation.append("assistant", assistant_content)
         self._log_turn_preview(assistant_content)
+        self._accumulate_tokens()
         return tool_calls, output_parts
+
+    def _accumulate_tokens(self) -> None:
+        """Accumulate token usage from the last LLM call."""
+        usage = getattr(self.llm, "last_usage", None)
+        if usage and isinstance(usage, dict):
+            self._prompt_tokens += usage.get("prompt_tokens", 0)
+            self._completion_tokens += usage.get("completion_tokens", 0)
+            self._total_tokens += usage.get("total_tokens", 0)
 
     def _log_turn_preview(self, assistant_content: str) -> None:
         """Log a preview of the LLM response for debugging."""
@@ -443,9 +461,22 @@ class SubAgent:
 
         tool_results = await self._execute_tools(tool_calls)
 
+        # Emit per-tool done/error events with result previews
         if self.on_tool_activity:
             for tc in tool_calls:
-                self.on_tool_activity("tool_done", tc.name, "")
+                # Find the matching result block in tool_results
+                prefix = f"[{tc.name}]"
+                for block in tool_results.split("\n\n"):
+                    if block.startswith(prefix):
+                        if "Error:" in block:
+                            error_msg = block.split("Error:", 1)[-1].strip()[:100]
+                            self.on_tool_activity("tool_error", tc.name, error_msg)
+                        else:
+                            preview = block[len(prefix) :].strip()[:100]
+                            self.on_tool_activity("tool_done", tc.name, preview)
+                        break
+                else:
+                    self.on_tool_activity("tool_done", tc.name, "")
 
         return tool_results
 
@@ -512,6 +543,9 @@ class SubAgent:
             success=True,
             turns=self._turns,
             duration=self._calculate_duration(),
+            total_tokens=self._total_tokens,
+            prompt_tokens=self._prompt_tokens,
+            completion_tokens=self._completion_tokens,
             metadata={"tools_used": tools_used},
         )
 
