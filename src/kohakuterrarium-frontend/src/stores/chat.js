@@ -1,4 +1,3 @@
-import { ElMessage } from "element-plus";
 import { terrariumAPI, agentAPI } from "@/utils/api";
 import { useMessagesStore } from "@/stores/messages";
 import { useInstancesStore } from "@/stores/instances";
@@ -104,24 +103,37 @@ function _replayEvents(messages, events) {
     return tool;
   }
 
-  function addSubagentTool(name, args) {
-    // Add tool as a child of the current sub-agent, or top-level if no sub-agent
-    if (curSubagent) {
+  function findSubagent(saName) {
+    // Find sub-agent by name in current message's parts, or fall back to curSubagent
+    if (saName && cur) {
+      const sa = [...cur.parts].reverse().find(
+        (p) => p.type === "tool" && p.kind === "subagent" && p.name === saName
+      );
+      if (sa) return sa;
+    }
+    return curSubagent;
+  }
+
+  function addSubagentTool(name, args, saName) {
+    // Add tool as a child of the specified (or current) sub-agent
+    const sa = findSubagent(saName);
+    if (sa) {
       const tool = {
         type: "tool", id: `tool_${_n++}`, name, kind: "tool",
         args: args || {}, status: "done", result: "", tools_used: [],
       };
-      if (!curSubagent.children) curSubagent.children = [];
-      curSubagent.children.push(tool);
+      if (!sa.children) sa.children = [];
+      sa.children.push(tool);
       return tool;
     }
     return addTool(name, "tool", args);
   }
 
-  function updateSubagentTool(name, result, opts) {
-    // Find in current sub-agent's children first
-    if (curSubagent?.children?.length) {
-      const tc = [...curSubagent.children].reverse().find((p) => p.name === name);
+  function updateSubagentTool(name, result, opts, saName) {
+    // Find in specified (or current) sub-agent's children first
+    const sa = findSubagent(saName);
+    if (sa?.children?.length) {
+      const tc = [...sa.children].reverse().find((p) => p.name === name);
       if (tc) {
         tc.result = result || "";
         if (opts?.error) tc.status = "error";
@@ -154,12 +166,9 @@ function _replayEvents(messages, events) {
     } else if (t === "text") {
       appendText(evt.content || "");
     } else if (t === "processing_end" || t === "idle") {
-      // Mark interrupted sub-agents (no subagent_result before processing_end)
-      if (curSubagent && curSubagent.status === "done" && !curSubagent.result) {
-        curSubagent.status = "interrupted";
-        curSubagent.result = "(interrupted)";
-      }
-      curSubagent = null;
+      // Do NOT clear curSubagent here. Sub-agent tools arrive AFTER
+      // processing_end because sub-agents run in the background.
+      // curSubagent is cleared only by subagent_result/subagent_error.
       cur = null;
 
     // ── StreamOutput format (live WS): type="activity" wrapper ──
@@ -180,10 +189,10 @@ function _replayEvents(messages, events) {
         addTool(evt.name, "subagent", evt.args || { info: evt.detail });
       } else if (at === "subagent_done") {
         updateTool(evt.name, evt.result || evt.detail, { tools_used: evt.tools_used });
-        curSubagent = null;
+        if (curSubagent && curSubagent.name === evt.name) curSubagent = null;
       } else if (at === "subagent_error") {
         updateTool(evt.name, evt.detail, { error: true });
-        curSubagent = null;
+        if (curSubagent && curSubagent.name === evt.name) curSubagent = null;
       } else if (at === "tool_start") {
         addTool(evt.name, "tool", evt.args || { info: evt.detail });
       } else if (at === "tool_done") {
@@ -194,12 +203,13 @@ function _replayEvents(messages, events) {
         // Live WS sub-agent tool events
         const subAct = at.replace("subagent_", "");
         const toolName = evt.tool || evt.name || "";
+        const saName = evt.subagent || "";
         if (subAct === "tool_start") {
-          addSubagentTool(toolName, { info: evt.detail || "" });
+          addSubagentTool(toolName, { info: evt.detail || "" }, saName);
         } else if (subAct === "tool_done") {
-          updateSubagentTool(toolName, evt.detail || "");
+          updateSubagentTool(toolName, evt.detail || "", null, saName);
         } else if (subAct === "tool_error") {
-          updateSubagentTool(toolName, evt.detail || "", { error: true });
+          updateSubagentTool(toolName, evt.detail || "", { error: true }, saName);
         }
       }
 
@@ -221,19 +231,49 @@ function _replayEvents(messages, events) {
       addTool(evt.name, "subagent", { task: evt.task || "" });
     } else if (t === "subagent_result") {
       updateTool(evt.name, evt.output || "", { tools_used: evt.tools_used });
-      curSubagent = null;
+      // Only clear curSubagent if it matches (parallel sub-agents)
+      if (curSubagent && curSubagent.name === evt.name) curSubagent = null;
     } else if (t === "subagent_tool") {
-      // Sub-agent internal tool: nest inside current sub-agent
+      // Sub-agent internal tool: nest inside the correct sub-agent
       const toolName = evt.tool_name || "";
+      const saName = evt.subagent || "";  // SessionStore includes subagent name
       if (evt.activity === "tool_start") {
-        addSubagentTool(toolName, { info: evt.detail || "" });
+        addSubagentTool(toolName, { info: evt.detail || "" }, saName);
       } else if (evt.activity === "tool_done") {
-        updateSubagentTool(toolName, evt.detail || "");
+        updateSubagentTool(toolName, evt.detail || "", null, saName);
       } else if (evt.activity === "tool_error") {
-        updateSubagentTool(toolName, evt.detail || "", { error: true });
+        updateSubagentTool(toolName, evt.detail || "", { error: true }, saName);
       }
-    } else if (t === "token_usage" || t === "processing_complete") {
+    } else if (t === "channel_message") {
+      result.push({
+        id: "ch_" + result.length,
+        role: "channel",
+        sender: evt.sender || "",
+        content: evt.content || "",
+        timestamp: "",
+      });
+    } else if (t === "compact_summary" || t === "compact_complete") {
+      cur = null;
+      result.push({
+        id: "compact_" + result.length,
+        role: "compact",
+        round: evt.compact_round || evt.round || 0,
+        summary: evt.summary || "",
+        messagesCompacted: evt.messages_compacted || 0,
+        timestamp: "",
+      });
+    } else if (t === "token_usage" || t === "processing_complete" || t === "compact_start") {
       // skip
+    }
+  }
+
+  // Mark ALL sub-agents that never got a result as interrupted
+  for (const msg of result) {
+    for (const part of msg.parts || []) {
+      if (part.type === "tool" && part.kind === "subagent" && part.status === "done" && !part.result) {
+        part.status = "interrupted";
+        part.result = "(interrupted)";
+      }
     }
   }
 
@@ -272,18 +312,20 @@ export const useChatStore = defineStore("chat", {
     /** @type {string[]} */
     tabs: [],
     processing: false,
-    /** @type {Object<string, {prompt: number, completion: number, total: number}>} Per-source token usage */
+    /** @type {Object<string, {prompt: number, completion: number, total: number, cached: number}>} Per-source token usage */
     tokenUsage: {},
+    /** @type {Object<string, {name: string, type: string, startedAt: number}>} Running background jobs */
+    runningJobs: {},
+    /** @type {Object<string, number>} Unread message counts per tab */
+    unreadCounts: {},
+    /** @type {{sessionId: string, model: string, agentName: string, compactThreshold: number}} Session metadata */
+    sessionInfo: { sessionId: "", model: "", agentName: "", compactThreshold: 0 },
     /** @type {string | null} */
     _instanceId: null,
     /** @type {string | null} */
     _instanceType: null,
     /** @type {WebSocket | null} Single WS for the instance */
     _ws: null,
-    /** @type {{sessionId: string, model: string, agentName: string, maxContext: number, compactThreshold: number}} */
-    sessionInfo: { sessionId: "", model: "", agentName: "", maxContext: 0, compactThreshold: 0 },
-    /** @type {Object<string, {name: string, type: string, startedAt: number}>} */
-    runningJobs: {},
   }),
 
   getters: {
@@ -302,6 +344,7 @@ export const useChatStore = defineStore("chat", {
       this._instanceType = instance.type;
       this.tabs = [];
       this.messagesByTab = {};
+      this.sessionInfo = { sessionId: "", model: "", agentName: "", compactThreshold: 0 };
 
       if (instance.type === "terrarium") {
         if (instance.has_root) {
@@ -316,15 +359,18 @@ export const useChatStore = defineStore("chat", {
         this._connectCreature(instance.id);
       }
 
-      this.activeTab = this.tabs[0] || null;
+      // Restore saved tabs/active tab for this instance
+      this._restoreTabs();
+      if (!this.activeTab) this.activeTab = this.tabs[0] || null;
     },
 
     openTab(tabKey) {
       this._addTab(tabKey);
       this.activeTab = tabKey;
+      this._saveTabs();
 
       // Load history for creature/root tabs
-      if (!tabKey.startsWith("ch:") && this._instanceType === "terrarium") {
+      if (this._instanceType === "terrarium") {
         this._loadHistory(tabKey);
       }
     },
@@ -338,12 +384,32 @@ export const useChatStore = defineStore("chat", {
 
     setActiveTab(tab) {
       this.activeTab = tab;
+      // Clear unread count for the tab we're switching to
+      if (tab) delete this.unreadCounts[tab];
+      this._saveTabs();
       // Load history if tab has no messages yet (tab switch catch-up)
-      if (tab && !tab.startsWith("ch:") && this._instanceType === "terrarium") {
+      if (tab && this._instanceType === "terrarium") {
         const msgs = this.messagesByTab[tab];
         if (msgs && msgs.length === 0) {
           this._loadHistory(tab);
         }
+      }
+    },
+
+    async interrupt() {
+      if (!this._instanceId || !this.processing) return;
+      const target = this.activeTab;
+      if (!target || target.startsWith("ch:")) return;
+
+      try {
+        if (this._instanceType === "terrarium") {
+          await terrariumAPI.interruptCreature(this._instanceId, target);
+        } else {
+          await agentAPI.interrupt(this._instanceId);
+        }
+        this.processing = false;
+      } catch (err) {
+        console.error("Interrupt failed:", err);
       }
     },
 
@@ -411,8 +477,15 @@ export const useChatStore = defineStore("chat", {
       this._ws = ws;
 
       // Load history for initial tab
-      if (this.tabs[0] && !this.tabs[0].startsWith("ch:")) {
+      // Load history for initial tab
+      if (this.tabs[0]) {
         this._loadHistory(this.tabs[0]);
+      }
+      // Also preload channel histories
+      for (const tab of this.tabs) {
+        if (tab.startsWith("ch:")) {
+          this._loadHistory(tab);
+        }
       }
     },
 
@@ -449,16 +522,23 @@ export const useChatStore = defineStore("chat", {
     /** Restore token usage from event log (for page refresh) */
     _restoreTokenUsage(source, events) {
       for (const evt of events) {
-        if (evt.type === "activity" && evt.activity_type === "token_usage") {
+        // Handle both StreamOutput format (type=activity, activity_type=token_usage)
+        // and SessionStore format (type=token_usage directly)
+        const isTokenEvt =
+          (evt.type === "activity" && evt.activity_type === "token_usage") ||
+          evt.type === "token_usage";
+        if (isTokenEvt) {
           const prev = this.tokenUsage[source] || {
             prompt: 0,
             completion: 0,
             total: 0,
+            cached: 0,
           };
           this.tokenUsage[source] = {
-            prompt: evt.prompt_tokens || prev.prompt,
+            prompt: prev.prompt + (evt.prompt_tokens || 0),
             completion: prev.completion + (evt.completion_tokens || 0),
-            total: evt.total_tokens || prev.total,
+            total: prev.total + (evt.total_tokens || 0),
+            cached: prev.cached + (evt.cached_tokens || 0),
           };
         }
       }
@@ -500,7 +580,7 @@ export const useChatStore = defineStore("chat", {
       const statusStore = useStatusStore();
       statusStore.handleActivity(data);
 
-      // Session info: model, context, session ID
+      // Session info: model, compact threshold, session ID, agent name
       if (at === "session_info") {
         this.sessionInfo = {
           sessionId: data.session_id || "",
@@ -518,11 +598,13 @@ export const useChatStore = defineStore("chat", {
           prompt: 0,
           completion: 0,
           total: 0,
+          cached: 0,
         };
         this.tokenUsage[source] = {
-          prompt: data.prompt_tokens || prev.prompt,
+          prompt: prev.prompt + (data.prompt_tokens || 0),
           completion: prev.completion + (data.completion_tokens || 0),
-          total: data.total_tokens || prev.total,
+          total: prev.total + (data.total_tokens || 0),
+          cached: prev.cached + (data.cached_tokens || 0),
         };
         return;
       }
@@ -530,6 +612,19 @@ export const useChatStore = defineStore("chat", {
       // Ensure we have a tab for this source (non-usage events need it)
       if (!this.messagesByTab[source]) return;
       const msgs = this.messagesByTab[source];
+
+      // Compact complete: show summary accordion
+      if (at === "compact_complete") {
+        msgs.push({
+          id: "compact_" + Date.now(),
+          role: "compact",
+          round: data.round || 0,
+          summary: data.summary || "",
+          messagesCompacted: data.messages_compacted || 0,
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
 
       // Trigger fired: show with expandable message content
       if (at === "trigger_fired") {
@@ -568,13 +663,9 @@ export const useChatStore = defineStore("chat", {
           tools_used: data.tools_used || [],
           startedAt: Date.now(),
         });
-        // Track as running job (for ChatPanel running tasks bar)
+        // Track background jobs
         if (data.background || at === "subagent_start") {
-          this.runningJobs[toolId] = {
-            name,
-            type: at === "subagent_start" ? "subagent" : "tool",
-            startedAt: Date.now(),
-          };
+          this.runningJobs[toolId] = { name, type: at === "subagent_start" ? "subagent" : "tool", startedAt: Date.now() };
         }
       } else if (at === "tool_done" || at === "subagent_done") {
         const last = msgs[msgs.length - 1];
@@ -613,7 +704,7 @@ export const useChatStore = defineStore("chat", {
           }
         }
       } else if (at?.startsWith("subagent_tool_")) {
-        // Sub-agent internal tool activity: build children with status
+        // Sub-agent internal tool activity: build children + tools_used
         const last = msgs[msgs.length - 1];
         if (last?.parts) {
           const saName = data.subagent || data.name;
@@ -629,30 +720,14 @@ export const useChatStore = defineStore("chat", {
             const toolName = data.tool || data.detail || "";
             const subAct = at.replace("subagent_", "");
             if (subAct === "tool_start" && toolName) {
-              sa.children.push({
-                name: toolName,
-                info: data.detail || "",
-                status: "running",
-              });
-              if (!sa.tools_used.includes(toolName)) {
-                sa.tools_used.push(toolName);
-              }
+              sa.children.push({ name: toolName, info: data.detail || "", status: "running" });
+              if (!sa.tools_used.includes(toolName)) sa.tools_used.push(toolName);
             } else if (subAct === "tool_done" && toolName) {
-              const child = [...sa.children].reverse().find(
-                (c) => c.name === toolName && c.status === "running",
-              );
-              if (child) {
-                child.status = "done";
-                child.info = data.detail || child.info;
-              }
+              const child = [...sa.children].reverse().find(c => c.name === toolName && c.status === "running");
+              if (child) { child.status = "done"; child.info = data.detail || child.info; }
             } else if (subAct === "tool_error" && toolName) {
-              const child = [...sa.children].reverse().find(
-                (c) => c.name === toolName && c.status === "running",
-              );
-              if (child) {
-                child.status = "error";
-                child.info = data.detail || child.info;
-              }
+              const child = [...sa.children].reverse().find(c => c.name === toolName && c.status === "running");
+              if (child) { child.status = "error"; child.info = data.detail || child.info; }
             }
           }
         }
@@ -675,6 +750,10 @@ export const useChatStore = defineStore("chat", {
           content: data.content,
           timestamp: data.timestamp,
         });
+        // Track unread if not on this tab
+        if (this.activeTab !== tabKey) {
+          this.unreadCounts[tabKey] = (this.unreadCounts[tabKey] || 0) + 1;
+        }
       }
 
       // Update shared messages store (for inspector)
@@ -749,18 +828,36 @@ export const useChatStore = defineStore("chat", {
 
     _cleanup() {
       if (this._ws) {
-        this._ws.onclose = null; // prevent spurious reconnect
         this._ws.close();
         this._ws = null;
       }
-      this._instanceId = null;
-      this._instanceType = null;
-      this.processing = false;
-      this.runningJobs = {};
-      this.sessionInfo = { sessionId: "", model: "", agentName: "", maxContext: 0, compactThreshold: 0 };
-      // Reset status store too
-      const statusStore = useStatusStore();
-      statusStore.reset();
+    },
+
+    _saveTabs() {
+      if (!this._instanceId) return;
+      const key = `chat-tabs-${this._instanceId}`;
+      localStorage.setItem(key, JSON.stringify({
+        tabs: this.tabs,
+        activeTab: this.activeTab,
+      }));
+    },
+
+    _restoreTabs() {
+      if (!this._instanceId) return;
+      const key = `chat-tabs-${this._instanceId}`;
+      try {
+        const saved = JSON.parse(localStorage.getItem(key) || "null");
+        if (saved?.tabs?.length) {
+          for (const tab of saved.tabs) {
+            this._addTab(tab);
+          }
+          if (saved.activeTab && this.tabs.includes(saved.activeTab)) {
+            this.activeTab = saved.activeTab;
+          }
+        }
+      } catch {
+        // ignore corrupt data
+      }
     },
   },
 });
