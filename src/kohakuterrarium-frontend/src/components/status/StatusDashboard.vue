@@ -192,9 +192,9 @@
           >
             <el-option
               v-for="m in availableModels"
-              :key="m.id"
-              :label="m.name || m.id"
-              :value="m.id"
+              :key="m.name"
+              :label="`${m.name}  (${m.login_provider})`"
+              :value="m.name"
             />
           </el-select>
           <el-button
@@ -412,14 +412,22 @@ function saveModelConfig() {
   color: var(--color-text-muted);
 }
 
-/* Model config dialog styling */
+/* Model config dialog — warm theme for both light and dark mode */
+:deep(.model-config-dialog .el-dialog) {
+  --el-dialog-bg-color: #FFFFFF;
+  --el-dialog-title-font-size: 14px;
+}
+html.dark :deep(.model-config-dialog .el-dialog) {
+  --el-dialog-bg-color: #252220;
+  --el-dialog-border-color: #3D3835;
+}
+
 :deep(.model-config-dialog .el-dialog__header) {
   padding: 16px 20px 12px;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border, #E0DBD4);
 }
 
 :deep(.model-config-dialog .el-dialog__title) {
-  font-size: 14px;
   font-weight: 600;
 }
 
@@ -429,7 +437,7 @@ function saveModelConfig() {
 
 :deep(.model-config-dialog .el-dialog__footer) {
   padding: 12px 20px 16px;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-border, #E0DBD4);
 }
 
 :deep(.config-textarea .el-textarea__inner) {
@@ -437,6 +445,13 @@ function saveModelConfig() {
   font-size: 12px;
   line-height: 1.5;
   resize: vertical;
+  background: #F7F5F2;
+  color: #3A3632;
+}
+html.dark :deep(.config-textarea .el-textarea__inner) {
+  background: #1A1816;
+  color: #E8E0D8;
+  border-color: #3D3835;
 }
 
 /* Save button iolite accent */
