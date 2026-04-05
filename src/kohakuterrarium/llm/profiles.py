@@ -702,17 +702,55 @@ def resolve_controller_llm(
     return profile
 
 
+def _login_provider_for(profile_or_data: dict[str, Any] | LLMProfile) -> str:
+    """Determine which ``kt login <provider>`` gives access to this model.
+
+    Returns the login provider name (codex, openrouter, openai, anthropic,
+    gemini, mimo) or empty string if unknown.
+    """
+    if isinstance(profile_or_data, LLMProfile):
+        provider = profile_or_data.provider
+        api_key_env = profile_or_data.api_key_env
+    else:
+        provider = profile_or_data.get("provider", "")
+        api_key_env = profile_or_data.get("api_key_env", "")
+
+    if provider == "codex-oauth":
+        return "codex"
+
+    # Reverse lookup: env var → login provider
+    _ENV_TO_LOGIN = {v: k for k, v in PROVIDER_KEY_MAP.items()}
+    if api_key_env in _ENV_TO_LOGIN:
+        return _ENV_TO_LOGIN[api_key_env]
+
+    return provider
+
+
+def _is_available(login_provider: str) -> bool:
+    """Check if credentials exist for a login provider."""
+    if login_provider == "codex":
+        from kohakuterrarium.llm.codex_auth import CodexTokens
+
+        return CodexTokens.load() is not None
+    if login_provider in PROVIDER_KEY_MAP:
+        return bool(get_api_key(login_provider))
+    return False
+
+
 def list_all() -> list[dict[str, Any]]:
-    """List all available profiles and presets for display."""
+    """List all profiles and presets with availability info."""
     result = []
 
     # User profiles
     for name, profile in load_profiles().items():
+        login = _login_provider_for(profile)
         result.append(
             {
                 "name": name,
                 "model": profile.model,
                 "provider": profile.provider,
+                "login_provider": login,
+                "available": _is_available(login),
                 "source": "user",
                 "max_context": profile.max_context,
             }
@@ -722,11 +760,14 @@ def list_all() -> list[dict[str, Any]]:
     user_names = {r["name"] for r in result}
     for name, data in PRESETS.items():
         if name not in user_names:
+            login = _login_provider_for(data)
             result.append(
                 {
                     "name": name,
                     "model": data.get("model", ""),
                     "provider": data.get("provider", ""),
+                    "login_provider": login,
+                    "available": _is_available(login),
                     "source": "preset",
                     "max_context": data.get("max_context", 0),
                 }

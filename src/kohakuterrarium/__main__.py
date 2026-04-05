@@ -705,7 +705,7 @@ def login_cli(provider: str) -> int:
     """Authenticate with a provider."""
     if provider == "codex":
         return _login_codex()
-    if provider in ("openrouter", "openai", "anthropic", "gemini"):
+    if provider in ("openrouter", "openai", "anthropic", "gemini", "mimo"):
         return _login_api_key(provider)
     print(f"Unknown provider: {provider}")
     return 1
@@ -939,15 +939,19 @@ def model_cli(args: argparse.Namespace) -> int:
         else:
             print("No default model set. Use: kt model default <name>")
         print()
-        print(f"{'Name':<25} {'Model':<40} {'Provider':<14} {'Context':<10} {'Src':<6}")
-        print("-" * 97)
+        print(
+            f"{'Name':<25} {'Model':<40} {'Login':<12} {'Context':<10} {'Src':<6} {'Status'}"
+        )
+        print("-" * 105)
         for e in entries:
             marker = " *" if e.get("is_default") else ""
             ctx = e.get("max_context", 0)
             ctx_str = f"{ctx // 1000}k" if ctx else ""
-            provider = e.get("provider", "")
+            login = e.get("login_provider", "")
+            available = e.get("available", False)
+            status = "ok" if available else f"(kt login {login})"
             print(
-                f"{e['name']:<25} {e['model']:<40} {provider:<14} {ctx_str:<10} {e['source']:<6}{marker}"
+                f"{e['name']:<25} {e['model']:<40} {login:<12} {ctx_str:<10} {e['source']:<6} {status}{marker}"
             )
         return 0
 

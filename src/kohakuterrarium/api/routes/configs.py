@@ -141,3 +141,11 @@ def list_creature_configs():
 def list_terrarium_configs():
     """List available terrarium configs from configured directories."""
     return _scan_terrarium_configs()
+
+
+@router.get("/models")
+def list_models():
+    """List available LLM models/profiles with availability status."""
+    from kohakuterrarium.llm.profiles import list_all
+
+    return list_all()
