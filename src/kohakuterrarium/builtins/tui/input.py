@@ -58,54 +58,39 @@ class TUIInput(BaseInputModule):
     async def render_command_data(
         self, result: UserCommandResult, command_name: str
     ) -> UserCommandResult | None:
-        """TUI rendering: show options in chat, wait for selection via TUI input."""
+        """TUI rendering: show native modal screens for select and confirm."""
+        from kohakuterrarium.builtins.tui.widgets import ConfirmModal, SelectionModal
+
         data = result.data
         data_type = data.get("type", "")
+        app = self._tui._app if self._tui else None
+        if not app:
+            return None
 
         if data_type == "select":
             options = data.get("options", [])
             if not options:
                 return None
-            # Show numbered options as system notice
-            lines = [data.get("title", "Select:")]
-            for i, opt in enumerate(options, 1):
-                marker = " *" if opt.get("selected") else ""
-                label = opt.get("label", opt.get("value", ""))
-                extra = opt.get("provider", "")
-                extra_str = f"  ({extra})" if extra else ""
-                lines.append(f"  {i:>3}. {label}{extra_str}{marker}")
-            lines.append(f"  Enter number (1-{len(options)}) or name:")
-            self._tui.add_system_notice("\n".join(lines), command=command_name)
-            # Wait for user's choice via TUI input
-            choice = await self._tui.get_input()
-            if not choice or choice.startswith("/"):
-                self._tui.add_system_notice("Cancelled.", command=command_name)
-                return UserCommandResult(output="", consumed=True)
-            choice = choice.strip()
-            selected = None
-            if choice.isdigit():
-                idx = int(choice) - 1
-                if 0 <= idx < len(options):
-                    selected = options[idx]["value"]
-            else:
-                selected = choice
+            modal = SelectionModal(
+                title=data.get("title", "Select"),
+                options=options,
+                current=data.get("current", ""),
+            )
+            selected = await app.push_screen_wait(modal)
             if selected:
                 action = data.get("action", "")
                 if action:
                     return await self._execute_followup(action, selected)
-            self._tui.add_system_notice("Cancelled.", command=command_name)
             return UserCommandResult(output="", consumed=True)
 
         if data_type == "confirm":
-            msg = data.get("message", "Confirm?")
-            self._tui.add_system_notice(f"{msg} (y/N)", command=command_name)
-            answer = await self._tui.get_input()
-            if answer and answer.strip().lower() in ("y", "yes"):
+            modal = ConfirmModal(data.get("message", "Confirm?"))
+            confirmed = await app.push_screen_wait(modal)
+            if confirmed:
                 action = data.get("action", "")
                 args = data.get("action_args", "")
                 if action:
                     return await self._execute_followup(action, args)
-            self._tui.add_system_notice("Cancelled.", command=command_name)
             return UserCommandResult(output="", consumed=True)
 
         return None

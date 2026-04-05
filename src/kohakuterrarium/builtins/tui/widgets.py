@@ -15,8 +15,9 @@ import time
 from textual.containers import Vertical
 from textual.events import Key
 from textual.message import Message
-
-from textual.widgets import Collapsible, Static, TextArea
+from textual.screen import ModalScreen
+from textual.widgets import Collapsible, OptionList, Static, TextArea
+from textual.widgets.option_list import Option
 
 # ── Tool Call Block ─────────────────────────────────────────────
 
@@ -917,3 +918,118 @@ def _summarize_output(output: str) -> str:
     if len(lines) <= 1 and len(output) <= 60:
         return output.strip()
     return f"{len(lines)} lines"
+
+
+# ── Modal Screens ─────────────────────────────────────────────
+
+
+class SelectionModal(ModalScreen[str | None]):
+    """Arrow-key selection modal. Returns selected value or None on cancel."""
+
+    DEFAULT_CSS = """
+    SelectionModal {
+        align: center middle;
+    }
+    SelectionModal > Vertical {
+        width: 60;
+        max-height: 24;
+        border: thick #0F52BA 60%;
+        border-title-color: #0F52BA;
+        border-title-align: left;
+        background: $surface;
+        padding: 1 2;
+    }
+    SelectionModal OptionList {
+        height: auto;
+        max-height: 18;
+    }
+    SelectionModal .hint {
+        height: 1;
+        color: $text-muted;
+        text-align: center;
+    }
+    """
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
+    def __init__(
+        self,
+        title: str,
+        options: list[dict],
+        current: str = "",
+    ):
+        super().__init__()
+        self._title = title
+        self._options = options
+        self._current = current
+
+    def compose(self):
+        with Vertical() as v:
+            v.border_title = self._title
+            items = []
+            highlight_idx = 0
+            for i, opt in enumerate(self._options):
+                label = opt.get("label", opt.get("value", ""))
+                extra = opt.get("provider", "")
+                marker = " ●" if opt.get("selected") else ""
+                line = f"{label}  ({extra}){marker}" if extra else f"{label}{marker}"
+                items.append(Option(line, id=opt.get("value", label)))
+                if opt.get("selected"):
+                    highlight_idx = i
+            ol = OptionList(*items, id="select-list")
+            ol.highlighted = highlight_idx
+            yield ol
+            yield Static("↑↓ navigate  Enter select  Esc cancel", classes="hint")
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected):
+        self.dismiss(event.option.id)
+
+    def action_cancel(self):
+        self.dismiss(None)
+
+
+class ConfirmModal(ModalScreen[bool]):
+    """Yes/No confirmation modal. Returns True or False."""
+
+    DEFAULT_CSS = """
+    ConfirmModal {
+        align: center middle;
+    }
+    ConfirmModal > Vertical {
+        width: 50;
+        height: auto;
+        border: thick #D4920A 60%;
+        border-title-color: #D4920A;
+        border-title-align: left;
+        background: $surface;
+        padding: 1 2;
+    }
+    ConfirmModal .hint {
+        height: 1;
+        color: $text-muted;
+        text-align: center;
+        margin-top: 1;
+    }
+    """
+
+    BINDINGS = [
+        ("y", "confirm", "Yes"),
+        ("n", "cancel", "No"),
+        ("escape", "cancel", "Cancel"),
+    ]
+
+    def __init__(self, message: str):
+        super().__init__()
+        self._message = message
+
+    def compose(self):
+        with Vertical() as v:
+            v.border_title = "Confirm"
+            yield Static(self._message)
+            yield Static("y confirm  n/Esc cancel", classes="hint")
+
+    def action_confirm(self):
+        self.dismiss(True)
+
+    def action_cancel(self):
+        self.dismiss(False)
