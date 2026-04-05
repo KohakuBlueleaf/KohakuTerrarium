@@ -1,6 +1,9 @@
+import { ElMessage, ElMessageBox } from "element-plus";
+
 import { terrariumAPI, agentAPI } from "@/utils/api";
 import { useMessagesStore } from "@/stores/messages";
 import { useInstancesStore } from "@/stores/instances";
+import { useStatusStore } from "@/stores/status";
 
 /**
  * Convert OpenAI-format conversation history to frontend messages.
@@ -305,6 +308,12 @@ export const useChatStore = defineStore("chat", {
     _instanceType: null,
     /** @type {WebSocket | null} Single WS for the instance */
     _ws: null,
+    /** WebSocket reconnection state */
+    reconnecting: false,
+    reconnectAttempt: 0,
+    connectionLost: false,
+    /** @type {number | null} */
+    _reconnectTimer: null,
   }),
 
   getters: {
@@ -313,6 +322,7 @@ export const useChatStore = defineStore("chat", {
       return state.messagesByTab[state.activeTab] || [];
     },
     hasRunningJobs: (state) => Object.keys(state.runningJobs).length > 0,
+    isReconnecting: (state) => state.reconnecting,
   },
 
   actions: {
@@ -324,6 +334,9 @@ export const useChatStore = defineStore("chat", {
       this.tabs = [];
       this.messagesByTab = {};
       this.sessionInfo = { sessionId: "", model: "", agentName: "", compactThreshold: 0 };
+      this.reconnecting = false;
+      this.reconnectAttempt = 0;
+      this.connectionLost = false;
 
       if (instance.type === "terrarium") {
         if (instance.has_root) {
@@ -393,10 +406,19 @@ export const useChatStore = defineStore("chat", {
     },
 
     async send(text) {
-      if (!this.activeTab || !text.trim() || !this._ws) return;
+      if (!this.activeTab || !text.trim()) return;
+
+      const tab = this.activeTab;
+
+      // Slash command interception: if message starts with "/", handle as command
+      if (text.startsWith("/")) {
+        await this._handleSlashCommand(tab, text);
+        return;
+      }
+
+      if (!this._ws) return;
 
       // Push user message immediately
-      const tab = this.activeTab;
       this._addMsg(tab, {
         id: "u_" + Date.now(),
         role: "user",
@@ -429,6 +451,134 @@ export const useChatStore = defineStore("chat", {
       }
     },
 
+    /** Handle slash command input */
+    async _handleSlashCommand(tab, text) {
+      const trimmed = text.slice(1).trim();
+      const spaceIdx = trimmed.indexOf(" ");
+      const command = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
+      const args = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx + 1).trim();
+
+      if (!command) return;
+
+      // Show the command as a user message
+      this._addMsg(tab, {
+        id: "cmd_" + Date.now(),
+        role: "user",
+        content: text,
+        timestamp: new Date().toISOString(),
+      });
+
+      try {
+        let result;
+        if (this._instanceType === "terrarium" && !tab.startsWith("ch:")) {
+          result = await terrariumAPI.executeCreatureCommand(
+            this._instanceId, tab, command, args,
+          );
+        } else {
+          result = await agentAPI.executeCommand(this._instanceId, command, args);
+        }
+
+        // Handle structured data responses
+        if (result.data) {
+          await this._handleCommandData(tab, command, args, result.data);
+        }
+
+        // Show output as system message
+        if (result.output) {
+          this._addMsg(tab, {
+            id: "cmdout_" + Date.now(),
+            role: "system",
+            content: result.output,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      } catch (err) {
+        const detail = err.response?.data?.detail || err.message || "Command failed";
+        this._addMsg(tab, {
+          id: "cmderr_" + Date.now(),
+          role: "system",
+          content: `Error: /${command} - ${detail}`,
+          isError: true,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    },
+
+    /** Handle structured command response data */
+    async _handleCommandData(tab, command, originalArgs, data) {
+      if (data.type === "select") {
+        // Show selection dialog
+        try {
+          const options = (data.options || []).map((opt) =>
+            typeof opt === "string" ? { label: opt, value: opt } : opt,
+          );
+          const { value } = await ElMessageBox({
+            title: data.title || `Select option for /${command}`,
+            message: () => {
+              // Build HTML list of options
+              const items = options.map((o, i) =>
+                `<div style="padding: 6px 12px; cursor: pointer; border-radius: 4px; margin: 2px 0;"
+                      data-index="${i}">${o.label || o.value}</div>`,
+              ).join("");
+              return `<div>${data.message || ""}<div style="margin-top: 8px">${items}</div></div>`;
+            },
+            showInput: true,
+            inputPlaceholder: "Type selection...",
+            dangerouslyUseHTMLString: true,
+            confirmButtonText: "Select",
+            cancelButtonText: "Cancel",
+          });
+          if (value) {
+            // Re-send command with selected value
+            await this._handleSlashCommand(tab, `/${command} ${value}`);
+          }
+        } catch {
+          // User cancelled
+        }
+      } else if (data.type === "confirm") {
+        try {
+          await ElMessageBox.confirm(
+            data.message || `Confirm action for /${command}?`,
+            data.title || "Confirm",
+            {
+              confirmButtonText: "Yes",
+              cancelButtonText: "No",
+              type: "warning",
+            },
+          );
+          // User confirmed: re-send with action_args
+          const confirmArgs = data.action_args || originalArgs;
+          await this._handleSlashCommand(tab, `/${command} ${confirmArgs}`);
+        } catch {
+          // User declined
+        }
+      } else if (data.type === "notify") {
+        ElMessage({
+          message: data.message || "",
+          type: data.level || "info",
+          duration: data.duration || 3000,
+        });
+      } else if (data.type === "info_panel") {
+        this._addMsg(tab, {
+          id: "info_" + Date.now(),
+          role: "system",
+          content: data.content || data.message || "",
+          title: data.title || "",
+          timestamp: new Date().toISOString(),
+        });
+      } else if (data.type === "list") {
+        const items = (data.items || []).map((item) =>
+          typeof item === "string" ? item : `${item.label || item.name}: ${item.value || item.description || ""}`,
+        ).join("\n");
+        this._addMsg(tab, {
+          id: "list_" + Date.now(),
+          role: "system",
+          content: data.title ? `${data.title}\n${items}` : items,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    },
+
     async _loadHistory(target) {
       try {
         const { messages, events } = await terrariumAPI.getHistory(
@@ -448,14 +598,9 @@ export const useChatStore = defineStore("chat", {
 
     /** Connect single WS for terrarium */
     _connectTerrarium(terrariumId) {
-      const ws = new WebSocket(wsUrl(`/ws/terrariums/${terrariumId}`));
-      ws.onmessage = (event) => this._onMessage(JSON.parse(event.data));
-      ws.onclose = () => {
-        this.processing = false;
-      };
-      this._ws = ws;
+      const url = wsUrl(`/ws/terrariums/${terrariumId}`);
+      this._connectWs(url);
 
-      // Load history for initial tab
       // Load history for initial tab
       if (this.tabs[0]) {
         this._loadHistory(this.tabs[0]);
@@ -470,17 +615,79 @@ export const useChatStore = defineStore("chat", {
 
     /** Connect single WS for standalone creature */
     _connectCreature(agentId) {
-      const ws = new WebSocket(wsUrl(`/ws/creatures/${agentId}`));
-      ws.onmessage = (event) => this._onMessage(JSON.parse(event.data));
-      ws.onclose = () => {
-        this.processing = false;
-      };
-      this._ws = ws;
+      const url = wsUrl(`/ws/creatures/${agentId}`);
+      this._connectWs(url);
 
       // Load history for the creature tab
       const tabKey = this.tabs[0];
       if (tabKey) {
         this._loadAgentHistory(agentId, tabKey);
+      }
+    },
+
+    /** Create WebSocket with reconnection logic */
+    _connectWs(url) {
+      if (this._ws) {
+        this._ws.close();
+        this._ws = null;
+      }
+
+      const ws = new WebSocket(url);
+      ws.onopen = () => {
+        // On successful connection (including reconnect)
+        if (this.reconnecting) {
+          this.reconnecting = false;
+          this.reconnectAttempt = 0;
+          this.connectionLost = false;
+          // Reload history to fill any gap during disconnection
+          this._reloadAllHistory();
+        }
+      };
+      ws.onmessage = (event) => this._onMessage(JSON.parse(event.data));
+      ws.onclose = () => {
+        this.processing = false;
+        this._scheduleReconnect(url);
+      };
+      ws.onerror = () => {
+        // onerror is always followed by onclose, so reconnect is handled there
+      };
+      this._ws = ws;
+    },
+
+    /** Schedule a reconnection attempt with exponential backoff */
+    _scheduleReconnect(url) {
+      // Don't reconnect if we've been cleaned up (user navigated away)
+      if (!this._instanceId) return;
+
+      const MAX_RETRIES = 10;
+      const MAX_DELAY = 30000;
+
+      if (this.reconnectAttempt >= MAX_RETRIES) {
+        this.reconnecting = false;
+        this.connectionLost = true;
+        return;
+      }
+
+      this.reconnecting = true;
+      const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempt), MAX_DELAY);
+      this.reconnectAttempt++;
+
+      this._reconnectTimer = setTimeout(() => {
+        this._reconnectTimer = null;
+        if (this._instanceId) {
+          this._connectWs(url);
+        }
+      }, delay);
+    },
+
+    /** Reload all tab histories after reconnection */
+    _reloadAllHistory() {
+      for (const tab of this.tabs) {
+        if (this._instanceType === "terrarium") {
+          this._loadHistory(tab);
+        } else {
+          this._loadAgentHistory(this._instanceId, tab);
+        }
       }
     },
 
@@ -554,6 +761,10 @@ export const useChatStore = defineStore("chat", {
     _handleActivity(source, data) {
       const at = data.activity_type;
       const name = data.name || "unknown";
+
+      // Forward to status store for dashboard tracking
+      const statusStore = useStatusStore();
+      statusStore.handleActivity(data);
 
       // Session info: model, compact threshold, session ID, agent name
       if (at === "session_info") {
@@ -791,10 +1002,20 @@ export const useChatStore = defineStore("chat", {
     },
 
     _cleanup() {
+      if (this._reconnectTimer !== null) {
+        clearTimeout(this._reconnectTimer);
+        this._reconnectTimer = null;
+      }
       if (this._ws) {
+        // Prevent onclose from triggering reconnect during intentional cleanup
+        this._ws.onclose = null;
+        this._ws.onerror = null;
         this._ws.close();
         this._ws = null;
       }
+      this.reconnecting = false;
+      this.reconnectAttempt = 0;
+      this.connectionLost = false;
     },
 
     _saveTabs() {

@@ -222,8 +222,10 @@ class TestBootstrapLLM:
             api_key_env="NONEXISTENT_KEY_BOOTSTRAP_TEST_XYZ",
         )
 
-        with patch.dict("os.environ", {}, clear=False):
-            # Make sure the key is absent
+        with patch.dict("os.environ", {}, clear=False), patch(
+            "kohakuterrarium.llm.profiles._is_available", return_value=False
+        ):
+            # Make sure the key is absent and no auto-default kicks in
             import os
 
             os.environ.pop("NONEXISTENT_KEY_BOOTSTRAP_TEST_XYZ", None)

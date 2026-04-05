@@ -57,6 +57,13 @@
                 inst.creatures.length !== 1 ? "s" : ""
               }}
             </div>
+            <button
+              class="btn-icon text-coral hover:text-coral-dark flex-shrink-0"
+              title="Stop instance"
+              @click.stop="handleStop(inst)"
+            >
+              <span class="i-carbon-stop-filled" />
+            </button>
           </div>
         </div>
       </div>
@@ -75,12 +82,19 @@
 </template>
 
 <script setup>
+import { ElMessage, ElMessageBox } from "element-plus";
 import StatusDot from "@/components/common/StatusDot.vue";
 import GemBadge from "@/components/common/GemBadge.vue";
 import { useInstancesStore } from "@/stores/instances";
 
 const instances = useInstancesStore();
 instances.fetchAll();
+
+// Start auto-refresh polling
+instances.startPolling();
+onUnmounted(() => {
+  instances.stopPolling();
+});
 
 const stats = computed(() => [
   {
@@ -104,4 +118,28 @@ const stats = computed(() => [
     color: "text-amber",
   },
 ]);
+
+async function handleStop(inst) {
+  try {
+    await ElMessageBox.confirm(
+      `Stop "${inst.config_name}"? This will terminate the ${inst.type} and all its processes.`,
+      "Stop Instance",
+      {
+        confirmButtonText: "Stop",
+        cancelButtonText: "Cancel",
+        type: "warning",
+      },
+    );
+  } catch {
+    // User cancelled
+    return;
+  }
+
+  try {
+    await instances.stop(inst.id);
+    ElMessage({ message: `Stopped ${inst.config_name}`, type: "success" });
+  } catch (err) {
+    ElMessage({ message: `Failed to stop: ${err.message || "Unknown error"}`, type: "error" });
+  }
+}
 </script>

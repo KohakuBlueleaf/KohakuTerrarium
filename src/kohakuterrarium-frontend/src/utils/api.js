@@ -34,6 +34,18 @@ export const configAPI = {
     const { data } = await api.get("/configs/server-info");
     return data;
   },
+
+  /** @returns {Promise<{id: string, name: string, available: boolean}[]>} */
+  async getModels() {
+    const { data } = await api.get("/configs/models");
+    return data;
+  },
+
+  /** @returns {Promise<{name: string, description: string}[]>} */
+  async getCommands() {
+    const { data } = await api.get("/configs/commands");
+    return data;
+  },
 };
 
 /** Terrarium lifecycle */
@@ -103,6 +115,15 @@ export const terrariumAPI = {
     );
     return data;
   },
+
+  /** Execute a slash command on a terrarium creature */
+  async executeCreatureCommand(id, name, command, args = "") {
+    const { data } = await api.post(
+      `/terrariums/${id}/creatures/${name}/command`,
+      { command, args },
+    );
+    return data;
+  },
 };
 
 /** Standalone agent lifecycle */
@@ -153,6 +174,18 @@ export const agentAPI = {
 
   async stopTask(id, jobId) {
     const { data } = await api.post(`/agents/${id}/tasks/${jobId}/stop`);
+    return data;
+  },
+
+  /** Switch the model for a running agent */
+  async switchModel(id, model) {
+    const { data } = await api.post(`/agents/${id}/model`, { model });
+    return data;
+  },
+
+  /** Execute a slash command on an agent */
+  async executeCommand(id, command, args = "") {
+    const { data } = await api.post(`/agents/${id}/command`, { command, args });
     return data;
   },
 };

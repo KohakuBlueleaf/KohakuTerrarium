@@ -7,6 +7,10 @@ export const useInstancesStore = defineStore("instances", {
     /** @type {import('@/utils/api').InstanceInfo | null} */
     current: null,
     loading: false,
+    /** @type {number | null} */
+    _pollInterval: null,
+    /** @type {number} Number of active subscribers (components using this store) */
+    _subscribers: 0,
   }),
 
   getters: {
@@ -66,16 +70,41 @@ export const useInstancesStore = defineStore("instances", {
       }
     },
 
-    /** Stop an instance */
+    /** Stop an instance — awaits API response before removing from list */
     async stop(id) {
-      if (id.startsWith("terrarium_")) {
-        await terrariumAPI.stop(id);
-      } else if (id.startsWith("agent_")) {
-        await agentAPI.stop(id);
+      try {
+        if (id.startsWith("terrarium_")) {
+          await terrariumAPI.stop(id);
+        } else if (id.startsWith("agent_")) {
+          await agentAPI.stop(id);
+        }
+        // Only remove after successful API response
+        this.list = this.list.filter((i) => i.id !== id);
+        if (this.current?.id === id) {
+          this.current = null;
+        }
+      } catch (err) {
+        console.error("Failed to stop instance:", err);
+        throw err;
       }
-      this.list = this.list.filter((i) => i.id !== id);
-      if (this.current?.id === id) {
-        this.current = null;
+    },
+
+    /** Start auto-refresh polling. Called when a component mounts. */
+    startPolling() {
+      this._subscribers++;
+      if (this._pollInterval === null) {
+        this._pollInterval = setInterval(() => {
+          this.fetchAll();
+        }, 5000);
+      }
+    },
+
+    /** Stop auto-refresh polling. Called when a component unmounts. */
+    stopPolling() {
+      this._subscribers = Math.max(0, this._subscribers - 1);
+      if (this._subscribers === 0 && this._pollInterval !== null) {
+        clearInterval(this._pollInterval);
+        this._pollInterval = null;
       }
     },
   },

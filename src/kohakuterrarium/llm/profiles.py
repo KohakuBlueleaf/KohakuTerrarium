@@ -582,10 +582,35 @@ def load_profiles() -> dict[str, LLMProfile]:
     return profiles
 
 
+# Provider priority + best model per provider for auto-default
+_PROVIDER_DEFAULT_MODELS: list[tuple[str, str]] = [
+    ("codex", "gpt-5.4"),
+    ("anthropic", "claude-opus-4.6-direct"),
+    ("openai", "gpt-5.4-direct"),
+    ("gemini", "gemini-3.1-pro-direct"),
+    ("openrouter", "mimo-v2-pro"),
+    ("mimo", "mimo-v2-pro-direct"),
+]
+
+
 def get_default_model() -> str:
-    """Get the default model name from user config."""
+    """Get the default model name.
+
+    Resolution order:
+      1. Explicit user setting (``kt model default <name>``)
+      2. Auto-detect from available API keys (priority: codex > anthropic >
+         openai > gemini > openrouter > mimo)
+    """
     data = _load_yaml()
-    return data.get("default_model", "")
+    explicit = data.get("default_model", "")
+    if explicit:
+        return explicit
+
+    # Auto-detect from available keys
+    for provider, model in _PROVIDER_DEFAULT_MODELS:
+        if _is_available(provider):
+            return model
+    return ""
 
 
 def set_default_model(model_name: str) -> None:

@@ -124,7 +124,9 @@ class TestProfileStorage:
         assert delete_profile("todel") is False  # already deleted
 
     def test_default_model(self, tmp_profiles):
-        assert get_default_model() == ""
+        # No explicit default + mock no API keys → empty
+        with patch("kohakuterrarium.llm.profiles._is_available", return_value=False):
+            assert get_default_model() == ""
         set_default_model("gpt-5.4")
         assert get_default_model() == "gpt-5.4"
 
@@ -188,9 +190,10 @@ class TestResolution:
         assert profile.model == "custom-gpt-5.4"
 
     def test_resolve_no_profile_returns_none(self, tmp_profiles):
-        """No llm, no default -> None (backward compat)."""
-        profile = resolve_controller_llm({})
-        assert profile is None
+        """No llm, no default, no API keys -> None (backward compat)."""
+        with patch("kohakuterrarium.llm.profiles._is_available", return_value=False):
+            profile = resolve_controller_llm({})
+            assert profile is None
 
     def test_resolve_unknown_returns_none(self, tmp_profiles):
         profile = resolve_controller_llm({"llm": "nonexistent-xyz"})
