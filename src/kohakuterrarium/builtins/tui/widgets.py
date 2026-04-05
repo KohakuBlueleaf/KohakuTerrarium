@@ -930,7 +930,7 @@ class SelectionModal(ModalScreen[str | None]):
     SelectionModal {
         align: center middle;
     }
-    SelectionModal > Vertical {
+    #select-container {
         width: 60;
         max-height: 24;
         border: thick #0F52BA 60%;
@@ -964,22 +964,27 @@ class SelectionModal(ModalScreen[str | None]):
         self._current = current
 
     def compose(self):
-        with Vertical() as v:
-            v.border_title = self._title
-            items = []
-            highlight_idx = 0
-            for i, opt in enumerate(self._options):
-                label = opt.get("label", opt.get("value", ""))
-                extra = opt.get("provider", "")
-                marker = " ●" if opt.get("selected") else ""
-                line = f"{label}  ({extra}){marker}" if extra else f"{label}{marker}"
-                items.append(Option(line, id=opt.get("value", label)))
-                if opt.get("selected"):
-                    highlight_idx = i
-            ol = OptionList(*items, id="select-list")
-            ol.highlighted = highlight_idx
-            yield ol
-            yield Static("↑↓ navigate  Enter select  Esc cancel", classes="hint")
+        items = []
+        self._highlight_idx = 0
+        for i, opt in enumerate(self._options):
+            label = opt.get("label", opt.get("value", ""))
+            extra = opt.get("provider", "")
+            marker = " ●" if opt.get("selected") else ""
+            line = f"{label}  ({extra}){marker}" if extra else f"{label}{marker}"
+            items.append(Option(line, id=opt.get("value", label)))
+            if opt.get("selected"):
+                self._highlight_idx = i
+        yield Vertical(
+            OptionList(*items, id="select-list"),
+            Static("↑↓ navigate  Enter select  Esc cancel", classes="hint"),
+            id="select-container",
+        )
+
+    def on_mount(self) -> None:
+        container = self.query_one("#select-container", Vertical)
+        container.border_title = self._title
+        ol = self.query_one("#select-list", OptionList)
+        ol.highlighted = self._highlight_idx
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected):
         self.dismiss(event.option.id)
@@ -995,7 +1000,7 @@ class ConfirmModal(ModalScreen[bool]):
     ConfirmModal {
         align: center middle;
     }
-    ConfirmModal > Vertical {
+    #confirm-container {
         width: 50;
         height: auto;
         border: thick #D4920A 60%;
@@ -1023,10 +1028,14 @@ class ConfirmModal(ModalScreen[bool]):
         self._message = message
 
     def compose(self):
-        with Vertical() as v:
-            v.border_title = "Confirm"
-            yield Static(self._message)
-            yield Static("y confirm  n/Esc cancel", classes="hint")
+        yield Vertical(
+            Static(self._message),
+            Static("y confirm  n/Esc cancel", classes="hint"),
+            id="confirm-container",
+        )
+
+    def on_mount(self) -> None:
+        self.query_one("#confirm-container", Vertical).border_title = "Confirm"
 
     def action_confirm(self):
         self.dismiss(True)
