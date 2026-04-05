@@ -12,8 +12,8 @@ import time
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from apps.api.deps import get_manager
-from apps.api.events import StreamOutput, get_event_log
+from kohakuterrarium.api.deps import get_manager
+from kohakuterrarium.api.events import StreamOutput, get_event_log
 
 router = APIRouter()
 

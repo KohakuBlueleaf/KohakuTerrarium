@@ -4,7 +4,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from apps.api.deps import get_manager
+from kohakuterrarium.api.deps import get_manager
 from kohakuterrarium.session.resume import (
     detect_session_type,
     resume_agent,

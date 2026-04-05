@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from apps.api.deps import get_manager
+from kohakuterrarium.api.deps import get_manager
 
 router = APIRouter()
 

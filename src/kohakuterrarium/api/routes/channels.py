@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from apps.api.deps import get_manager
-from apps.api.schemas import ChannelSend
+from kohakuterrarium.api.deps import get_manager
+from kohakuterrarium.api.schemas import ChannelSend
 
 router = APIRouter()
 

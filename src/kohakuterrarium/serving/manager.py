@@ -129,6 +129,37 @@ class KohakuManager:
         """List all running agents."""
         return [s.get_status() for s in self._agents.values()]
 
+    async def agent_interrupt(self, agent_id: str) -> None:
+        """Interrupt the agent's current turn."""
+        session = self._agents.get(agent_id)
+        if not session:
+            raise ValueError(f"Agent not found: {agent_id}")
+        await session.agent.interrupt()
+
+    def agent_get_jobs(self, agent_id: str) -> list[dict]:
+        """Get running/recent jobs for an agent."""
+        session = self._agents.get(agent_id)
+        if not session:
+            raise ValueError(f"Agent not found: {agent_id}")
+        return [j.to_dict() for j in session.agent.executor.get_running_jobs()]
+
+    async def agent_cancel_job(self, agent_id: str, job_id: str) -> bool:
+        """Cancel a running job. Returns True if cancelled."""
+        session = self._agents.get(agent_id)
+        if not session:
+            raise ValueError(f"Agent not found: {agent_id}")
+        return session.agent.executor.cancel(job_id)
+
+    def agent_get_history(self, agent_id: str) -> list[dict]:
+        """Get conversation history for an agent."""
+        session = self._agents.get(agent_id)
+        if not session:
+            raise ValueError(f"Agent not found: {agent_id}")
+        store = self._session_stores.get(agent_id)
+        if store:
+            return store.get_events(limit=200)
+        return session.agent.conversation_history
+
     # =================================================================
     # Agent Channel Ops
     # =================================================================
@@ -442,6 +473,32 @@ class KohakuManager:
         """Wire a creature to a channel (listen or send)."""
         runtime = self._get_runtime(terrarium_id)
         await runtime.wire_channel(creature, channel, direction)
+
+    async def creature_interrupt(self, terrarium_id: str, name: str) -> None:
+        """Interrupt a creature's current turn."""
+        runtime = self._get_runtime(terrarium_id)
+        agent = runtime.get_creature_agent(name)
+        if agent is None:
+            raise ValueError(f"Creature not found: {name}")
+        await agent.interrupt()
+
+    def creature_get_jobs(self, terrarium_id: str, name: str) -> list[dict]:
+        """Get running jobs for a creature."""
+        runtime = self._get_runtime(terrarium_id)
+        agent = runtime.get_creature_agent(name)
+        if agent is None:
+            raise ValueError(f"Creature not found: {name}")
+        return [j.to_dict() for j in agent.executor.get_running_jobs()]
+
+    async def creature_cancel_job(
+        self, terrarium_id: str, name: str, job_id: str
+    ) -> bool:
+        """Cancel a creature's running job."""
+        runtime = self._get_runtime(terrarium_id)
+        agent = runtime.get_creature_agent(name)
+        if agent is None:
+            raise ValueError(f"Creature not found: {name}")
+        return agent.executor.cancel(job_id)
 
     # =================================================================
     # Creature Channel Ops (private/sub-agent channels)

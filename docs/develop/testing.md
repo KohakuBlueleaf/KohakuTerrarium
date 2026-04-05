@@ -238,7 +238,7 @@ See [Framework Internals](../concepts/agents.md) for the state machine diagram.
 |------|---------------|----------|
 | **Multi-agent channel flow** | Two agents exchanging messages through channels end-to-end | High |
 | **Background + direct tool parallel** | Background wait_channel running while direct tools complete | High |
-| **FastAPI HTTP API** | `apps/api/` REST endpoints, unified WebSocket, config discovery | High |
+| **FastAPI HTTP API** | `kohakuterrarium/api/` REST endpoints, unified WebSocket, config discovery | High |
 | **Event ordering under concurrency** | Multiple events arriving simultaneously, batching behavior | Medium |
 | **Agent._process_event_with_controller** | Full 6-phase loop with tool execution and feedback | Medium |
 | **Termination conditions** | max_turns, keywords, idle_timeout, max_duration | Medium |
@@ -248,7 +248,7 @@ See [Framework Internals](../concepts/agents.md) for the state machine diagram.
 
 ### Notes
 
-The FastAPI HTTP API (`apps/api/`) is an application layer separate from the core library. It needs its own test suite using `httpx.AsyncClient` and `TestClient`. The serving layer is partially tested via `tests/integration/test_service_api.py`, but the HTTP transport is not yet covered.
+The FastAPI HTTP API (`kohakuterrarium/api/`) is an application layer separate from the core library. It needs its own test suite using `httpx.AsyncClient` and `TestClient`. The serving layer is partially tested via `tests/integration/test_service_api.py`, but the HTTP transport is not yet covered.
 
 ### Recommended Next Tests
 

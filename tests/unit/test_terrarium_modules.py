@@ -4,7 +4,7 @@ Covers:
 - terrarium/tool_registration.py: idempotent tool registration
 - terrarium/persistence.py: Conversation rebuild from message dicts
 - terrarium/factory.py: prompt injection, root awareness prompt
-- apps/api/events.py: event log management, detail parsing, StreamOutput
+- kohakuterrarium/api/events.py: event log management, detail parsing, StreamOutput
 """
 
 import asyncio
@@ -255,7 +255,7 @@ class TestBuildRootAwarenessPrompt:
 
 
 # ---------------------------------------------------------------------------
-# apps/api/events.py
+# kohakuterrarium/api/events.py
 # ---------------------------------------------------------------------------
 
 
@@ -264,13 +264,13 @@ class TestGetEventLog:
 
     def setup_method(self):
         """Clear the global event log dict before each test."""
-        from apps.api.events import _event_logs
+        from kohakuterrarium.api.events import _event_logs
 
         _event_logs.clear()
 
     def test_creates_new(self):
         """get_event_log creates a fresh list for an unknown key."""
-        from apps.api.events import get_event_log
+        from kohakuterrarium.api.events import get_event_log
 
         log = get_event_log("terrarium:writer")
         assert isinstance(log, list)
@@ -278,7 +278,7 @@ class TestGetEventLog:
 
     def test_returns_existing(self):
         """get_event_log returns the same list on repeated calls."""
-        from apps.api.events import get_event_log
+        from kohakuterrarium.api.events import get_event_log
 
         log1 = get_event_log("terrarium:writer")
         log1.append({"type": "test"})
@@ -292,7 +292,7 @@ class TestParseDetail:
 
     def test_with_brackets(self):
         """Extracts name from [name] prefix."""
-        from apps.api.events import _parse_detail
+        from kohakuterrarium.api.events import _parse_detail
 
         name, detail = _parse_detail("[bash] Running ls command")
         assert name == "bash"
@@ -300,7 +300,7 @@ class TestParseDetail:
 
     def test_without_brackets(self):
         """Returns 'unknown' when no bracket prefix."""
-        from apps.api.events import _parse_detail
+        from kohakuterrarium.api.events import _parse_detail
 
         name, detail = _parse_detail("plain detail text")
         assert name == "unknown"
@@ -308,7 +308,7 @@ class TestParseDetail:
 
     def test_malformed(self):
         """Handles opening bracket without closing bracket."""
-        from apps.api.events import _parse_detail
+        from kohakuterrarium.api.events import _parse_detail
 
         name, detail = _parse_detail("[broken detail text")
         assert name == "unknown"
@@ -319,7 +319,7 @@ class TestStreamOutput:
     """Tests for StreamOutput."""
 
     def _make_stream(self):
-        from apps.api.events import StreamOutput
+        from kohakuterrarium.api.events import StreamOutput
 
         queue = asyncio.Queue()
         log: list = []

@@ -7,7 +7,7 @@ The serving layer (`src/kohakuterrarium/serving/`) provides a transport-agnostic
 | Layer | Location | Purpose |
 |-------|----------|---------|
 | **Serving** | `src/kohakuterrarium/serving/` | Python API for runtime management. Part of the core package. |
-| **HTTP API** | `apps/api/` | FastAPI application exposing the serving layer over REST + WebSocket. Not part of the library. |
+| **HTTP API** | `kohakuterrarium/api/` | FastAPI application exposing the serving layer over REST + WebSocket. Not part of the library. |
 
 The serving layer is the single source of truth for all runtime operations. The HTTP API (and any future interface) delegates to it.
 
@@ -162,7 +162,7 @@ The recording uses `SessionOutput`, an `OutputModule` added as a secondary outpu
 
 ## Unified WebSocket Architecture
 
-Each terrarium instance uses a single WebSocket connection that carries ALL creature output and ALL channel messages. The shared event log and `StreamOutput` class live in `apps/api/events.py`, which both REST routes and WebSocket handlers depend on. The WebSocket transport is implemented in `apps/api/ws/chat.py`:
+Each terrarium instance uses a single WebSocket connection that carries ALL creature output and ALL channel messages. The shared event log and `StreamOutput` class live in `kohakuterrarium/api/events.py`, which both REST routes and WebSocket handlers depend on. The WebSocket transport is implemented in `kohakuterrarium/api/ws/chat.py`:
 
 - `/ws/terrariums/{id}`: single WS carrying all events for a terrarium
 - `/ws/creatures/{id}`: per-creature WS for standalone agents

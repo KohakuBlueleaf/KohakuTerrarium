@@ -71,5 +71,5 @@ htmlcov/
 .DS_Store
 Thumbs.db
 plans/
-apps/web/node_modules/
+src/kohakuterrarium-frontend/node_modules/
 src/kohakuterrarium/web_dist/

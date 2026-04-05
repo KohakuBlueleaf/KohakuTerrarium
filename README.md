@@ -320,8 +320,8 @@ Vue 3 frontend with real-time streaming:
 
 ```bash
 pip install -e ".[web]"
-python -m apps.api.main        # API on :8001
-cd apps/web && npm run dev     # Frontend on :5173
+python -m kohakuterrarium.api.main        # API on :8001
+npm run dev --prefix src/kohakuterrarium-frontend     # Frontend on :5173
 ```
 
 Features:

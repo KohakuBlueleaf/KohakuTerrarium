@@ -49,7 +49,7 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: "../../src/kohakuterrarium/web_dist",
+    outDir: "../kohakuterrarium/web_dist",
     emptyOutDir: true,
     rollupOptions: {
       output: {

@@ -18,20 +18,6 @@ logger = get_logger(__name__)
 WEB_DIST_DIR = Path(__file__).resolve().parent.parent / "web_dist"
 
 
-def _ensure_apps_importable() -> None:
-    """Add project root to sys.path so ``apps.api`` is importable.
-
-    ``apps/`` lives outside the installed package tree.  This mirrors
-    the identical hack in ``apps/api/main.py`` and is only needed for
-    editable / repo-checkout installs.
-    """
-    candidate = Path(__file__).resolve().parent.parent.parent.parent
-    if (candidate / "apps").is_dir():
-        root = str(candidate)
-        if root not in sys.path:
-            sys.path.insert(0, root)
-
-
 def _resolve_config_dirs() -> tuple[list[str], list[str]]:
     """Resolve creature/terrarium config directories.
 
@@ -91,14 +77,13 @@ def run_web_server(
     """
     import uvicorn
 
-    _ensure_apps_importable()
-    from apps.api.app import create_app
+    from kohakuterrarium.api.app import create_app
 
     static_dir = None if dev else WEB_DIST_DIR
 
     if not dev and not (static_dir and static_dir.is_dir()):
         logger.error(
-            "web_dist not found — run 'cd apps/web && npm run build' first, "
+            "web_dist not found — run 'npm run build --prefix src/kohakuterrarium-frontend' first, "
             "or use --dev mode",
             path=str(WEB_DIST_DIR),
         )
@@ -114,7 +99,10 @@ def run_web_server(
 
     if dev:
         print(f"API-only mode on http://{host}:{port}")
-        print("Start vite dev server separately: cd apps/web && npm run dev")
+        print(
+            "Start vite dev server separately: "
+            "npm run dev --prefix src/kohakuterrarium-frontend"
+        )
     else:
         print(f"KohakuTerrarium web UI: http://{host}:{port}")
 
@@ -136,12 +124,11 @@ def run_desktop_app(port: int = 8001) -> None:
 
     import uvicorn
 
-    _ensure_apps_importable()
-    from apps.api.app import create_app
+    from kohakuterrarium.api.app import create_app
 
     if not WEB_DIST_DIR.is_dir():
         logger.error(
-            "web_dist not found — run 'cd apps/web && npm run build' first",
+            "web_dist not found — run 'npm run build --prefix src/kohakuterrarium-frontend' first",
             path=str(WEB_DIST_DIR),
         )
         sys.exit(1)

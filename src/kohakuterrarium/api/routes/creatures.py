@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from apps.api.deps import get_manager
-from apps.api.schemas import CreatureAdd, WireChannel
+from kohakuterrarium.api.deps import get_manager
+from kohakuterrarium.api.schemas import CreatureAdd, WireChannel
 from kohakuterrarium.terrarium.config import CreatureConfig
 
 router = APIRouter()
@@ -55,14 +55,7 @@ async def interrupt_creature(
 ):
     """Interrupt a creature's current processing. Creature stays alive."""
     try:
-        runtime = manager._get_runtime(terrarium_id)
-        if name == "root":
-            agent = runtime.root_agent
-        else:
-            agent = runtime.get_creature_agent(name)
-        if not agent:
-            raise HTTPException(404, f"Creature not found: {name}")
-        agent.interrupt()
+        await manager.creature_interrupt(terrarium_id, name)
         return {"status": "interrupted", "creature": name}
     except ValueError as e:
         raise HTTPException(404, str(e))
@@ -70,22 +63,9 @@ async def interrupt_creature(
 
 @router.get("/{name}/jobs")
 def creature_jobs(terrarium_id: str, name: str, manager=Depends(get_manager)):
-    """List running background jobs for a creature (or root agent)."""
+    """List running background jobs for a creature."""
     try:
-        runtime = manager._get_runtime(terrarium_id)
-        if name == "root":
-            agent = runtime.root_agent
-        else:
-            agent = runtime.get_creature_agent(name)
-        if not agent:
-            raise HTTPException(404, f"Creature not found: {name}")
-        jobs = []
-        for j in agent.executor.get_running_jobs():
-            jobs.append(_creature_job_to_dict(j))
-        if hasattr(agent, "subagent_manager") and agent.subagent_manager:
-            for j in agent.subagent_manager.get_running_jobs():
-                jobs.append(_creature_job_to_dict(j))
-        return jobs
+        return manager.creature_get_jobs(terrarium_id, name)
     except ValueError as e:
         raise HTTPException(404, str(e))
 
@@ -96,33 +76,11 @@ async def stop_creature_task(
 ):
     """Stop a specific background task on a creature."""
     try:
-        runtime = manager._get_runtime(terrarium_id)
-        if name == "root":
-            agent = runtime.root_agent
-        else:
-            agent = runtime.get_creature_agent(name)
-        if not agent:
-            raise HTTPException(404, f"Creature not found: {name}")
-        if await agent.executor.cancel(job_id):
+        if await manager.creature_cancel_job(terrarium_id, name, job_id):
             return {"status": "cancelled", "job_id": job_id}
-        if hasattr(agent, "subagent_manager") and agent.subagent_manager:
-            if await agent.subagent_manager.cancel(job_id):
-                return {"status": "cancelled", "job_id": job_id}
-        raise HTTPException(404, f"Task not found: {job_id}")
+        raise HTTPException(404, f"Task not found or already completed: {job_id}")
     except ValueError as e:
         raise HTTPException(404, str(e))
-
-
-def _creature_job_to_dict(j) -> dict:
-    return {
-        "job_id": j.job_id,
-        "job_type": j.job_type.value,
-        "type_name": j.type_name,
-        "state": j.state.value,
-        "start_time": j.start_time.isoformat() if j.start_time else "",
-        "duration": j.duration,
-        "preview": j.preview,
-    }
 
 
 @router.post("/{name}/wire")

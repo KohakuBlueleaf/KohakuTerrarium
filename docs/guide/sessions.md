@@ -85,10 +85,10 @@ A Vue 3 web frontend provides real-time management of agents and terrariums:
 
 ```bash
 # Start API server
-cd KohakuTerrarium && python -m apps.api.main
+cd KohakuTerrarium && python -m kohakuterrarium.api.main
 
 # Start frontend dev server
-cd apps/web && npm install && npm run dev
+npm run dev --prefix src/kohakuterrarium-frontend
 ```
 
 Features: terrarium topology graph, multi-tab chat (root + creatures + channels), real-time streaming, sub-agent tool activity, channel message feed, token usage tracking, dark/light mode with gemstone color theme.

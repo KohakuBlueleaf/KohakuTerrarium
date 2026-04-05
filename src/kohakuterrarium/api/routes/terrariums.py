@@ -2,9 +2,9 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from apps.api.deps import get_manager
-from apps.api.events import get_event_log
-from apps.api.schemas import AgentChat, ChannelAdd, TerrariumCreate
+from kohakuterrarium.api.deps import get_manager
+from kohakuterrarium.api.events import get_event_log
+from kohakuterrarium.api.schemas import AgentChat, ChannelAdd, TerrariumCreate
 
 router = APIRouter()
 

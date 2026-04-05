@@ -6,9 +6,20 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from apps.api.deps import get_manager
-from apps.api.routes import agents, channels, configs, creatures, sessions, terrariums
-from apps.api.ws import agents as ws_agents, channels as ws_channels, chat as ws_chat
+from kohakuterrarium.api.deps import get_manager
+from kohakuterrarium.api.routes import (
+    agents,
+    channels,
+    configs,
+    creatures,
+    sessions,
+    terrariums,
+)
+from kohakuterrarium.api.ws import (
+    agents as ws_agents,
+    channels as ws_channels,
+    chat as ws_chat,
+)
 
 
 @asynccontextmanager
