@@ -5,19 +5,25 @@ from pathlib import Path
 import yaml
 from fastapi import APIRouter
 
+from kohakuterrarium.packages import PACKAGES_DIR, _get_package_root, list_packages
+
 router = APIRouter()
 
 # Directories to scan — set by create_app() or auto-detected from packages
 _creatures_dirs: list[Path] = []
 _terrariums_dirs: list[Path] = []
 
+# Package root → package name mapping (for @package/path references)
+_package_roots: dict[str, str] = {}
+
 
 def set_config_dirs(creatures: list[str], terrariums: list[str]) -> None:
     """Set directories to scan for configs.
 
     Dirs are deduplicated by resolved path.
+    Also builds the package root mapping for @package/path references.
     """
-    global _creatures_dirs, _terrariums_dirs
+    global _creatures_dirs, _terrariums_dirs, _package_roots
     seen_c: set[str] = set()
     seen_t: set[str] = set()
     _creatures_dirs = []
@@ -32,6 +38,28 @@ def set_config_dirs(creatures: list[str], terrariums: list[str]) -> None:
         if str(p) not in seen_t:
             _terrariums_dirs.append(p)
             seen_t.add(str(p))
+
+    # Build package root mapping
+    _package_roots = {}
+    if PACKAGES_DIR.exists():
+        for pkg in list_packages():
+            pkg_root = _get_package_root(pkg["name"])
+            if pkg_root:
+                _package_roots[str(pkg_root.resolve())] = pkg["name"]
+
+
+def _to_ref(path: Path) -> str:
+    """Convert absolute path to @package/... reference if inside a package.
+
+    Returns the @package reference for installed packages, or the absolute
+    path string for local directories.
+    """
+    resolved = str(path.resolve())
+    for root, name in _package_roots.items():
+        if resolved.startswith(root):
+            rel = resolved[len(root) :].lstrip("/").lstrip("\\").replace("\\", "/")
+            return f"@{name}/{rel}"
+    return str(path)
 
 
 def _scan_creature_configs() -> list[dict]:
@@ -53,7 +81,7 @@ def _scan_creature_configs() -> list[dict]:
                 results.append(
                     {
                         "name": data.get("name", child.name),
-                        "path": str(child),
+                        "path": _to_ref(child),
                         "description": data.get("description", ""),
                     }
                 )
@@ -61,7 +89,7 @@ def _scan_creature_configs() -> list[dict]:
                 results.append(
                     {
                         "name": child.name,
-                        "path": str(child),
+                        "path": _to_ref(child),
                         "description": "",
                     }
                 )
@@ -88,7 +116,7 @@ def _scan_terrarium_configs() -> list[dict]:
                 results.append(
                     {
                         "name": terrarium.get("name", child.name),
-                        "path": str(child),
+                        "path": _to_ref(child),
                         "description": terrarium.get("description", ""),
                     }
                 )
@@ -96,7 +124,7 @@ def _scan_terrarium_configs() -> list[dict]:
                 results.append(
                     {
                         "name": child.name,
-                        "path": str(child),
+                        "path": _to_ref(child),
                         "description": "",
                     }
                 )

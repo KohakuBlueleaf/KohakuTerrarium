@@ -51,14 +51,14 @@ def _resolve_config_dirs() -> tuple[list[str], list[str]]:
                 if t.is_dir():
                     terrariums.append(str(t))
 
-    # 3. Local project dirs (repo checkout)
-    project_root = Path(__file__).resolve().parent.parent.parent.parent
-    local_c = project_root / "creatures"
-    local_t = project_root / "terrariums"
-    if local_c.is_dir() and str(local_c) not in creatures:
-        creatures.append(str(local_c))
-    if local_t.is_dir() and str(local_t) not in terrariums:
-        terrariums.append(str(local_t))
+    # 3. Current working directory (where the user runs kt web/app from)
+    cwd = Path.cwd()
+    for d in (cwd / "creatures", cwd / "agents"):
+        if d.is_dir() and str(d) not in creatures:
+            creatures.append(str(d))
+    cwd_t = cwd / "terrariums"
+    if cwd_t.is_dir() and str(cwd_t) not in terrariums:
+        terrariums.append(str(cwd_t))
 
     return creatures, terrariums
 
