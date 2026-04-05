@@ -49,6 +49,8 @@ export default defineConfig({
     },
   },
   build: {
+    outDir: "../../src/kohakuterrarium/web_dist",
+    emptyOutDir: true,
     rollupOptions: {
       output: {
         manualChunks(id) {

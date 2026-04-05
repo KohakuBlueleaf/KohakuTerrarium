@@ -200,6 +200,26 @@ def main() -> int:
         "-k", type=int, default=10, help="Max results (default: 10)"
     )
 
+    # Web server command
+    web_parser = subparsers.add_parser(
+        "web", help="Serve web UI + API (single process)"
+    )
+    web_parser.add_argument("--host", default="0.0.0.0", help="Bind host")
+    web_parser.add_argument("--port", type=int, default=8001, help="Bind port")
+    web_parser.add_argument(
+        "--dev",
+        action="store_true",
+        help="API-only mode (run vite dev server separately)",
+    )
+
+    # Desktop app command
+    app_parser = subparsers.add_parser(
+        "app", help="Launch native desktop UI (requires pywebview)"
+    )
+    app_parser.add_argument(
+        "--port", type=int, default=8001, help="Internal server port"
+    )
+
     # Model command
     model_parser = subparsers.add_parser("model", help="Manage LLM profiles")
     model_sub = model_parser.add_subparsers(dest="model_command")
@@ -255,6 +275,16 @@ def main() -> int:
         return embedding_cli(args.session, args.provider, args.model, args.dimensions)
     elif args.command == "search":
         return search_cli(args.session, args.query, args.mode, args.agent, args.k)
+    elif args.command == "web":
+        from kohakuterrarium.serving.web import run_web_server
+
+        run_web_server(host=args.host, port=args.port, dev=args.dev)
+        return 0
+    elif args.command == "app":
+        from kohakuterrarium.serving.web import run_desktop_app
+
+        run_desktop_app(port=args.port)
+        return 0
     elif args.command == "model":
         return model_cli(args)
     else:

@@ -85,6 +85,9 @@ embeddings-light = [
 embeddings = [
     "sentence-transformers>=4.0.0",
 ]
+desktop = [
+    "pywebview>=5.0",
+]
 all = [
     "KohakuTerrarium[api,dev,web,browser,embeddings,embeddings-light]",
 ]
@@ -97,6 +100,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "kohakuterrarium.builtin_skills" = ["**/*.md"]
+"kohakuterrarium" = ["web_dist/**/*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
