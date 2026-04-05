@@ -140,13 +140,14 @@ function _mapAgent(data) {
     id: data.agent_id,
     type: "creature",
     config_name: data.name || "agent",
+    model: data.model || "",
     status: data.running ? "running" : "stopped",
     has_root: false,
     creatures: [
       {
         name: data.name || "agent",
         status: data.running ? "running" : "idle",
-        model: "",
+        model: data.model || "",
         listen_channels: [],
         send_channels: [],
       },

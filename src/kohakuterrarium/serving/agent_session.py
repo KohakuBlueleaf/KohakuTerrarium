@@ -114,9 +114,11 @@ class AgentSession:
 
     def get_status(self) -> dict:
         """Get agent status."""
+        model = getattr(self.agent.llm, "model", "") or self.agent.config.model
         return {
             "agent_id": self.agent_id,
             "name": self.agent.config.name,
+            "model": model,
             "running": self._running and self.agent.is_running,
             "tools": self.agent.tools,
             "subagents": self.agent.subagents,

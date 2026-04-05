@@ -287,12 +287,13 @@ onUnmounted(() => {
   if (runtimeInterval) clearInterval(runtimeInterval);
 });
 
-// Sync selected model with session info
+// Init model from instance data (available immediately) or session info (from WS)
 watch(
-  () => chat.sessionInfo.model,
-  (newModel) => {
-    if (newModel && !selectedModel.value) {
-      selectedModel.value = newModel;
+  [() => props.instance?.model, () => chat.sessionInfo.model],
+  ([instanceModel, sessionModel]) => {
+    const best = sessionModel || instanceModel || "";
+    if (best && best !== selectedModel.value) {
+      selectedModel.value = best;
     }
   },
   { immediate: true },
