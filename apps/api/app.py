@@ -1,6 +1,7 @@
 """FastAPI application factory."""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,8 +23,16 @@ async def lifespan(app: FastAPI):
 def create_app(
     creatures_dirs: list[str] | None = None,
     terrariums_dirs: list[str] | None = None,
+    static_dir: Path | None = None,
 ) -> FastAPI:
-    """Create and configure the FastAPI application."""
+    """Create and configure the FastAPI application.
+
+    Args:
+        creatures_dirs: Directories to scan for creature configs.
+        terrariums_dirs: Directories to scan for terrarium configs.
+        static_dir: Path to built web frontend (web_dist/).
+            When provided, serves the SPA at / with API at /api/*.
+    """
     app = FastAPI(
         title="KohakuTerrarium API",
         description="HTTP API for managing agents and terrariums",
@@ -66,4 +75,34 @@ def create_app(
     app.include_router(ws_agents.router, tags=["ws"])
     app.include_router(ws_chat.router, tags=["ws"])
 
+    # Static file serving for built web frontend (SPA)
+    if static_dir and static_dir.is_dir():
+        _mount_spa(app, static_dir)
+
     return app
+
+
+def _mount_spa(app: FastAPI, static_dir: Path) -> None:
+    """Mount built Vue SPA with static assets and catch-all fallback.
+
+    API and WebSocket routes are already registered above, so they take
+    precedence. The catch-all only fires for unmatched paths.
+    """
+    from fastapi.responses import FileResponse
+    from fastapi.staticfiles import StaticFiles
+
+    # Serve hashed build assets (JS, CSS, images)
+    assets_dir = static_dir / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+    index_html = static_dir / "index.html"
+
+    @app.get("/{full_path:path}")
+    async def spa_fallback(full_path: str):
+        # Serve actual files (favicon.ico, robots.txt, etc.)
+        file_path = static_dir / full_path
+        if full_path and file_path.is_file() and ".." not in full_path:
+            return FileResponse(str(file_path))
+        # Everything else → index.html (Vue Router handles client-side routing)
+        return FileResponse(str(index_html))
