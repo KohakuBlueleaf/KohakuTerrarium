@@ -7,16 +7,31 @@ from fastapi import APIRouter
 
 router = APIRouter()
 
-# Default directories - can be overridden via environment variables
+# Directories to scan — set by create_app() or auto-detected from packages
 _creatures_dirs: list[Path] = []
 _terrariums_dirs: list[Path] = []
 
 
 def set_config_dirs(creatures: list[str], terrariums: list[str]) -> None:
-    """Set directories to scan for configs."""
+    """Set directories to scan for configs.
+
+    Dirs are deduplicated by resolved path.
+    """
     global _creatures_dirs, _terrariums_dirs
-    _creatures_dirs = [Path(d).resolve() for d in creatures]
-    _terrariums_dirs = [Path(d).resolve() for d in terrariums]
+    seen_c: set[str] = set()
+    seen_t: set[str] = set()
+    _creatures_dirs = []
+    _terrariums_dirs = []
+    for d in creatures:
+        p = Path(d).resolve()
+        if str(p) not in seen_c:
+            _creatures_dirs.append(p)
+            seen_c.add(str(p))
+    for d in terrariums:
+        p = Path(d).resolve()
+        if str(p) not in seen_t:
+            _terrariums_dirs.append(p)
+            seen_t.add(str(p))
 
 
 def _scan_creature_configs() -> list[dict]:

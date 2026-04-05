@@ -33,17 +33,48 @@ def _ensure_apps_importable() -> None:
 
 
 def _resolve_config_dirs() -> tuple[list[str], list[str]]:
-    """Resolve creature/terrarium config directories from env or project root."""
+    """Resolve creature/terrarium config directories.
+
+    Sources (all merged):
+      1. KT_CREATURES_DIRS / KT_TERRARIUMS_DIRS env vars
+      2. Installed packages (``~/.kohakuterrarium/packages/``)
+      3. Local project dirs (``creatures/``, ``terrariums/`` in project root)
+    """
+    from kohakuterrarium.packages import PACKAGES_DIR, _get_package_root, list_packages
+
+    creatures: list[str] = []
+    terrariums: list[str] = []
+
+    # 1. Env vars (highest priority, explicit override)
+    env_creatures = os.environ.get("KT_CREATURES_DIRS")
+    if env_creatures:
+        creatures.extend(env_creatures.split(","))
+    env_terrariums = os.environ.get("KT_TERRARIUMS_DIRS")
+    if env_terrariums:
+        terrariums.extend(env_terrariums.split(","))
+
+    # 2. Installed packages
+    if PACKAGES_DIR.exists():
+        for pkg in list_packages():
+            pkg_root = _get_package_root(pkg["name"])
+            if pkg_root:
+                c = pkg_root / "creatures"
+                t = pkg_root / "terrariums"
+                if c.is_dir():
+                    creatures.append(str(c))
+                if t.is_dir():
+                    terrariums.append(str(t))
+
+    # 3. Local project dirs (repo checkout)
     project_root = Path(__file__).resolve().parent.parent.parent.parent
-    creatures_dirs = os.environ.get(
-        "KT_CREATURES_DIRS",
-        str(project_root / "creatures"),
-    ).split(",")
-    terrariums_dirs = os.environ.get(
-        "KT_TERRARIUMS_DIRS",
-        str(project_root / "terrariums"),
-    ).split(",")
-    return creatures_dirs, terrariums_dirs
+    local_c = project_root / "creatures"
+    local_t = project_root / "terrariums"
+    if local_c.is_dir() and str(local_c) not in creatures:
+        creatures.append(str(local_c))
+    if local_t.is_dir() and str(local_t) not in terrariums:
+        terrariums.append(str(local_t))
+
+    return creatures, terrariums
 
 
 def run_web_server(
