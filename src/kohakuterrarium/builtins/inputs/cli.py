@@ -10,6 +10,7 @@ import sys
 
 from kohakuterrarium.core.events import TriggerEvent, create_user_input_event
 from kohakuterrarium.modules.input.base import BaseInputModule
+from kohakuterrarium.modules.user_command.base import UserCommandResult
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -117,6 +118,54 @@ class CLIInput(BaseInputModule):
             return line
         except (KeyboardInterrupt, EOFError):
             return None
+
+    async def render_command_data(
+        self, result: UserCommandResult, command_name: str
+    ) -> UserCommandResult | None:
+        """CLI rendering: print/input for select and confirm."""
+        data = result.data
+        data_type = data.get("type", "")
+        loop = asyncio.get_event_loop()
+
+        if data_type == "confirm":
+            print(data.get("message", "Confirm?"))
+            answer = await loop.run_in_executor(None, lambda: input("[y/N]: ").strip())
+            if answer.lower() in ("y", "yes"):
+                action = data.get("action", "")
+                args = data.get("action_args", "")
+                if action:
+                    return await self._execute_followup(action, args)
+            return UserCommandResult(output="Cancelled.", consumed=True)
+
+        if data_type == "select":
+            options = data.get("options", [])
+            if not options:
+                return None
+            print(data.get("title", "Select:"))
+            for i, opt in enumerate(options, 1):
+                marker = " *" if opt.get("selected") else ""
+                label = opt.get("label", opt.get("value", ""))
+                extra = opt.get("provider", "")
+                extra_str = f"  ({extra})" if extra else ""
+                print(f"  {i:>3}. {label}{extra_str}{marker}")
+            print(f"  Enter number (1-{len(options)}) or name, empty to cancel:")
+            choice = await loop.run_in_executor(None, lambda: input("> ").strip())
+            if not choice:
+                return UserCommandResult(output="Cancelled.", consumed=True)
+            selected = None
+            if choice.isdigit():
+                idx = int(choice) - 1
+                if 0 <= idx < len(options):
+                    selected = options[idx]["value"]
+            else:
+                selected = choice
+            if selected:
+                action = data.get("action", "")
+                if action:
+                    return await self._execute_followup(action, selected)
+            return UserCommandResult(output="Cancelled.", consumed=True)
+
+        return None
 
 
 class NonBlockingCLIInput(BaseInputModule):

@@ -7,6 +7,7 @@ from kohakuterrarium.builtins.tui.session import TUISession
 from kohakuterrarium.core.events import TriggerEvent, create_user_input_event
 from kohakuterrarium.core.session import get_session
 from kohakuterrarium.modules.input.base import BaseInputModule
+from kohakuterrarium.modules.user_command.base import UserCommandResult
 from kohakuterrarium.utils.logging import (
     get_logger,
     restore_logging,
@@ -30,6 +31,8 @@ class TUIInput(BaseInputModule):
           prompt: "You: "        # optional
     """
 
+    _supports_raw_io = False  # TUI owns the terminal, no print/input
+
     def __init__(
         self,
         session_key: str | None = None,
@@ -51,6 +54,61 @@ class TUIInput(BaseInputModule):
         for cmd in commands.values():
             all_names.extend(getattr(cmd, "aliases", []))
         self._command_hint_names = sorted(set(all_names))
+
+    async def render_command_data(
+        self, result: UserCommandResult, command_name: str
+    ) -> UserCommandResult | None:
+        """TUI rendering: show options in chat, wait for selection via TUI input."""
+        data = result.data
+        data_type = data.get("type", "")
+
+        if data_type == "select":
+            options = data.get("options", [])
+            if not options:
+                return None
+            # Show numbered options as system notice
+            lines = [data.get("title", "Select:")]
+            for i, opt in enumerate(options, 1):
+                marker = " *" if opt.get("selected") else ""
+                label = opt.get("label", opt.get("value", ""))
+                extra = opt.get("provider", "")
+                extra_str = f"  ({extra})" if extra else ""
+                lines.append(f"  {i:>3}. {label}{extra_str}{marker}")
+            lines.append(f"  Enter number (1-{len(options)}) or name:")
+            self._tui.add_system_notice("\n".join(lines), command=command_name)
+            # Wait for user's choice via TUI input
+            choice = await self._tui.get_input()
+            if not choice or choice.startswith("/"):
+                self._tui.add_system_notice("Cancelled.", command=command_name)
+                return UserCommandResult(output="", consumed=True)
+            choice = choice.strip()
+            selected = None
+            if choice.isdigit():
+                idx = int(choice) - 1
+                if 0 <= idx < len(options):
+                    selected = options[idx]["value"]
+            else:
+                selected = choice
+            if selected:
+                action = data.get("action", "")
+                if action:
+                    return await self._execute_followup(action, selected)
+            self._tui.add_system_notice("Cancelled.", command=command_name)
+            return UserCommandResult(output="", consumed=True)
+
+        if data_type == "confirm":
+            msg = data.get("message", "Confirm?")
+            self._tui.add_system_notice(f"{msg} (y/N)", command=command_name)
+            answer = await self._tui.get_input()
+            if answer and answer.strip().lower() in ("y", "yes"):
+                action = data.get("action", "")
+                args = data.get("action_args", "")
+                if action:
+                    return await self._execute_followup(action, args)
+            self._tui.add_system_notice("Cancelled.", command=command_name)
+            return UserCommandResult(output="", consumed=True)
+
+        return None
 
     @property
     def exit_requested(self) -> bool:
