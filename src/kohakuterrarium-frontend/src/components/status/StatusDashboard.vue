@@ -138,7 +138,7 @@
               <span
                 class="font-mono"
                 :class="contextPct >= 80 ? 'text-coral' : contextPct >= 60 ? 'text-amber' : 'text-warm-500'"
-              >{{ contextPct }}%</span>
+              >{{ formatTokens(totalUsage.prompt) }} / {{ formatTokens(chat.sessionInfo.compactThreshold) }} ({{ contextPct }}%)</span>
             </div>
             <div class="w-full h-1.5 rounded-full bg-warm-100 dark:bg-warm-800 overflow-hidden">
               <div

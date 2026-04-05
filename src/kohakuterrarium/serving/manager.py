@@ -137,12 +137,12 @@ class KohakuManager:
         """List all running agents."""
         return [s.get_status() for s in self._agents.values()]
 
-    async def agent_interrupt(self, agent_id: str) -> None:
+    def agent_interrupt(self, agent_id: str) -> None:
         """Interrupt the agent's current turn."""
         session = self._agents.get(agent_id)
         if not session:
             raise ValueError(f"Agent not found: {agent_id}")
-        await session.agent.interrupt()
+        session.agent.interrupt()
 
     def agent_get_jobs(self, agent_id: str) -> list[dict]:
         """Get running/recent jobs for an agent."""

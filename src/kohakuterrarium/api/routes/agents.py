@@ -51,10 +51,10 @@ async def stop_agent(agent_id: str, manager=Depends(get_manager)):
 
 
 @router.post("/{agent_id}/interrupt")
-async def interrupt_agent(agent_id: str, manager=Depends(get_manager)):
+def interrupt_agent(agent_id: str, manager=Depends(get_manager)):
     """Interrupt the agent's current processing. Agent stays alive."""
     try:
-        await manager.agent_interrupt(agent_id)
+        manager.agent_interrupt(agent_id)
         return {"status": "interrupted"}
     except ValueError as e:
         raise HTTPException(404, str(e))
