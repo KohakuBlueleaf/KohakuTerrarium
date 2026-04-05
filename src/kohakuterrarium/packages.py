@@ -11,13 +11,19 @@ Package layout:
 
 Install methods:
   kt install <git-url>           # clone from git
-  kt install <local-path> -e     # editable (symlink)
+  kt install <local-path>        # copy into packages dir
+  kt install <local-path> -e     # editable (link file, no symlink)
+
+Editable installs write a pointer file instead of copying:
+  ~/.kohakuterrarium/packages/<name>.link   (contains absolute path)
 
 Reference syntax:
-  @<package>/<path>  resolves to  ~/.kohakuterrarium/packages/<package>/<path>
+  @<package>/<path>  resolves to  <real-package-dir>/<path>
 """
 
+import os
 import shutil
+import stat
 import subprocess
 from pathlib import Path
 
@@ -28,6 +34,71 @@ from kohakuterrarium.utils.logging import get_logger
 logger = get_logger(__name__)
 
 PACKAGES_DIR = Path.home() / ".kohakuterrarium" / "packages"
+LINK_SUFFIX = ".link"
+
+
+def _force_rmtree(path: Path) -> None:
+    """Remove a directory tree, handling read-only files (e.g. .git on Windows)."""
+
+    def _on_error(_func, fpath, _exc_info):
+        os.chmod(fpath, stat.S_IWRITE)
+        os.unlink(fpath)
+
+    shutil.rmtree(path, onexc=_on_error)
+
+
+def _read_link(name: str) -> Path | None:
+    """Read a .link pointer file and return the target path, or None."""
+    link_file = PACKAGES_DIR / f"{name}{LINK_SUFFIX}"
+    if not link_file.exists():
+        return None
+    target = Path(link_file.read_text(encoding="utf-8").strip())
+    if target.is_dir():
+        return target
+    logger.warning("Link target missing", package=name, target=str(target))
+    return None
+
+
+def _write_link(name: str, target: Path) -> None:
+    """Write a .link pointer file."""
+    link_file = PACKAGES_DIR / f"{name}{LINK_SUFFIX}"
+    link_file.write_text(str(target.resolve()), encoding="utf-8")
+
+
+def _remove_link(name: str) -> bool:
+    """Remove a .link pointer file if it exists."""
+    link_file = PACKAGES_DIR / f"{name}{LINK_SUFFIX}"
+    if link_file.exists():
+        link_file.unlink()
+        return True
+    return False
+
+
+def _get_package_root(name: str) -> Path | None:
+    """Get the real root directory of an installed package.
+
+    Checks (in order):
+      1. .link pointer file (editable install)
+      2. Direct directory (cloned / copied)
+      3. Symlink (legacy editable install)
+    """
+    # Editable: pointer file
+    link_target = _read_link(name)
+    if link_target is not None:
+        return link_target
+
+    # Cloned / copied directory
+    pkg_dir = PACKAGES_DIR / name
+    if pkg_dir.is_dir():
+        return pkg_dir.resolve()
+
+    # Legacy symlink (from older installs)
+    if pkg_dir.is_symlink():
+        real = pkg_dir.resolve()
+        if real.is_dir():
+            return real
+
+    return None
 
 
 def resolve_package_path(ref: str) -> Path:
@@ -50,13 +121,13 @@ def resolve_package_path(ref: str) -> Path:
     package_name = parts[0]
     sub_path = parts[1] if len(parts) > 1 else ""
 
-    pkg_dir = PACKAGES_DIR / package_name
-    if not pkg_dir.exists():
+    pkg_root = _get_package_root(package_name)
+    if pkg_root is None:
         raise FileNotFoundError(
-            f"Package not installed: {package_name}. " f"Run: kt install <url-or-path>"
+            f"Package not installed: {package_name}. Run: kt install <url-or-path>"
         )
 
-    resolved = pkg_dir / sub_path if sub_path else pkg_dir
+    resolved = pkg_root / sub_path if sub_path else pkg_root
     if not resolved.exists():
         raise FileNotFoundError(f"Path not found in package {package_name}: {sub_path}")
 
@@ -77,7 +148,8 @@ def install_package(
 
     Args:
         source: Git URL or local path.
-        editable: If True, create symlink instead of copying (like pip -e).
+        editable: If True, store a pointer to the source directory
+                  instead of copying (like pip -e).
         name_override: Override package name (default: from kohaku.yaml or dir name).
 
     Returns:
@@ -114,6 +186,9 @@ def _install_from_git(url: str, name_override: str | None = None) -> str:
     name = name_override or repo_name
     target = PACKAGES_DIR / name
 
+    # Remove any stale .link file (switching from editable to cloned)
+    _remove_link(name)
+
     if target.exists():
         # Update existing
         logger.info("Updating package", package=name)
@@ -146,45 +221,53 @@ def _install_from_git(url: str, name_override: str | None = None) -> str:
 def _install_from_local(
     source: Path, editable: bool, name_override: str | None = None
 ) -> str:
-    """Install from local directory (copy or symlink)."""
+    """Install from local directory (pointer file or copy)."""
     manifest = _load_manifest(source)
     name = name_override or manifest.get("name", source.name)
     target = PACKAGES_DIR / name
 
+    # Clean up previous install of either kind
+    _remove_link(name)
+    if target.exists() or target.is_symlink():
+        if target.is_symlink():
+            target.unlink()
+        else:
+            _force_rmtree(target)
+
     if editable:
-        # Symlink (like pip -e)
-        if target.exists():
-            if target.is_symlink():
-                target.unlink()
-            else:
-                shutil.rmtree(target)
-        target.symlink_to(source)
+        # Write a .link pointer file (no symlink, works without admin on Windows)
+        _write_link(name, source)
         logger.info("Package linked (editable)", package=name, source=str(source))
     else:
         # Copy
-        if target.exists():
-            shutil.rmtree(target)
         shutil.copytree(source, target)
         logger.info("Package installed (copy)", package=name, source=str(source))
 
-    _validate_package(target, name)
-    _install_python_deps(target)
+    _validate_package(source if editable else target, name)
+    _install_python_deps(source if editable else target)
     return name
 
 
 def uninstall_package(name: str) -> bool:
     """Remove an installed package."""
+    removed = False
+
+    # Remove .link pointer
+    if _remove_link(name):
+        removed = True
+
+    # Remove cloned/copied directory
     target = PACKAGES_DIR / name
-    if not target.exists():
-        return False
+    if target.exists() or target.is_symlink():
+        if target.is_symlink():
+            target.unlink()
+        else:
+            _force_rmtree(target)
+        removed = True
 
-    if target.is_symlink():
-        target.unlink()
-    else:
-        shutil.rmtree(target)
-
-    logger.info("Package uninstalled", package=name)
-    return True
+    if removed:
+        logger.info("Package uninstalled", package=name)
+    return removed
 
 
 def list_packages() -> list[dict]:
@@ -192,21 +275,36 @@ def list_packages() -> list[dict]:
     if not PACKAGES_DIR.exists():
         return []
 
+    seen: set[str] = set()
     results = []
-    for pkg_dir in sorted(PACKAGES_DIR.iterdir()):
-        if not pkg_dir.is_dir() and not pkg_dir.is_symlink():
+
+    for entry in sorted(PACKAGES_DIR.iterdir()):
+        # Determine package name from either dir or .link file
+        if entry.suffix == LINK_SUFFIX:
+            name = entry.stem
+            link_target = _read_link(name)
+            if link_target is None:
+                continue
+            pkg_dir = link_target
+            editable = True
+        elif entry.is_dir() or entry.is_symlink():
+            name = entry.name
+            pkg_dir = entry.resolve() if entry.is_symlink() else entry
+            editable = entry.is_symlink()
+        else:
             continue
 
-        manifest = _load_manifest(pkg_dir)
-        editable = pkg_dir.is_symlink()
-        real_path = str(pkg_dir.resolve()) if editable else str(pkg_dir)
+        if name in seen:
+            continue
+        seen.add(name)
 
+        manifest = _load_manifest(pkg_dir)
         results.append(
             {
-                "name": manifest.get("name", pkg_dir.name),
+                "name": manifest.get("name", name),
                 "version": manifest.get("version", "?"),
                 "description": manifest.get("description", ""),
-                "path": real_path,
+                "path": str(pkg_dir),
                 "editable": editable,
                 "creatures": manifest.get("creatures", []),
                 "terrariums": manifest.get("terrariums", []),
@@ -217,10 +315,7 @@ def list_packages() -> list[dict]:
 
 def get_package_path(name: str) -> Path | None:
     """Get the path to an installed package."""
-    pkg = PACKAGES_DIR / name
-    if pkg.exists():
-        return pkg.resolve()
-    return None
+    return _get_package_root(name)
 
 
 def _load_manifest(pkg_dir: Path) -> dict:
