@@ -335,6 +335,8 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             or getattr(getattr(self.llm, "config", None), "model", "")
             or getattr(self.config, "model", "")
         )
+        max_context = compact_cfg.max_tokens
+        compact_at = int(max_context * compact_cfg.threshold) if max_context else 0
         self.output_router.notify_activity(
             "session_info",
             "",
@@ -342,7 +344,8 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
                 "session_id": session_id,
                 "model": model,
                 "agent_name": self.config.name,
-                "compact_threshold": compact_cfg.max_tokens,
+                "max_context": max_context,
+                "compact_threshold": compact_at,
             },
         )
 
@@ -402,9 +405,9 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
 
         # Emit session_info so TUI/frontend updates the display
         new_max = getattr(new_llm, "_profile_max_context", 0)
-        compact_threshold = 0
+        compact_at = 0
         if self.compact_manager and new_max:
-            compact_threshold = int(new_max * self.compact_manager.config.threshold)
+            compact_at = int(new_max * self.compact_manager.config.threshold)
         self.output_router.notify_activity(
             "session_info",
             f"Model switched to {model_name}",
@@ -412,7 +415,8 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
                 "model": model_name,
                 "agent_name": self.config.name,
                 "session_id": getattr(self, "_session_id", ""),
-                "compact_threshold": compact_threshold,
+                "max_context": new_max,
+                "compact_threshold": compact_at,
             },
         )
 

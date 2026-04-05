@@ -585,10 +585,10 @@ def load_profiles() -> dict[str, LLMProfile]:
 # Provider priority + best model per provider for auto-default
 _PROVIDER_DEFAULT_MODELS: list[tuple[str, str]] = [
     ("codex", "gpt-5.4"),
+    ("openrouter", "mimo-v2-pro"),
     ("anthropic", "claude-opus-4.6-direct"),
     ("openai", "gpt-5.4-direct"),
     ("gemini", "gemini-3.1-pro-direct"),
-    ("openrouter", "mimo-v2-pro"),
     ("mimo", "mimo-v2-pro-direct"),
 ]
 

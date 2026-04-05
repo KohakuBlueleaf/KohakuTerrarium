@@ -95,15 +95,21 @@
             </span>
           </div>
           <div class="flex items-center gap-2">
-            <span class="text-warm-400 w-16">Session</span>
-            <span class="text-warm-600 dark:text-warm-400 font-mono text-[10px] truncate max-w-32">
-              {{ chat.sessionInfo.sessionId || '--' }}
+            <span class="text-warm-400 w-16">Model</span>
+            <span class="text-iolite font-mono text-[11px]">
+              {{ chat.sessionInfo.model || instance?.model || '--' }}
+            </span>
+          </div>
+          <div v-if="currentModelProfile" class="flex items-center gap-2">
+            <span class="text-warm-400 w-16">Provider</span>
+            <span class="text-warm-600 dark:text-warm-400 text-[11px]">
+              {{ currentModelProfile.login_provider }}
             </span>
           </div>
           <div class="flex items-center gap-2">
-            <span class="text-warm-400 w-16">Runtime</span>
-            <span class="text-warm-600 dark:text-warm-400 font-mono">
-              {{ runtimeDisplay }}
+            <span class="text-warm-400 w-16">Session</span>
+            <span class="text-warm-600 dark:text-warm-400 font-mono text-[10px] truncate max-w-32">
+              {{ chat.sessionInfo.sessionId || '--' }}
             </span>
           </div>
         </div>
@@ -131,20 +137,28 @@
               {{ formatTokens(totalUsage.cached) }}
             </span>
           </div>
-          <!-- Context usage bar -->
-          <div v-if="chat.sessionInfo.compactThreshold > 0" class="mt-1">
+          <!-- Context usage bar (max_context as total, compact threshold as marker) -->
+          <div v-if="maxContext > 0" class="mt-1">
             <div class="flex items-center justify-between mb-1">
               <span class="text-warm-400">Context</span>
               <span
-                class="font-mono"
+                class="font-mono text-[10px]"
                 :class="contextPct >= 80 ? 'text-coral' : contextPct >= 60 ? 'text-amber' : 'text-warm-500'"
-              >{{ formatTokens(totalUsage.prompt) }} / {{ formatTokens(chat.sessionInfo.compactThreshold) }} ({{ contextPct }}%)</span>
+              >{{ formatTokens(totalUsage.prompt) }} / {{ formatTokens(maxContext) }} ({{ contextPct }}%)</span>
             </div>
-            <div class="w-full h-1.5 rounded-full bg-warm-100 dark:bg-warm-800 overflow-hidden">
+            <div class="relative w-full h-1.5 rounded-full bg-warm-100 dark:bg-warm-800 overflow-hidden">
+              <!-- Usage fill -->
               <div
                 class="h-full rounded-full transition-all duration-300"
                 :class="contextPct >= 80 ? 'bg-coral' : contextPct >= 60 ? 'bg-amber' : 'bg-aquamarine'"
                 :style="{ width: Math.min(contextPct, 100) + '%' }"
+              />
+              <!-- Compact threshold marker line -->
+              <div
+                v-if="compactThresholdPct > 0"
+                class="absolute top-0 h-full w-0.5 bg-amber opacity-60"
+                :style="{ left: compactThresholdPct + '%' }"
+                :title="'Compact at ' + formatTokens(chat.sessionInfo.compactThreshold)"
               />
             </div>
           </div>
@@ -272,19 +286,8 @@ const configDialogVisible = ref(false);
 const configJson = ref("");
 const configJsonError = ref("");
 
-// Runtime display: show elapsed time from sessionInfo.startTime, or "--" if unavailable
-const now = ref(Date.now());
-let runtimeInterval = null;
-
 onMounted(() => {
   loadModels();
-  runtimeInterval = setInterval(() => {
-    now.value = Date.now();
-  }, 1000);
-});
-
-onUnmounted(() => {
-  if (runtimeInterval) clearInterval(runtimeInterval);
 });
 
 // Init model from instance data (available immediately) or session info (from WS)
@@ -299,21 +302,6 @@ watch(
   { immediate: true },
 );
 
-const runtimeDisplay = computed(() => {
-  const startTime = status.sessionInfo.startTime;
-  if (!startTime) return "\u2014";
-
-  // Force reactivity on the ticking `now` ref
-  const elapsed = Math.max(0, Math.floor((now.value - startTime) / 1000));
-  if (elapsed < 1) return "\u2014";
-
-  const h = Math.floor(elapsed / 3600);
-  const m = Math.floor((elapsed % 3600) / 60);
-  const sec = elapsed % 60;
-  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
-  if (m > 0) return `${m}m ${String(sec).padStart(2, "0")}s`;
-  return `${sec}s`;
-});
 
 const totalUsage = computed(() => {
   let prompt = 0;
@@ -327,13 +315,25 @@ const totalUsage = computed(() => {
   return { prompt, completion, cached };
 });
 
+const maxContext = computed(() => chat.sessionInfo.maxContext || 0);
+
 const contextPct = computed(() => {
-  const threshold = chat.sessionInfo.compactThreshold;
-  if (!threshold || !totalUsage.value.prompt) return 0;
-  return Math.min(100, Math.round((totalUsage.value.prompt / threshold) * 100));
+  if (!maxContext.value || !totalUsage.value.prompt) return 0;
+  return Math.min(100, Math.round((totalUsage.value.prompt / maxContext.value) * 100));
+});
+
+const compactThresholdPct = computed(() => {
+  if (!maxContext.value || !chat.sessionInfo.compactThreshold) return 0;
+  return Math.min(100, Math.round((chat.sessionInfo.compactThreshold / maxContext.value) * 100));
+});
+
+const currentModelProfile = computed(() => {
+  const modelName = selectedModel.value || chat.sessionInfo.model || instance?.model || "";
+  return availableModels.value.find((m) => m.name === modelName) || null;
 });
 
 function formatTokens(n) {
+  if (!n) return "0";
   if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
   if (n >= 1000) return (n / 1000).toFixed(1) + "K";
   return String(n);

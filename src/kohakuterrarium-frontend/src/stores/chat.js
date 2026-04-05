@@ -301,7 +301,7 @@ export const useChatStore = defineStore("chat", {
     /** @type {Object<string, number>} Unread message counts per tab */
     unreadCounts: {},
     /** @type {{sessionId: string, model: string, agentName: string, compactThreshold: number}} Session metadata */
-    sessionInfo: { sessionId: "", model: "", agentName: "", compactThreshold: 0 },
+    sessionInfo: { sessionId: "", model: "", agentName: "", maxContext: 0, compactThreshold: 0 },
     /** @type {string | null} */
     _instanceId: null,
     /** @type {string | null} */
@@ -772,6 +772,7 @@ export const useChatStore = defineStore("chat", {
           sessionId: data.session_id || "",
           model: data.model || "",
           agentName: data.agent_name || "",
+          maxContext: data.max_context || 0,
           compactThreshold: data.compact_threshold || 0,
         };
         return;
