@@ -20,6 +20,7 @@ from uuid import uuid4
 
 from kohakuterrarium.builtins.user_commands import get_builtin_user_command
 from kohakuterrarium.core.channel import AgentChannel, ChannelMessage
+from kohakuterrarium.packages import is_package_ref, resolve_package_path
 from kohakuterrarium.core.config import AgentConfig
 from kohakuterrarium.core.environment import Environment
 from kohakuterrarium.modules.user_command.base import UserCommandContext
@@ -71,6 +72,8 @@ class KohakuManager:
     ) -> str:
         """Create and start a standalone agent. Returns agent_id."""
         if config_path:
+            if is_package_ref(config_path):
+                config_path = str(resolve_package_path(config_path))
             session = await AgentSession.from_path(
                 config_path, llm_override=llm_override
             )
@@ -264,6 +267,8 @@ class KohakuManager:
     ) -> str:
         """Create and start a terrarium. Returns terrarium_id."""
         if config_path:
+            if is_package_ref(config_path):
+                config_path = str(resolve_package_path(config_path))
             cfg = load_terrarium_config(config_path)
         elif config:
             cfg = config
