@@ -76,8 +76,8 @@ def main() -> int:
     run_parser.add_argument(
         "--mode",
         choices=["cli", "tui"],
-        default="tui",
-        help="Input/output mode (default: tui)",
+        default=None,
+        help="Input/output mode (overrides config input/output; omit to use config)",
     )
 
     # List command
