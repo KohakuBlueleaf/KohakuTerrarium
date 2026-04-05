@@ -18,12 +18,14 @@ from pathlib import Path
 from typing import Any, AsyncIterator
 from uuid import uuid4
 
+from kohakuterrarium.builtins.user_commands import get_builtin_user_command
 from kohakuterrarium.core.channel import AgentChannel, ChannelMessage
 from kohakuterrarium.core.config import AgentConfig
 from kohakuterrarium.core.environment import Environment
+from kohakuterrarium.modules.user_command.base import UserCommandContext
 from kohakuterrarium.serving.agent_session import AgentSession
-from kohakuterrarium.session.store import SessionStore
 from kohakuterrarium.serving.events import ChannelEvent
+from kohakuterrarium.session.store import SessionStore
 from kohakuterrarium.terrarium.config import (
     CreatureConfig,
     TerrariumConfig,
@@ -167,9 +169,6 @@ class KohakuManager:
         session = self._agents.get(agent_id)
         if not session:
             raise ValueError(f"Agent not found: {agent_id}")
-
-        from kohakuterrarium.builtins.user_commands import get_builtin_user_command
-        from kohakuterrarium.modules.user_command.base import UserCommandContext
 
         cmd = get_builtin_user_command(command)
         if cmd is None:

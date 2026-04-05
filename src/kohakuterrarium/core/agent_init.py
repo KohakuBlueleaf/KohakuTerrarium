@@ -23,8 +23,13 @@ from kohakuterrarium.core.loader import ModuleLoader
 from kohakuterrarium.utils.file_guard import FileReadState, PathBoundaryGuard
 from kohakuterrarium.core.registry import Registry
 from kohakuterrarium.core.session import get_session
+from kohakuterrarium.builtins.user_commands import (
+    get_builtin_user_command,
+    list_builtin_user_commands,
+)
 from kohakuterrarium.modules.input.base import InputModule
 from kohakuterrarium.modules.output.base import OutputModule
+from kohakuterrarium.modules.user_command.base import UserCommandContext
 from kohakuterrarium.modules.output.router import OutputRouter
 from kohakuterrarium.modules.subagent import SubAgentManager
 from kohakuterrarium.parsing.format import (
@@ -241,12 +246,6 @@ class AgentInitMixin:
 
     def _init_user_commands(self) -> None:
         """Wire user commands (slash commands) into the input module."""
-        from kohakuterrarium.builtins.user_commands import (
-            get_builtin_user_command,
-            list_builtin_user_commands,
-        )
-        from kohakuterrarium.modules.user_command.base import UserCommandContext
-
         # Load all builtins by default
         commands: dict = {}
         for name in list_builtin_user_commands():

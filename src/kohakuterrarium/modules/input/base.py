@@ -5,10 +5,15 @@ Input modules receive external input and produce TriggerEvents.
 Integrates with the user command system for slash commands.
 """
 
+import asyncio
 from abc import ABC, abstractmethod
 from typing import Any, Protocol, runtime_checkable
 
 from kohakuterrarium.core.events import TriggerEvent
+from kohakuterrarium.modules.user_command.base import (
+    UserCommandResult,
+    parse_slash_command,
+)
 
 
 @runtime_checkable
@@ -78,8 +83,6 @@ class BaseInputModule(ABC):
         if not self._user_commands or not text.startswith("/"):
             return None
 
-        from kohakuterrarium.modules.user_command.base import parse_slash_command
-
         name, args = parse_slash_command(text)
         canonical = self._command_alias_map.get(name, name)
         cmd = self._user_commands.get(canonical)
@@ -106,10 +109,6 @@ class BaseInputModule(ABC):
         For ``select``: shows numbered list, re-executes with chosen value.
         Returns a new UserCommandResult if interaction happened, None otherwise.
         """
-        import asyncio
-
-        from kohakuterrarium.modules.user_command.base import UserCommandResult
-
         data = result.data
         data_type = data.get("type", "")
 

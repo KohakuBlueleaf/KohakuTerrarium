@@ -5,6 +5,11 @@ from pathlib import Path
 import yaml
 from fastapi import APIRouter
 
+from kohakuterrarium.builtins.user_commands import (
+    get_builtin_user_command,
+    list_builtin_user_commands,
+)
+from kohakuterrarium.llm.profiles import list_all as list_all_models
 from kohakuterrarium.packages import PACKAGES_DIR, _get_package_root, list_packages
 
 router = APIRouter()
@@ -146,19 +151,12 @@ def list_terrarium_configs():
 @router.get("/models")
 def list_models():
     """List available LLM models/profiles with availability status."""
-    from kohakuterrarium.llm.profiles import list_all
-
-    return list_all()
+    return list_all_models()
 
 
 @router.get("/commands")
 def list_commands():
     """List available user slash commands."""
-    from kohakuterrarium.builtins.user_commands import (
-        get_builtin_user_command,
-        list_builtin_user_commands,
-    )
-
     result = []
     for name in list_builtin_user_commands():
         cmd = get_builtin_user_command(name)
