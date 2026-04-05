@@ -1,7 +1,5 @@
 """Tests for terrarium prompt aggregation (auto-listening, channel info)."""
 
-import pytest
-
 from kohakuterrarium.terrarium.config import (
     ChannelConfig,
     CreatureConfig,

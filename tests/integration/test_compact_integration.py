@@ -9,8 +9,7 @@ import asyncio
 import pytest
 
 from kohakuterrarium.core.compact import CompactConfig, CompactManager
-from kohakuterrarium.core.conversation import Conversation
-from kohakuterrarium.testing import ScriptedLLM, TestAgentBuilder
+from kohakuterrarium.testing import TestAgentBuilder
 
 
 class TestCompactIntegration:

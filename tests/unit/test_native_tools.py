@@ -15,7 +15,6 @@ from kohakuterrarium.llm.base import NativeToolCall, ToolSchema
 from kohakuterrarium.llm.tools import build_tool_schemas
 from kohakuterrarium.modules.tool.base import BaseTool, ToolConfig, ToolResult
 
-
 # =============================================================================
 # ToolSchema Tests
 # =============================================================================

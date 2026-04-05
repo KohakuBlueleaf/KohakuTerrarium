@@ -33,7 +33,6 @@ from kohakuterrarium.prompt.skill_loader import (
     parse_frontmatter,
 )
 
-
 # =============================================================================
 # SkillDoc Tests
 # =============================================================================
@@ -166,8 +165,7 @@ class TestLoadSkillDoc:
             delete=False,
             encoding="utf-8",
         ) as f:
-            f.write(
-                """---
+            f.write("""---
 name: test_tool
 description: A test tool
 category: testing
@@ -175,8 +173,7 @@ category: testing
 
 # Test Tool
 
-This is a test tool documentation."""
-            )
+This is a test tool documentation.""")
             temp_path = Path(f.name)
 
         try:

@@ -11,7 +11,7 @@ import asyncio
 import re
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime, timezone as dt_timezone
+from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 

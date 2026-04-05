@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 
 from kohakuterrarium.parsing.format import BRACKET_FORMAT, ToolCallFormat
 
-
 # Default content argument mapping for built-in tools
 DEFAULT_CONTENT_ARG_MAP: dict[str, str] = {
     "bash": "command",

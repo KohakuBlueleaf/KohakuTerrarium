@@ -1,9 +1,5 @@
 """Tests for trigger system improvements and require_manual_read."""
 
-import asyncio
-
-import pytest
-
 from kohakuterrarium.modules.trigger.base import BaseTrigger
 from kohakuterrarium.modules.trigger.channel import ChannelTrigger
 from kohakuterrarium.modules.trigger.scheduler import SchedulerTrigger

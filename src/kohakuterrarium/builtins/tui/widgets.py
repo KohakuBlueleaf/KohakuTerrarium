@@ -18,7 +18,6 @@ from textual.message import Message
 
 from textual.widgets import Collapsible, Static, TextArea
 
-
 # ── Tool Call Block ─────────────────────────────────────────────
 
 

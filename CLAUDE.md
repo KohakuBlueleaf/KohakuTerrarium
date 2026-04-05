@@ -19,7 +19,7 @@ KohakuTerrarium is a Python framework that enables building any kind of agent sy
 - Highly modularized - one responsibility per module
 
 ### Import Rules
-1. No imports inside functions (except for cycle import or bad init avoidance)
+1. No imports inside functions (except optinoal dep and lazy import to avoid long init time)
 2. Import grouping order:
    - Built-in modules
    - Third-party packages
@@ -48,6 +48,12 @@ KohakuTerrarium is a Python framework that enables building any kind of agent sy
 - Color coding: DEBUG=gray, INFO=green, WARNING=yellow, ERROR=red
 - **Avoid reserved LogRecord attributes** in extra kwargs: `name`, `msg`, `args`, `levelname`, `levelno`, `pathname`, `filename`, `module`, `lineno`, `funcName`, `created`, `msecs`, `relativeCreated`, `thread`, `threadName`, `process`, `processName`, `message`
 - Exception: Test suites (`tests/`) can use simpler output
+
+### Post-impl tasks
+1. verify all your impl follow the rule (ESPECIALLY in-function import!)
+2. black formatting and ruff linting
+3. ensure new stuff have corresponding test-suite
+4. logical seperated git commit and push! (user may explicit says they want to keep current mod as draft, if so, don't push)
 
 ## Core Architecture Concepts (CRITICAL)
 

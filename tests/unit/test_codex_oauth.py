@@ -22,7 +22,6 @@ from kohakuterrarium.llm.codex_auth import (
 )
 from kohakuterrarium.llm.codex_provider import CODEX_BASE_URL, CodexOAuthProvider
 
-
 # =========================================================================
 # CodexTokens dataclass
 # =========================================================================

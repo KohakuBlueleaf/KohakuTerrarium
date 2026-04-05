@@ -9,7 +9,6 @@ from kohakuterrarium.builtins.tools.web_fetch import (
 )
 from kohakuterrarium.builtins.tools.web_search import WebSearchTool, _HAS_DDG
 
-
 # ── WebFetchTool ──────────────────────────────────────────────
 
 

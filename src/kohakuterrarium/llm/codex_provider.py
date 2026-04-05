@@ -306,9 +306,10 @@ class CodexOAuthProvider(BaseLLMProvider):
         # Prompt cache key: routes requests to the same backend server,
         # dramatically improving cache hit rates. Falls back to system
         # prompt hash if no session-level key is set.
-        cache_key = self.prompt_cache_key or hashlib.sha256(
-            instr_text.encode()
-        ).hexdigest()[:32]
+        cache_key = (
+            self.prompt_cache_key
+            or hashlib.sha256(instr_text.encode()).hexdigest()[:32]
+        )
 
         def _create_stream() -> Any:
             return self._client.responses.create(
@@ -370,13 +371,10 @@ class CodexOAuthProvider(BaseLLMProvider):
                                 if u:
                                     cached = 0
                                     # Responses API: input_tokens_details
-                                    details = getattr(
-                                        u, "input_tokens_details", None
-                                    )
+                                    details = getattr(u, "input_tokens_details", None)
                                     if details:
                                         cached = (
-                                            getattr(details, "cached_tokens", 0)
-                                            or 0
+                                            getattr(details, "cached_tokens", 0) or 0
                                         )
                                     text_queue.put_nowait(
                                         (

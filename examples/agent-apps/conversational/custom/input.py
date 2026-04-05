@@ -7,9 +7,7 @@ Replace with actual ASR implementation (Whisper, etc.) for production.
 
 import asyncio
 import sys
-from typing import AsyncIterator
 
-from kohakuterrarium.core.events import TriggerEvent, create_user_input_event
 from kohakuterrarium.builtins.inputs.asr import ASRConfig, ASRModule, ASRResult
 
 

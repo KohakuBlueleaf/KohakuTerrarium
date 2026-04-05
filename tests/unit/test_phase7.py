@@ -28,7 +28,6 @@ from kohakuterrarium.modules.subagent.interactive import (
 from kohakuterrarium.modules.trigger.context import ContextUpdateTrigger
 from kohakuterrarium.modules.trigger.timer import TimerTrigger
 
-
 # =============================================================================
 # EventType Tests
 # =============================================================================
@@ -354,16 +353,14 @@ class TestModuleLoader:
             suffix=".py",
             delete=False,
         ) as f:
-            f.write(
-                """
+            f.write("""
 class CustomTool:
     name = "custom"
     description = "A custom tool"
 
     def execute(self):
         return "executed"
-"""
-            )
+""")
             temp_path = Path(f.name)
 
         try:

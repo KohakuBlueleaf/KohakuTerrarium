@@ -38,7 +38,6 @@ from kohakuterrarium.parsing import (
     is_command_tag,
 )
 
-
 # Test helper: common tools for parsing tests
 TEST_KNOWN_TOOLS = {"bash", "python", "read", "write", "edit", "glob", "grep", "tree"}
 

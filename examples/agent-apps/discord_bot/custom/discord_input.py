@@ -19,15 +19,12 @@ from kohakuterrarium.modules.input import BaseInputModule
 from kohakuterrarium.utils.logging import get_logger
 
 from discord_client import (
-    CustomEmoji,
     DiscordClient,
     DiscordMessage,
-    MediaAttachment,
-    MediaSticker,
     register_client,
     short_id,
 )
-from image_utils import ProcessedImage, process_multiple_images
+from image_utils import process_multiple_images
 
 logger = get_logger("kohakuterrarium.custom.discord_input")
 

@@ -19,7 +19,6 @@ from kohakuterrarium.prompt.aggregator import (
     aggregate_system_prompt,
 )
 
-
 # =============================================================================
 # Channel Description Tests
 # =============================================================================

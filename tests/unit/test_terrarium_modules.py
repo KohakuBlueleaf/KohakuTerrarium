@@ -25,7 +25,6 @@ from kohakuterrarium.terrarium.factory import (
 )
 from kohakuterrarium.terrarium.persistence import build_conversation_from_messages
 
-
 # ---------------------------------------------------------------------------
 # terrarium/tool_registration.py
 # ---------------------------------------------------------------------------

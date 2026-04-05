@@ -35,7 +35,6 @@ from kohakuterrarium.core.config import (
 from kohakuterrarium.core.loader import ModuleLoadError, ModuleLoader
 from kohakuterrarium.modules.tool.base import BaseTool
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

@@ -19,7 +19,6 @@ from kohakuterrarium.session.memory import (
     _extract_blocks,
 )
 
-
 # ── Fixtures ──────────────────────────────────────────────────
 
 

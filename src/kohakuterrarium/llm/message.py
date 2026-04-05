@@ -8,7 +8,6 @@ Supports both text-only and multimodal (text + images) content.
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-
 # Role type for type safety
 Role = Literal["system", "user", "assistant", "tool"]
 

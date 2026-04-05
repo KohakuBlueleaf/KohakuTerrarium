@@ -300,9 +300,7 @@ class EditTool(BaseTool):
         replace_all = args.get("replace_all", False)
 
         if not old:
-            return ToolResult(
-                error="old is empty. Provide the exact text to find."
-            )
+            return ToolResult(error="old is empty. Provide the exact text to find.")
 
         file_path = Path(path).expanduser().resolve()
 
