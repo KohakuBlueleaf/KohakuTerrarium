@@ -783,6 +783,11 @@ def list_all() -> list[dict[str, Any]]:
                 "available": _is_available(login),
                 "source": "user",
                 "max_context": profile.max_context,
+                "max_output": profile.max_output,
+                "temperature": profile.temperature,
+                "reasoning_effort": profile.reasoning_effort or "",
+                "extra_body": profile.extra_body or {},
+                "base_url": profile.base_url or "",
             }
         )
 
@@ -800,6 +805,11 @@ def list_all() -> list[dict[str, Any]]:
                     "available": _is_available(login),
                     "source": "preset",
                     "max_context": data.get("max_context", 0),
+                    "max_output": data.get("max_output", 0),
+                    "temperature": data.get("temperature"),
+                    "reasoning_effort": data.get("reasoning_effort", ""),
+                    "extra_body": data.get("extra_body", {}),
+                    "base_url": data.get("base_url", ""),
                 }
             )
 

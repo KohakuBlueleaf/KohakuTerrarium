@@ -368,14 +368,24 @@ async function handleModelSwitch(modelId) {
   }
 }
 
-/** Open the model config dialog with current profile as JSON */
+/** Open the model config dialog with the selected model's full profile */
 function openModelConfig() {
   configJsonError.value = "";
-  // Build a default profile object from what we know
-  const profile = {
-    model: selectedModel.value || chat.sessionInfo.model || "",
-    extra_body: {},
-  };
+  // Find the full profile for the currently selected model
+  const modelName = selectedModel.value || chat.sessionInfo.model || "";
+  const fullProfile = availableModels.value.find((m) => m.name === modelName);
+  const profile = fullProfile
+    ? {
+        model: fullProfile.model,
+        provider: fullProfile.provider,
+        max_context: fullProfile.max_context || 0,
+        max_output: fullProfile.max_output || 0,
+        temperature: fullProfile.temperature,
+        reasoning_effort: fullProfile.reasoning_effort || "",
+        extra_body: fullProfile.extra_body || {},
+        base_url: fullProfile.base_url || "",
+      }
+    : { model: modelName, extra_body: {} };
   configJson.value = JSON.stringify(profile, null, 2);
   configDialogVisible.value = true;
 }

@@ -141,6 +141,17 @@ html.dark {
   background-color: var(--el-fill-color) !important;
 }
 
+.el-message-box {
+  --el-messagebox-title-color: var(--el-text-color-primary) !important;
+  --el-messagebox-content-color: var(--el-text-color-regular) !important;
+}
+
+.el-overlay-message-box .el-message-box,
+.el-overlay-dialog .el-dialog {
+  background-color: var(--el-bg-color-overlay) !important;
+  border-color: var(--el-border-color) !important;
+}
+
 /* Transition utilities */
 .fade-enter-active,
 .fade-leave-active {
