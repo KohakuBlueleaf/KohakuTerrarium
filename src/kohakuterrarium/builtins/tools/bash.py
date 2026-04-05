@@ -75,6 +75,24 @@ class BashTool(BaseTool):
         if not command:
             return ToolResult(error="No command provided")
 
+        # Reject no-op waiting commands (hallucination pattern)
+        stripped = command.strip().lower()
+        if stripped.startswith("echo") and any(
+            w in stripped
+            for w in ("waiting", "wait for", "still running", "in progress")
+        ):
+            return ToolResult(
+                error="Do not use bash to fake-wait for background tasks. "
+                "Background results arrive automatically. "
+                "Just stop your response — do not echo/sleep/poll."
+            )
+        if stripped.startswith("sleep"):
+            return ToolResult(
+                error="Do not sleep to wait for background tasks. "
+                "Results arrive automatically when ready. "
+                "Just stop your response."
+            )
+
         logger.debug("Executing command", command=command[:100])
 
         # Build the full command

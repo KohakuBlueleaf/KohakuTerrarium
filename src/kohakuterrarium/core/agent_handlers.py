@@ -325,8 +325,9 @@ class AgentHandlersMixin:
                 "tool",
                 f"[{parse_event.name}] Running in background — task delegated. "
                 "Do NOT do this same task yourself — it is already being done. "
-                "Work on a DIFFERENT task or stop and wait. "
-                "Result arrives automatically when it completes or fails.",
+                "Do NOT use bash echo/sleep to wait — just end your response. "
+                "Work on a DIFFERENT task or STOP your response now. "
+                "Result arrives automatically in the next turn.",
                 tool_call_id=tool_call_id,
                 name=parse_event.name,
             )
@@ -353,8 +354,9 @@ class AgentHandlersMixin:
                 "tool",
                 f"[{parse_event.name}] Sub-agent is handling this task. "
                 "Do NOT do this same task yourself — the sub-agent is already doing it. "
-                "Work on a DIFFERENT task or stop and wait. "
-                "Result arrives automatically when the sub-agent completes or fails.",
+                "Do NOT use bash echo/sleep to wait — just end your response. "
+                "Work on a DIFFERENT task or STOP your response now. "
+                "Result arrives automatically in the next turn.",
                 tool_call_id=sa_tool_call_id,
                 name=parse_event.name,
             )
@@ -780,7 +782,7 @@ class AgentHandlersMixin:
             self.output_router.notify_activity(
                 activity_done,
                 f"[{label}] DONE",
-                metadata={"job_id": job_id},
+                metadata={"job_id": job_id, "result": content},
             )
 
         logger.info("Background job completed", job_id=job_id)
