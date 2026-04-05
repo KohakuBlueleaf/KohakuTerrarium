@@ -323,10 +323,10 @@ class AgentHandlersMixin:
             # Background: add placeholder for native mode conversation
             controller.conversation.append(
                 "tool",
-                f"[{parse_event.name}] Started in background. "
-                "The result will arrive automatically as a new message when it completes or fails. "
-                "Do NOT retry or re-call this tool — just continue with other work "
-                "or wait.",
+                f"[{parse_event.name}] Running in background — task delegated. "
+                "Do NOT do this same task yourself — it is already being done. "
+                "Work on a DIFFERENT task or stop and wait. "
+                "Result arrives automatically when it completes or fails.",
                 tool_call_id=tool_call_id,
                 name=parse_event.name,
             )
@@ -351,9 +351,10 @@ class AgentHandlersMixin:
         if sa_tool_call_id:
             controller.conversation.append(
                 "tool",
-                f"[{parse_event.name}] Sub-agent dispatched and running in background. "
-                "The result will arrive automatically as a new message when it completes or fails. "
-                "Do NOT retry or re-dispatch — just continue with other work or wait.",
+                f"[{parse_event.name}] Sub-agent is handling this task. "
+                "Do NOT do this same task yourself — the sub-agent is already doing it. "
+                "Work on a DIFFERENT task or stop and wait. "
+                "Result arrives automatically when the sub-agent completes or fails.",
                 tool_call_id=sa_tool_call_id,
                 name=parse_event.name,
             )
