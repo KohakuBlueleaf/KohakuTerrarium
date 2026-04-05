@@ -387,6 +387,11 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         self.controller.llm = new_llm
         if self.compact_manager:
             self.compact_manager._llm = new_llm
+            # Update compact threshold from new profile's context window
+            new_max = getattr(new_llm, "_profile_max_context", 0)
+            if new_max:
+                self.compact_manager.config.max_tokens = new_max
+
         model_name = getattr(new_llm, "model", profile_name)
         logger.info(
             "Model switched",
@@ -394,6 +399,23 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             profile=profile_name,
             model=model_name,
         )
+
+        # Emit session_info so TUI/frontend updates the display
+        new_max = getattr(new_llm, "_profile_max_context", 0)
+        compact_threshold = 0
+        if self.compact_manager and new_max:
+            compact_threshold = int(new_max * self.compact_manager.config.threshold)
+        self.output_router.notify_activity(
+            "session_info",
+            f"Model switched to {model_name}",
+            metadata={
+                "model": model_name,
+                "agent_name": self.config.name,
+                "session_id": getattr(self, "_session_id", ""),
+                "compact_threshold": compact_threshold,
+            },
+        )
+
         return model_name
 
     async def stop(self) -> None:
