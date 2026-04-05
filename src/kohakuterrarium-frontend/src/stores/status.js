@@ -60,7 +60,7 @@ export const useStatusStore = defineStore("status", {
           compactThreshold: data.compact_threshold ?? this.tokenUsage.compactThreshold,
         };
       } else if (at === "tool_start") {
-        const jobId = data.id || `job_${Date.now()}`;
+        const jobId = data.job_id || `job_${Date.now()}`;
         this.runningJobs.push({
           jobId,
           name: data.name || "unknown",
@@ -70,7 +70,7 @@ export const useStatusStore = defineStore("status", {
         });
         this._ensureElapsedTimer();
       } else if (at === "subagent_start") {
-        const jobId = data.id || `job_${Date.now()}`;
+        const jobId = data.job_id || `job_${Date.now()}`;
         this.runningJobs.push({
           jobId,
           name: data.name || "unknown",
@@ -80,9 +80,9 @@ export const useStatusStore = defineStore("status", {
         });
         this._ensureElapsedTimer();
       } else if (at === "tool_done" || at === "tool_error") {
-        this._removeJob(data.name, data.id);
+        this._removeJob(data.name, data.job_id);
       } else if (at === "subagent_done" || at === "subagent_error") {
-        this._removeJob(data.name, data.id);
+        this._removeJob(data.name, data.job_id);
       } else if (at === "scratchpad_update") {
         if (data.key) {
           if (data.value === null || data.value === undefined) {

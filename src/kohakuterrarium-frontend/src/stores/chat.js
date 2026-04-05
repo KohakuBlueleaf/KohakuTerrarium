@@ -884,7 +884,7 @@ export const useChatStore = defineStore("chat", {
             delete this.runningJobs[tc.id];
           }
         }
-      } else if (at === "subagent_tool_start" || at === "subagent_tool_done") {
+      } else if (at?.startsWith("subagent_tool_")) {
         // Sub-agent internal tool activity: attach to the running sub-agent part
         const last = msgs[msgs.length - 1];
         if (last?.parts) {
@@ -896,13 +896,34 @@ export const useChatStore = defineStore("chat", {
                 p.type === "tool" && p.kind === "subagent" && p.name === saName,
             );
           if (sa) {
-            if (!sa.tools_used) sa.tools_used = [];
+            if (!sa.children) sa.children = [];
             const toolName = data.tool || data.detail || "";
-            if (
-              at === "subagent_tool_start" &&
-              toolName &&
-              !sa.tools_used.includes(toolName)
-            ) {
+            if (at === "subagent_tool_start" && toolName) {
+              sa.children.push({
+                name: toolName,
+                info: data.detail || "",
+                status: "running",
+              });
+            } else if (at === "subagent_tool_done" && toolName) {
+              const child = [...sa.children].reverse().find(
+                (c) => c.name === toolName && c.status === "running",
+              );
+              if (child) {
+                child.status = "done";
+                child.info = data.detail || child.info;
+              }
+            } else if (at === "subagent_tool_error" && toolName) {
+              const child = [...sa.children].reverse().find(
+                (c) => c.name === toolName && c.status === "running",
+              );
+              if (child) {
+                child.status = "error";
+                child.info = data.detail || child.info;
+              }
+            }
+            // Also maintain tools_used list for the summary view
+            if (!sa.tools_used) sa.tools_used = [];
+            if (toolName && !sa.tools_used.includes(toolName)) {
               sa.tools_used.push(toolName);
             }
           }

@@ -121,12 +121,18 @@ class SchedulerTrigger(BaseTrigger):
             # Align to clock: next multiple of N minutes from midnight
             minutes_today = now.hour * 60 + now.minute
             next_slot = ((minutes_today // self.every_minutes) + 1) * self.every_minutes
-            target = now.replace(
-                hour=next_slot // 60,
-                minute=next_slot % 60,
-                second=0,
-                microsecond=0,
-            )
+            if next_slot >= 1440:
+                # Past midnight — wrap to next day
+                target = (now + timedelta(days=1)).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                )
+            else:
+                target = now.replace(
+                    hour=next_slot // 60,
+                    minute=next_slot % 60,
+                    second=0,
+                    microsecond=0,
+                )
             if target <= now:
                 target += timedelta(minutes=self.every_minutes)
             return (target - now).total_seconds()
