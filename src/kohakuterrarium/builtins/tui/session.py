@@ -920,8 +920,9 @@ class TUISession:
     ) -> str | None:
         """Show a selection modal and return chosen value or None.
 
-        Safe to call from any async context — delegates to the Textual
-        app's event loop via call_from_thread.
+        Safe to call from any async context. Uses ``call_later`` to
+        delegate ``push_screen`` to the app's message loop where
+        ``active_app`` ContextVar is set.
         """
         from kohakuterrarium.builtins.tui.widgets import SelectionModal
 
@@ -935,7 +936,9 @@ class TUISession:
             if not result_future.done():
                 result_future.set_result(value)
 
-        self._app.push_screen(modal, callback=_on_dismiss)
+        # call_later posts to the app's message queue — the callback
+        # executes inside the app's _context() where active_app is set.
+        self._app.call_later(lambda: self._app.push_screen(modal, callback=_on_dismiss))
         return await result_future
 
     async def show_confirm_modal(self, message: str) -> bool:
@@ -946,12 +949,13 @@ class TUISession:
             return False
 
         result_future: asyncio.Future[bool] = asyncio.Future()
+        modal = ConfirmModal(message)
 
         def _on_dismiss(value: bool) -> None:
             if not result_future.done():
                 result_future.set_result(value)
 
-        self._app.push_screen(ConfirmModal(message), callback=_on_dismiss)
+        self._app.call_later(lambda: self._app.push_screen(modal, callback=_on_dismiss))
         return await result_future
 
     def stop(self) -> None:
