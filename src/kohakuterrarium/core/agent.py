@@ -504,7 +504,9 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
             # Try to show error in output before stopping
             try:
                 error_type = type(e).__name__
-                await self.output_router.write(f"\n[Fatal Error] {error_type}: {e}\n")
+                await self.output_router.default_output.write(
+                    f"\n[Fatal Error] {error_type}: {e}\n"
+                )
                 await self.output_router.on_processing_end()
             except Exception:
                 pass

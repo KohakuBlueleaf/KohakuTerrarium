@@ -181,7 +181,7 @@ class AgentHandlersMixin:
                 error_type=error_type,
                 error=error_msg,
             )
-            await self.output_router.write(
+            await self.output_router.default_output.write(
                 f"\n[System Error] {error_type}: {error_msg}\n"
             )
         finally:
