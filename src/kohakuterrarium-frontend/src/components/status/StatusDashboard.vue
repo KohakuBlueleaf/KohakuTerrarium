@@ -413,19 +413,10 @@ function saveModelConfig() {
   color: var(--color-text-muted);
 }
 
-/* Model config dialog — warm theme for both light and dark mode */
-:deep(.model-config-dialog .el-dialog) {
-  --el-dialog-bg-color: #FFFFFF;
-  --el-dialog-title-font-size: 14px;
-}
-html.dark :deep(.model-config-dialog .el-dialog) {
-  --el-dialog-bg-color: #252220;
-  --el-dialog-border-color: #3D3835;
-}
-
+/* Model config dialog */
 :deep(.model-config-dialog .el-dialog__header) {
   padding: 16px 20px 12px;
-  border-bottom: 1px solid var(--color-border, #E0DBD4);
+  border-bottom: 1px solid var(--el-border-color);
 }
 
 :deep(.model-config-dialog .el-dialog__title) {
@@ -438,7 +429,7 @@ html.dark :deep(.model-config-dialog .el-dialog) {
 
 :deep(.model-config-dialog .el-dialog__footer) {
   padding: 12px 20px 16px;
-  border-top: 1px solid var(--color-border, #E0DBD4);
+  border-top: 1px solid var(--el-border-color);
 }
 
 :deep(.config-textarea .el-textarea__inner) {
@@ -446,13 +437,6 @@ html.dark :deep(.model-config-dialog .el-dialog) {
   font-size: 12px;
   line-height: 1.5;
   resize: vertical;
-  background: #F7F5F2;
-  color: #3A3632;
-}
-html.dark :deep(.config-textarea .el-textarea__inner) {
-  background: #1A1816;
-  color: #E8E0D8;
-  border-color: #3D3835;
 }
 
 /* Save button iolite accent */

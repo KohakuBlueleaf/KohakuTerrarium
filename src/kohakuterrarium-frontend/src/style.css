@@ -84,11 +84,61 @@ code, pre, .font-mono {
   background: var(--color-text-muted);
 }
 
-/* Element Plus overrides */
-.el-message-box,
+/* Element Plus — warm theme overrides for both modes */
+:root {
+  --el-color-primary: #5A4FCF;
+  --el-color-primary-light-3: #8B83DB;
+  --el-color-primary-light-5: #ADA8E7;
+  --el-color-primary-light-7: #CEC9F0;
+  --el-color-primary-light-9: #EEEDFA;
+  --el-color-primary-dark-2: #4840A6;
+  --el-bg-color: var(--color-surface);
+  --el-bg-color-overlay: var(--color-surface);
+  --el-bg-color-page: var(--color-bg);
+  --el-fill-color-blank: var(--color-surface);
+  --el-fill-color: var(--color-surface-alt);
+  --el-fill-color-light: var(--color-surface-alt);
+  --el-fill-color-lighter: var(--color-bg);
+  --el-border-color: var(--color-border);
+  --el-border-color-light: var(--color-border);
+  --el-border-color-lighter: var(--color-border);
+  --el-text-color-primary: var(--color-text);
+  --el-text-color-regular: var(--color-text);
+  --el-text-color-secondary: var(--color-text-muted);
+  --el-text-color-placeholder: var(--color-text-faint);
+  --el-mask-color: rgba(0, 0, 0, 0.5);
+}
+
+html.dark {
+  --el-bg-color: #252220;
+  --el-bg-color-overlay: #252220;
+  --el-bg-color-page: #1A1816;
+  --el-fill-color-blank: #252220;
+  --el-fill-color: #1E1C1A;
+  --el-fill-color-light: #1E1C1A;
+  --el-fill-color-lighter: #1A1816;
+  --el-border-color: #3D3835;
+  --el-border-color-light: #3D3835;
+  --el-border-color-lighter: #3D3835;
+  --el-text-color-primary: #E8E0D8;
+  --el-text-color-regular: #E8E0D8;
+  --el-text-color-secondary: #8A8078;
+  --el-text-color-placeholder: #5A5550;
+  --el-mask-color: rgba(0, 0, 0, 0.7);
+}
+
+/* Element Plus specific component overrides */
 .el-dialog {
-  --el-bg-color: var(--color-surface) !important;
-  --el-border-color: var(--color-border) !important;
+  --el-dialog-bg-color: var(--el-bg-color-overlay) !important;
+}
+
+.el-select-dropdown,
+.el-popper {
+  --el-bg-color-overlay: var(--el-bg-color) !important;
+}
+
+.el-select-dropdown__item.is-hovering {
+  background-color: var(--el-fill-color) !important;
 }
 
 /* Transition utilities */
