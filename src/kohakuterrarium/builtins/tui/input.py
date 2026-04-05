@@ -59,24 +59,21 @@ class TUIInput(BaseInputModule):
         self, result: UserCommandResult, command_name: str
     ) -> UserCommandResult | None:
         """TUI rendering: show native modal screens for select and confirm."""
-        from kohakuterrarium.builtins.tui.widgets import ConfirmModal, SelectionModal
-
         data = result.data
         data_type = data.get("type", "")
-        app = self._tui._app if self._tui else None
-        if not app:
+
+        if not self._tui:
             return None
 
         if data_type == "select":
             options = data.get("options", [])
             if not options:
                 return None
-            modal = SelectionModal(
+            selected = await self._tui.show_selection_modal(
                 title=data.get("title", "Select"),
                 options=options,
                 current=data.get("current", ""),
             )
-            selected = await app.push_screen_wait(modal)
             if selected:
                 action = data.get("action", "")
                 if action:
@@ -84,8 +81,9 @@ class TUIInput(BaseInputModule):
             return UserCommandResult(output="", consumed=True)
 
         if data_type == "confirm":
-            modal = ConfirmModal(data.get("message", "Confirm?"))
-            confirmed = await app.push_screen_wait(modal)
+            confirmed = await self._tui.show_confirm_modal(
+                data.get("message", "Confirm?")
+            )
             if confirmed:
                 action = data.get("action", "")
                 args = data.get("action_args", "")

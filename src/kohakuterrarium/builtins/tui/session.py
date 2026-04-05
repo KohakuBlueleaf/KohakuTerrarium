@@ -915,6 +915,45 @@ class TUISession:
             return ""
         return await self._app._input_queue.get()
 
+    async def show_selection_modal(
+        self, title: str, options: list[dict], current: str = ""
+    ) -> str | None:
+        """Show a selection modal and return chosen value or None.
+
+        Safe to call from any async context — delegates to the Textual
+        app's event loop via call_from_thread.
+        """
+        from kohakuterrarium.builtins.tui.widgets import SelectionModal
+
+        if not self._app or not self._app.is_running:
+            return None
+
+        result_future: asyncio.Future[str | None] = asyncio.Future()
+        modal = SelectionModal(title=title, options=options, current=current)
+
+        def _on_dismiss(value: str | None) -> None:
+            if not result_future.done():
+                result_future.set_result(value)
+
+        self._app.push_screen(modal, callback=_on_dismiss)
+        return await result_future
+
+    async def show_confirm_modal(self, message: str) -> bool:
+        """Show a confirm modal and return True/False."""
+        from kohakuterrarium.builtins.tui.widgets import ConfirmModal
+
+        if not self._app or not self._app.is_running:
+            return False
+
+        result_future: asyncio.Future[bool] = asyncio.Future()
+
+        def _on_dismiss(value: bool) -> None:
+            if not result_future.done():
+                result_future.set_result(value)
+
+        self._app.push_screen(ConfirmModal(message), callback=_on_dismiss)
+        return await result_future
+
     def stop(self) -> None:
         self.running = False
         self._stop_event.set()
