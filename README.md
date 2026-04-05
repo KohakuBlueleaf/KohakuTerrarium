@@ -11,13 +11,18 @@
 
 ---
 
-KohakuTerrarium is built around one design choice: **single-agent orchestration and multi-agent coordination are different problems, and they should stay separate**.
+KohakuTerrarium is built around one design choice: **vertical coordination (inside an agent) and horizontal coordination (between agents) are different problems, and they should stay separate**.
 
-- A **creature** is a complete agent with its own LLM controller, tools, sub-agents, memory, triggers, input, and output.
-- A **terrarium** is a **pure wiring layer** that connects creatures through channels, manages lifecycle, and exposes observability. It is not another hidden planner or meta-agent.
+This is one of the first explicitly stated abstractions for what an "agent framework" actually needs to define: what an agent IS, how it RUNS, how it EXTENDS, and how it DEPLOYS. Most existing tools in the ecosystem (LangChain, DSPy, CrewAI, AutoGen) are useful but operate at different levels — they are LLM app libraries, optimizer/compiler layers, or multi-agent coordination patterns, not full agent frameworks. KohakuTerrarium aims to be the framework layer that those kinds of tools could be built on top of.
+
+- A **creature** is a complete agent with its own LLM controller, tools, sub-agents, memory, triggers, input, and output. Even a standalone creature is already a multi-agent system — the controller delegates to sub-agents (explore, plan, worker, critic), the same frontier architecture used by systems like Claude Code.
+- A **terrarium** is a **pure wiring layer** that connects creatures through channels, manages lifecycle, and exposes observability. It has no LLM, no reasoning, no intelligence — it is infrastructure, not another hidden planner or meta-agent.
 - The same creature config can run **standalone** or inside a terrarium **unchanged**.
+- **Five module types** (input, output, tool, trigger, sub-agent) form the extensibility primitive. Any functionality — RAG, monitoring, external integrations — can be composed from these modules. The framework doesn't need to ship every feature because the module system makes everything buildable.
 
-That separation is the project’s core idea, and it drives the runtime, the TUI, the web dashboard, the API, and the session system.
+That separation is the project's core idea, and it drives the runtime, the TUI, the web dashboard, the API, and the session system.
+
+This abstraction is empirically validated: frontier agent systems including Claude Code, Codex CLI, OpenCode, and even real-time applications like Neuro-sama can all be expressed within the creature/module architecture. The abstraction holds; specialized runtimes handle domain-specific concerns like latency.
 
 ## Why KohakuTerrarium Is Different
 
@@ -96,6 +101,10 @@ User input  | System  |   |    (Main LLM)    |<--| with tools |
                           | Other Creatures  |
                           +------------------+
 ```
+
+### Naming
+- **Terrarium**: a contained world with two levels of meaning. For the creator, it is the world you build agents in. For the creatures, it is the world they live in — any agent architecture can inhabit this framework, and the terrarium layer mimics a small ecosystem where creatures interact through shared environment rather than direct control.
+- **Creature**: something that *lives* in an environment, not just an API endpoint. The naming reinforces that KT thinks about agents as inhabitants of a world.
 
 ## Quick Start
 
@@ -244,9 +253,13 @@ For more detail, see `docs/api-reference/python.md` and the examples in `example
 
 A creature is a standalone agent: its own controller, tools, sub-agents, memory, triggers, and I/O. You can run it directly with `kt run <path>`.
 
+A creature is not a simple ReAct loop. It is a multi-agent system internally: the controller orchestrates, sub-agents execute specialized tasks in parallel, results feed back into the controller's decision-making. This is the same architecture as frontier systems like Claude Code.
+
 ### Terrarium
 
 A terrarium connects creatures through shared channels, injects the wiring they need, and manages lifecycle and observability. It does **not** add another reasoning layer.
+
+Think of it as a service mesh: routing, lifecycle, observability, but no business logic. Or think of it as a contained world — creatures live in it, interact through shared channels, but each creature is autonomous.
 
 ### Root Agent
 
@@ -260,6 +273,20 @@ Channels are how creatures communicate:
 - **Broadcast**: all subscribers receive every message
 
 Sending is explicit via `send_message`; receiving happens through injected channel triggers.
+
+### Modules
+
+Everything extensible in KohakuTerrarium fits into one of five protocol-based module types:
+
+| Module | What It Does | Example Custom Use |
+|--------|-------------|-------------------|
+| **Input** | Receives external events | Discord listener, webhook, voice input |
+| **Output** | Delivers agent output | Discord sender, TTS, file writer |
+| **Tool** | Executes actions | RAG retrieval, API calls, database queries |
+| **Trigger** | Generates automatic events | Timer, channel watcher, condition monitor |
+| **Sub-agent** | Delegated task execution | Any specialized reasoning task |
+
+This is the extensibility mechanism. RAG is a custom input/trigger plus a tool. Monitoring is a trigger plus an output module. External integrations are tools plus triggers. The framework doesn't need to ship every feature because the module system makes everything composable.
 
 ### Sessions and Isolation
 
@@ -280,7 +307,7 @@ kt resume --last             # most recent session
 kt resume swe_team           # prefix match
 ```
 
-Session files use the `.kohakutr` format and contain far more than a plain chat transcript:
+Session files use the `.kohakutr` format and contain far more than a plain transcript — they capture operational state:
 
 - conversation history
 - full tool call metadata
@@ -462,7 +489,7 @@ The root agent is force-given the terrarium management surface for operating a t
 | `terrarium_history` | Read recent terrarium channel history |
 | `creature_start` | Hot-add a creature to a running terrarium |
 | `creature_stop` | Stop and remove a creature from a running terrarium |
-| `creature_interrupt` | Interrupt a creature’s current processing without removing it |
+| `creature_interrupt` | Interrupt a creature's current processing without removing it |
 
 ### Built-in sub-agents
 

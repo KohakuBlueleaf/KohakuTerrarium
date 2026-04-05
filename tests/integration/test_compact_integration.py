@@ -67,12 +67,8 @@ class TestCompactIntegration:
             )
 
         # Check that compact would trigger (simulating high token count)
-        chars = conv.get_context_length()
-        estimated_tokens = chars / 4
-        assert estimated_tokens > 50 * 0.50  # Above threshold
-
-        # Manually trigger compact (in real flow, _finalize_processing does this)
-        assert compact_mgr.should_compact(prompt_tokens=0)  # Uses char fallback
+        # should_compact is token-based only; pass a token count above threshold (50 * 0.50 = 25)
+        assert compact_mgr.should_compact(prompt_tokens=30)
         compact_mgr.trigger_compact()
 
         # Wait for background compact
