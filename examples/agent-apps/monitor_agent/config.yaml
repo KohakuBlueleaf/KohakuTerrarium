@@ -30,7 +30,7 @@ triggers:
 tools:
   - name: bash
     type: builtin
-  - name: http
+  - name: web_fetch
     type: builtin
   - name: read
     type: builtin

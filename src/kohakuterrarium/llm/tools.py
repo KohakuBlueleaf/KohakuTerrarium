@@ -195,15 +195,6 @@ _BUILTIN_SCHEMAS: dict[str, dict] = {
         },
         "required": ["question"],
     },
-    "http": {
-        "type": "object",
-        "properties": {
-            "url": {"type": "string", "description": "URL to request"},
-            "method": {"type": "string", "description": "HTTP method (default GET)"},
-            "body": {"type": "string", "description": "Request body (optional)"},
-        },
-        "required": ["url"],
-    },
     "json_read": {
         "type": "object",
         "properties": {
