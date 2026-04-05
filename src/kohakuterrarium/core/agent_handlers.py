@@ -700,7 +700,7 @@ class AgentHandlersMixin:
                     self.output_router.notify_activity(
                         "tool_done",
                         f"[{label}] {status}",
-                        metadata={"job_id": job_id, "output": output[:5000]},
+                        metadata={"job_id": job_id, "result": output[:5000]},
                     )
 
         return "\n\n".join(result_strs) if result_strs else ""
@@ -744,15 +744,12 @@ class AgentHandlersMixin:
             event.content if isinstance(event.content, str) else str(event.content)
         )
 
+        # Use _make_job_label for consistent naming with tool_start/subagent_start
+        _, label = _make_job_label(job_id)
         if is_subagent:
-            parts = job_id.split("_")
-            sa_name = parts[1] if len(parts) >= 3 else job_id
-            short_id = parts[-1][:6] if len(parts) >= 3 else ""
-            label = f"{sa_name}[{short_id}]" if short_id else sa_name
             activity_done = "subagent_done"
             activity_error = "subagent_error"
         else:
-            _, label = _make_job_label(job_id)
             activity_done = "tool_done"
             activity_error = "tool_error"
 
@@ -776,6 +773,9 @@ class AgentHandlersMixin:
                     "result": content,
                     "turns": sa_meta.get("turns", 0),
                     "duration": sa_meta.get("duration", 0),
+                    "total_tokens": sa_meta.get("total_tokens", 0),
+                    "prompt_tokens": sa_meta.get("prompt_tokens", 0),
+                    "completion_tokens": sa_meta.get("completion_tokens", 0),
                 },
             )
         else:

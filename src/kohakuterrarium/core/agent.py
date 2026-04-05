@@ -249,11 +249,21 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
         self.subagent_manager._on_complete = self._on_bg_complete
 
         # Wire sub-agent tool activity -> parent output
-        def _on_sa_tool_activity(sa_name, activity_type, tool_name, detail):
+        def _on_sa_tool_activity(
+            sa_name, activity_type, tool_name, detail, sa_job_id="", extra=None
+        ):
+            meta = {
+                "subagent": sa_name,
+                "tool": tool_name,
+                "detail": detail,
+                "job_id": sa_job_id,
+            }
+            if extra:
+                meta.update(extra)
             self.output_router.notify_activity(
                 f"subagent_{activity_type}",
                 f"[{sa_name}] [{tool_name}] {detail}",
-                metadata={"subagent": sa_name, "tool": tool_name, "detail": detail},
+                metadata=meta,
             )
 
         self.subagent_manager._on_tool_activity = _on_sa_tool_activity

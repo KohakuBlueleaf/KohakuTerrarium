@@ -243,10 +243,11 @@ class SubAgentManager:
         # Forward sub-agent tool activity to parent's callback
         if self._on_tool_activity:
             sa_name = name
+            sa_job_id = job_id
             parent_cb = self._on_tool_activity
 
-            def _forward_activity(activity_type, tool_name, detail):
-                parent_cb(sa_name, activity_type, tool_name, detail)
+            def _forward_activity(activity_type, tool_name, detail, extra=None):
+                parent_cb(sa_name, activity_type, tool_name, detail, sa_job_id, extra)
 
             subagent.on_tool_activity = _forward_activity
 

@@ -183,7 +183,7 @@ class SessionOutput(OutputModule):
             {
                 "name": name,
                 "call_id": metadata.get("job_id", ""),
-                "output": metadata.get("output", detail),
+                "output": metadata.get("result", metadata.get("output", detail)),
                 "exit_code": 0,
             },
         )
@@ -220,6 +220,9 @@ class SessionOutput(OutputModule):
                 "tools_used": metadata.get("tools_used", []),
                 "turns": metadata.get("turns", 0),
                 "duration": metadata.get("duration", 0),
+                "total_tokens": metadata.get("total_tokens", 0),
+                "prompt_tokens": metadata.get("prompt_tokens", 0),
+                "completion_tokens": metadata.get("completion_tokens", 0),
             },
         )
 
@@ -291,6 +294,7 @@ class SessionOutput(OutputModule):
                 "tool_name": metadata.get("tool", ""),
                 "activity": activity_type.replace("subagent_", ""),
                 "detail": metadata.get("detail", detail),
+                "job_id": metadata.get("job_id", ""),
             },
         )
 
@@ -308,11 +312,20 @@ class SessionOutput(OutputModule):
 
 
 def _parse_detail(detail: str) -> tuple[str, str]:
-    """Extract [name] prefix from detail string."""
+    """Extract [name] prefix from detail string.
+
+    Handles nested brackets by finding ``] `` (closing bracket + space).
+    """
     try:
         if detail.startswith("["):
-            end = detail.index("]", 1)
+            # Find "] " to handle labels with nested brackets like [name[id]]
+            end = detail.index("] ", 1)
             return detail[1:end], detail[end + 2 :]
     except ValueError:
-        pass
+        # Fall back: no trailing content (bare [name])
+        try:
+            if detail.startswith("[") and detail.endswith("]"):
+                return detail[1:-1], ""
+        except ValueError:
+            pass
     return "unknown", detail

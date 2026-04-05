@@ -26,13 +26,20 @@ def _parse_detail(detail: str) -> tuple[str, str]:
     """Extract ``[name]`` prefix from a detail string.
 
     Returns ``(name, remaining_detail)``.
+    Handles nested brackets by finding ``] `` (closing bracket + space).
     """
     try:
         if detail.startswith("["):
-            end = detail.index("]", 1)
+            # Find "] " to handle labels with nested brackets like [name[id]]
+            end = detail.index("] ", 1)
             return detail[1:end], detail[end + 2 :]
     except ValueError:
-        pass
+        # Fall back to simple bracket matching (no trailing content)
+        try:
+            if detail.startswith("[") and detail.endswith("]"):
+                return detail[1:-1], ""
+        except ValueError:
+            pass
     return "unknown", detail
 
 
@@ -108,6 +115,7 @@ class StreamOutput(OutputModule):
                 "job_id",
                 "tools_used",
                 "result",
+                "output",
                 "turns",
                 "duration",
                 "task",

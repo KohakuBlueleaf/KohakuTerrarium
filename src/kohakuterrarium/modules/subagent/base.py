@@ -430,6 +430,18 @@ class SubAgent:
             self._prompt_tokens += usage.get("prompt_tokens", 0)
             self._completion_tokens += usage.get("completion_tokens", 0)
             self._total_tokens += usage.get("total_tokens", 0)
+        # Emit running token totals to parent
+        if self.on_tool_activity and self._total_tokens > 0:
+            self.on_tool_activity(
+                "token_update",
+                "",
+                f"tokens: {self._prompt_tokens} in, {self._completion_tokens} out",
+                {
+                    "prompt_tokens": self._prompt_tokens,
+                    "completion_tokens": self._completion_tokens,
+                    "total_tokens": self._total_tokens,
+                },
+            )
 
     def _log_turn_preview(self, assistant_content: str) -> None:
         """Log a preview of the LLM response for debugging."""
