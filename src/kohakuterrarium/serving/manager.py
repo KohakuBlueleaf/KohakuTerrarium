@@ -160,6 +160,33 @@ class KohakuManager:
             raise ValueError(f"Agent not found: {agent_id}")
         return session.agent.switch_model(profile_name)
 
+    async def agent_execute_command(
+        self, agent_id: str, command: str, args: str = ""
+    ) -> dict:
+        """Execute a user slash command on an agent. Returns result dict."""
+        session = self._agents.get(agent_id)
+        if not session:
+            raise ValueError(f"Agent not found: {agent_id}")
+
+        from kohakuterrarium.builtins.user_commands import get_builtin_user_command
+        from kohakuterrarium.modules.user_command.base import UserCommandContext
+
+        cmd = get_builtin_user_command(command)
+        if cmd is None:
+            raise ValueError(f"Unknown command: /{command}")
+
+        context = UserCommandContext(
+            agent=session.agent,
+            session=getattr(session.agent, "session", None),
+        )
+        result = await cmd.execute(args, context)
+        return {
+            "command": command,
+            "output": result.output,
+            "error": result.error,
+            "success": result.success,
+        }
+
     def agent_get_history(self, agent_id: str) -> list[dict]:
         """Get conversation history for an agent."""
         session = self._agents.get(agent_id)

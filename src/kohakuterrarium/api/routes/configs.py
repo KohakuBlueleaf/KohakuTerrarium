@@ -149,3 +149,26 @@ def list_models():
     from kohakuterrarium.llm.profiles import list_all
 
     return list_all()
+
+
+@router.get("/commands")
+def list_commands():
+    """List available user slash commands."""
+    from kohakuterrarium.builtins.user_commands import (
+        get_builtin_user_command,
+        list_builtin_user_commands,
+    )
+
+    result = []
+    for name in list_builtin_user_commands():
+        cmd = get_builtin_user_command(name)
+        if cmd:
+            result.append(
+                {
+                    "name": cmd.name,
+                    "aliases": cmd.aliases,
+                    "description": cmd.description,
+                    "layer": cmd.layer.value,
+                }
+            )
+    return result

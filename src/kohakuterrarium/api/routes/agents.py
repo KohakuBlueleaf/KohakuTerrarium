@@ -3,7 +3,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from kohakuterrarium.api.deps import get_manager
-from kohakuterrarium.api.schemas import AgentChat, AgentCreate, ModelSwitch
+from kohakuterrarium.api.schemas import (
+    AgentChat,
+    AgentCreate,
+    ModelSwitch,
+    SlashCommand,
+)
 
 router = APIRouter()
 
@@ -91,6 +96,17 @@ def switch_agent_model(agent_id: str, req: ModelSwitch, manager=Depends(get_mana
     try:
         model = manager.agent_switch_model(agent_id, req.model)
         return {"status": "switched", "model": model}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.post("/{agent_id}/command")
+async def execute_command(
+    agent_id: str, req: SlashCommand, manager=Depends(get_manager)
+):
+    """Execute a slash command on an agent (e.g. /model, /status)."""
+    try:
+        return await manager.agent_execute_command(agent_id, req.command, req.args)
     except ValueError as e:
         raise HTTPException(400, str(e))
 

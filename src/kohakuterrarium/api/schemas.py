@@ -68,3 +68,10 @@ class AgentChat(BaseModel):
     """Request body for sending a chat message to an agent."""
 
     message: str
+
+
+class SlashCommand(BaseModel):
+    """Request body for executing a slash command."""
+
+    command: str  # Command name without slash (e.g. "model", "status")
+    args: str = ""  # Arguments string
