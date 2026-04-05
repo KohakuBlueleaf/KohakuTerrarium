@@ -8,7 +8,12 @@ from pathlib import Path
 
 from kohakuterrarium.builtins.tui.output import TUIOutput
 from kohakuterrarium.builtins.tui.session import TUISession
+from kohakuterrarium.builtins.user_commands import (
+    get_builtin_user_command,
+    list_builtin_user_commands,
+)
 from kohakuterrarium.modules.output.base import BaseOutputModule
+from kohakuterrarium.modules.user_command.base import UserCommandContext
 from kohakuterrarium.session.store import SessionStore
 from kohakuterrarium.terrarium.config import load_terrarium_config
 from kohakuterrarium.terrarium.observer import ChannelObserver
@@ -231,14 +236,43 @@ async def run_terrarium_with_tui(runtime: TerrariumRuntime) -> None:
                         target=tab_target,
                     )
 
+    # Build user command registry for slash commands
+    _commands = {n: get_builtin_user_command(n) for n in list_builtin_user_commands()}
+    _cmd_aliases = {}
+    for n, cmd in _commands.items():
+        for alias in getattr(cmd, "aliases", []):
+            _cmd_aliases[alias] = n
+    _cmd_context = UserCommandContext(agent=root, session=root.session)
+    _cmd_context.extra["command_registry"] = _commands
+
     # Main loop: TUI input -> root agent via inject_input
     try:
         while True:
             text = await tui.get_input()
             if not text:
                 break
-            if text.lower() in ("exit", "quit", "/exit", "/quit"):
-                break
+
+            # Handle slash commands
+            if text.startswith("/"):
+                from kohakuterrarium.modules.user_command.base import (
+                    parse_slash_command,
+                )
+
+                cmd_name, cmd_args = parse_slash_command(text)
+                canonical = _cmd_aliases.get(cmd_name, cmd_name)
+                cmd = _commands.get(canonical)
+                if cmd:
+                    result = await cmd.execute(cmd_args, _cmd_context)
+                    if result.output:
+                        tui.add_trigger_message("System", result.output)
+                    if result.error:
+                        tui.add_trigger_message("Error", result.error)
+                    # Check if exit was requested (e.g. /exit command)
+                    if canonical == "exit":
+                        break
+                    if result.consumed:
+                        continue
+                # Unknown slash command — fall through to send as text
 
             active_tab = tui.get_active_tab()
 

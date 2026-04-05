@@ -102,9 +102,28 @@ class TUIInput(BaseInputModule):
                 self._exit_requested = True
                 return None
 
-            if text.lower() in ("exit", "quit", "/exit", "/quit"):
+            # Legacy exit fallback (if command system not wired)
+            if not self._user_commands and text.lower() in (
+                "exit",
+                "quit",
+                "/exit",
+                "/quit",
+            ):
                 self._exit_requested = True
                 return None
+
+            # Try slash command
+            if text.startswith("/"):
+                result = await self.try_user_command(text)
+                if result is not None:
+                    if result.output:
+                        self._tui.add_trigger_message("System", result.output)
+                    if result.error:
+                        self._tui.add_trigger_message("Error", result.error)
+                    if self._exit_requested:
+                        return None
+                    if result.consumed:
+                        return await self.get_input()
 
             return create_user_input_event(text, source="tui")
 
