@@ -122,6 +122,16 @@ class TerrariumRuntime(HotPlugMixin):
             )
             logger.debug("Auto-created creature channel", channel=creature_cfg.name)
 
+        # 1c. Auto-create "report_to_root" channel when root exists.
+        # All creatures can send here; root auto-listens to all channels.
+        if self.config.root:
+            self.environment.shared_channels.get_or_create(
+                "report_to_root",
+                channel_type="queue",
+                description="Any creature can report to the root agent",
+            )
+            logger.debug("Auto-created report_to_root channel")
+
         # 2. Backward-compat session - observer and API use _session.channels
         self._session = Session(key=self._session_key)
         self._session.channels = self.environment.shared_channels

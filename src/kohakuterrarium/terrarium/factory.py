@@ -233,6 +233,10 @@ def build_creature(
         creature=creature_cfg.name,
     )
 
+    # Auto-inject report_to_root into send channels when root exists
+    if config.root and "report_to_root" not in creature_cfg.send_channels:
+        creature_cfg.send_channels.append("report_to_root")
+
     # Build agent config from inline dict (same format as standalone)
     agent_config = build_agent_config(creature_cfg.config_data, creature_cfg.base_dir)
 
