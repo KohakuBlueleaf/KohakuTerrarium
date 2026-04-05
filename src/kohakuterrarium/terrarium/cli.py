@@ -2,10 +2,13 @@
 
 import argparse
 import asyncio
+import sys
+from datetime import datetime
 from pathlib import Path
 
 from kohakuterrarium.builtins.tui.output import TUIOutput
 from kohakuterrarium.builtins.tui.session import TUISession
+from kohakuterrarium.modules.output.base import BaseOutputModule
 from kohakuterrarium.session.store import SessionStore
 from kohakuterrarium.terrarium.config import load_terrarium_config
 from kohakuterrarium.terrarium.observer import ChannelObserver
@@ -18,6 +21,89 @@ from kohakuterrarium.utils.logging import (
 )
 
 logger = get_logger(__name__)
+
+
+class CLIOutput(BaseOutputModule):
+    """Minimal stdout-backed terrarium output for headless CLI mode."""
+
+    def __init__(self, speaker: str):
+        super().__init__()
+        self.speaker = speaker
+        self._has_output = False
+        self._streaming = False
+
+    @property
+    def _prefix(self) -> str:
+        return f"[{self.speaker}] "
+
+    async def write(self, content: str) -> None:
+        if not content:
+            return
+
+        output = ""
+        if not self._has_output:
+            output += self._prefix
+
+        output += content
+        if not output.endswith("\n"):
+            output += "\n"
+
+        sys.stdout.write(output)
+        sys.stdout.flush()
+        self._has_output = True
+        self._streaming = False
+
+    async def write_stream(self, chunk: str) -> None:
+        if not chunk:
+            return
+
+        if not self._streaming and not self._has_output:
+            sys.stdout.write(self._prefix)
+
+        sys.stdout.write(chunk)
+        sys.stdout.flush()
+        self._streaming = True
+        self._has_output = True
+
+    async def flush(self) -> None:
+        if self._streaming:
+            sys.stdout.write("\n")
+        sys.stdout.flush()
+        self._streaming = False
+
+    async def on_processing_start(self) -> None:
+        self.reset()
+
+    async def on_processing_end(self) -> None:
+        await self.flush()
+        self.reset()
+
+    async def on_resume(self, events: list[dict]) -> None:
+        turns = _group_resume_events(events)
+        if not turns:
+            return
+
+        print(f"\n--- Resumed {self.speaker} session ({len(turns)} turns) ---")
+        for turn in turns:
+            if turn["user"]:
+                user_preview = turn["user"][:120]
+                if len(turn["user"]) > 120:
+                    user_preview += "..."
+                print(f"[{self.speaker}] You: {user_preview}")
+
+            if turn["text"]:
+                text_preview = turn["text"].strip()[:200]
+                if len(turn["text"].strip()) > 200:
+                    text_preview += "..."
+                tools_str = ""
+                if turn["tools"]:
+                    tools_str = f" [used {', '.join(turn['tools'])}]"
+                print(f"[{self.speaker}]{tools_str} {text_preview}")
+        print(f"--- End of {self.speaker} history ---\n")
+
+    def reset(self) -> None:
+        self._has_output = False
+        self._streaming = False
 
 
 async def run_terrarium_with_tui(runtime: TerrariumRuntime) -> None:
@@ -181,6 +267,90 @@ async def run_terrarium_with_tui(runtime: TerrariumRuntime) -> None:
         tui.stop()
 
 
+async def run_terrarium_with_cli(
+    runtime: TerrariumRuntime,
+    *,
+    observe: list[str] | None = None,
+    no_observe: bool = False,
+) -> None:
+    """Run a terrarium with a headless stdin/stdout CLI."""
+    runtime_task = asyncio.create_task(runtime.run())
+    observer = None
+
+    try:
+        for _ in range(20):
+            await asyncio.sleep(0.25)
+            if runtime.is_running and runtime.root_agent:
+                break
+
+        root = runtime.root_agent
+        if not root:
+            runtime_task.cancel()
+            raise RuntimeError("Root agent not available after runtime start")
+
+        root_output = CLIOutput("root")
+        root_output._running = True
+        root.output_router.default_output = root_output
+
+        creature_outputs: dict[str, CLIOutput] = {}
+        for name, handle in runtime.creatures.items():
+            creature_output = CLIOutput(name)
+            creature_output._running = True
+            handle.agent.output_router.default_output = creature_output
+            creature_outputs[name] = creature_output
+
+        if not no_observe:
+            observer_args = argparse.Namespace(observe=observe, no_observe=no_observe)
+            observer = await _setup_observer(runtime, observer_args, runtime.config)
+
+        session_store = runtime.session_store
+        if session_store:
+            root_events = session_store.get_events("root")
+            if root_events:
+                await root_output.on_resume(root_events)
+
+            for name, output in creature_outputs.items():
+                creature_events = session_store.get_events(name)
+                if creature_events:
+                    await output.on_resume(creature_events)
+
+            if not no_observe:
+                for ch_info in runtime.list_channels():
+                    ch_name = ch_info["name"]
+                    for msg in session_store.get_channel_messages(ch_name):
+                        _print_channel_message(
+                            channel=ch_name,
+                            sender=msg.get("sender", ""),
+                            content=msg.get("content", ""),
+                            ts=_format_ts(msg.get("ts")),
+                        )
+
+        while True:
+            text = await _read_cli_input()
+            if text is None:
+                break
+
+            text = text.strip()
+            if not text:
+                continue
+
+            if text.lower() in ("exit", "quit", "/exit", "/quit"):
+                break
+
+            await root.inject_input(text, source="cli")
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        pass
+    finally:
+        if observer is not None:
+            await observer.stop()
+        runtime_task.cancel()
+        try:
+            await runtime_task
+        except (asyncio.CancelledError, Exception):
+            pass
+        await runtime.stop()
+
+
 def add_terrarium_subparser(subparsers: argparse._SubParsersAction) -> None:
     """Add terrarium subcommands to the CLI parser."""
     terrarium_parser = subparsers.add_parser(
@@ -232,6 +402,12 @@ def add_terrarium_subparser(subparsers: argparse._SubParsersAction) -> None:
         "--llm",
         default=None,
         help="Override LLM profile for all creatures (e.g., mimo-v2-pro, gemini)",
+    )
+    run_p.add_argument(
+        "--mode",
+        choices=["cli", "tui"],
+        default="tui",
+        help="Input/output mode",
     )
 
     # terrarium info <path>
@@ -313,19 +489,26 @@ def _run_terrarium_cli(args: argparse.Namespace) -> int:
             ],
         )
 
-    # When root agent is configured, launch terrarium TUI
+    # When root agent is configured, launch terrarium in selected mode
     if config.root:
         print()
 
-        async def _run_with_tui() -> None:
+        async def _run_with_mode() -> None:
             llm = getattr(args, "llm", None)
             runtime = TerrariumRuntime(config, llm_override=llm)
             if store:
                 runtime._pending_session_store = store
-            await run_terrarium_with_tui(runtime)
+            if args.mode == "cli":
+                await run_terrarium_with_cli(
+                    runtime,
+                    observe=args.observe,
+                    no_observe=args.no_observe,
+                )
+            else:
+                await run_terrarium_with_tui(runtime)
 
         try:
-            asyncio.run(_run_with_tui())
+            asyncio.run(_run_with_mode())
             return 0
         except KeyboardInterrupt:
             print("\nInterrupted")
@@ -404,9 +587,12 @@ async def _setup_observer(runtime, args, config):
     observer = ChannelObserver(runtime._session)
 
     def print_message(msg):
-        ts = msg.timestamp.strftime("%H:%M:%S")
-        content_preview = msg.content[:100].replace("\n", "\\n")
-        print(f"  [{ts}] [{msg.channel}] {msg.sender}: {content_preview}")
+        _print_channel_message(
+            channel=msg.channel,
+            sender=msg.sender,
+            content=msg.content,
+            ts=msg.timestamp.strftime("%H:%M:%S"),
+        )
 
     observer.on_message(print_message)
 
@@ -425,6 +611,74 @@ async def _setup_observer(runtime, args, config):
         print(f"  Observing: {', '.join(channels)}")
 
     return observer
+
+
+async def _read_cli_input(prompt: str = "You: ") -> str | None:
+    """Read one line from stdin without blocking the event loop."""
+    if sys.stdin.isatty():
+        try:
+            return await asyncio.to_thread(input, prompt)
+        except EOFError:
+            return None
+
+    line = await asyncio.to_thread(sys.stdin.readline)
+    if line == "":
+        return None
+    return line.rstrip("\r\n")
+
+
+def _group_resume_events(events: list[dict]) -> list[dict]:
+    """Group persisted events into condensed turns for CLI replay."""
+    if not events:
+        return []
+
+    turns: list[dict] = []
+    current: dict = {"user": "", "text": "", "tools": []}
+
+    for evt in events:
+        etype = evt.get("type", "")
+        if etype == "user_input":
+            if current["user"] or current["text"]:
+                turns.append(current)
+            current = {"user": evt.get("content", ""), "text": "", "tools": []}
+        elif etype == "trigger_fired":
+            if current["user"] or current["text"]:
+                turns.append(current)
+            channel = evt.get("channel", "")
+            sender = evt.get("sender", "")
+            current = {
+                "user": f"[trigger: {channel} from {sender}]",
+                "text": "",
+                "tools": [],
+            }
+        elif etype == "text":
+            current["text"] += evt.get("content", "")
+        elif etype == "tool_call":
+            name = evt.get("name", "tool")
+            if name not in current["tools"]:
+                current["tools"].append(name)
+
+    if current["user"] or current["text"]:
+        turns.append(current)
+
+    return turns
+
+
+def _format_ts(ts: float | None) -> str:
+    """Format a persisted epoch timestamp for channel replay."""
+    if ts is None:
+        return "--:--:--"
+
+    try:
+        return datetime.fromtimestamp(ts).strftime("%H:%M:%S")
+    except (TypeError, ValueError, OSError):
+        return "--:--:--"
+
+
+def _print_channel_message(channel: str, sender: str, content: str, ts: str) -> None:
+    """Print channel traffic in a stable CLI-friendly format."""
+    content_preview = str(content)[:100].replace("\n", "\\n")
+    print(f"  [{ts}] [{channel}] {sender}: {content_preview}")
 
 
 def _info_terrarium_cli(args: argparse.Namespace) -> int:
