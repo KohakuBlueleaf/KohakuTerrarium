@@ -152,13 +152,24 @@ Stackable events can be batched when occurring simultaneously.
 src/kohakuterrarium/
 ├── core/                    # Core abstractions and runtime
 │   ├── agent.py             # Agent class - orchestrates everything
+│   ├── agent_init.py        # Component initialization (AgentInitMixin)
+│   ├── agent_handlers.py    # Event handling, tool execution (AgentHandlersMixin)
 │   ├── controller.py        # Controller - LLM conversation loop + event queue
-│   ├── conversation.py      # Context management, compaction
+│   ├── conversation.py      # Context management
 │   ├── executor.py          # Background job runner
 │   ├── job.py               # Job status tracking
 │   ├── events.py            # TriggerEvent + related event types
-│   ├── config.py            # Config loading
-│   └── registry.py          # Module registration
+│   ├── config.py            # Config loading with env interpolation
+│   ├── registry.py          # Module registration
+│   ├── channel.py           # Channel primitives (SubAgentChannel, AgentChannel)
+│   ├── compact.py           # Non-blocking context compaction
+│   ├── constants.py         # Shared constants
+│   ├── environment.py       # Environment isolation for multi-agent
+│   ├── loader.py            # Custom module loading from paths
+│   ├── scratchpad.py        # Agent scratchpad state
+│   ├── session.py           # Session reference (keyed shared state)
+│   ├── termination.py       # Termination conditions
+│   └── trigger_manager.py   # Runtime trigger management
 │
 ├── bootstrap/               # Agent initialization factories
 │   ├── llm.py              # LLM provider creation
@@ -170,45 +181,71 @@ src/kohakuterrarium/
 ├── builtins/                # Built-in implementations
 │   ├── tool_catalog.py     # Global builtin tool lookup (leaf module, deferred loaders)
 │   ├── subagent_catalog.py # Global builtin sub-agent lookup (leaf module)
-│   ├── tools/              # 18 general + 8 terrarium tool classes
-│   ├── inputs/             # cli, whisper, none
+│   ├── tools/              # 21 general + 9 terrarium tool classes
+│   ├── inputs/             # cli, asr, whisper, none
 │   ├── outputs/            # stdout, tts
-│   └── subagents/          # Sub-agent configs
+│   ├── subagents/          # Sub-agent configs (10 built-in)
+│   ├── tui/                # Terminal UI (input, output, session, widgets)
+│   └── user_commands/      # Slash commands (clear, compact, exit, help, model, status)
+│
+├── builtin_skills/          # Markdown skill manifests for on-demand tool/subagent docs
 │
 ├── modules/                 # Plugin API for devs
 │   ├── input/               # Produces TriggerEvent(type="user_input")
 │   ├── trigger/             # Produces TriggerEvent(type=...)
 │   ├── tool/                # On complete → TriggerEvent(type="tool_complete")
 │   ├── output/              # State machine router + output modules
-│   └── subagent/            # Sub-agent lifecycle management
+│   ├── subagent/            # Sub-agent lifecycle management
+│   └── user_command/        # User slash command protocol
 │
 ├── session/                 # Session persistence (KohakuVault-backed)
 │   ├── store.py             # SessionStore - 9 tables in one .kohakutr file
 │   ├── output.py            # SessionOutput - captures events via OutputModule
-│   └── resume.py            # Resume agent/terrarium from .kohakutr file
+│   ├── resume.py            # Resume agent/terrarium from .kohakutr file
+│   ├── memory.py            # SessionMemory - FTS5 + vector search over events
+│   └── embedding.py         # Embedding providers (model2vec, sentence-transformer, API)
 │
-├── serving/                 # HTTP API serving layer
+├── serving/                 # Transport-agnostic serving layer
 │   ├── manager.py           # KohakuManager - agent/terrarium lifecycle
-│   └── agent_session.py     # AgentSession - streaming chat wrapper
+│   ├── agent_session.py     # AgentSession - streaming chat wrapper
+│   ├── events.py            # Event streaming helpers
+│   └── web.py               # Static web frontend serving
 │
 ├── terrarium/               # Multi-agent runtime
 │   ├── runtime.py           # TerrariumRuntime - lifecycle orchestration
 │   ├── factory.py           # Creature/root agent construction
-│   ├── persistence.py       # Session store attachment + resume helpers
-│   ├── tool_registration.py # Deferred terrarium tool loading
 │   ├── config.py            # Terrarium config loading + topology prompt
-│   └── hotplug.py           # Add/remove creatures and channels at runtime
+│   ├── api.py               # TerrariumAPI - programmatic terrarium control
+│   ├── cli.py               # CLI terrarium runner
+│   ├── creature.py          # CreatureHandle wrapper
+│   ├── hotplug.py           # Add/remove creatures and channels at runtime
+│   ├── observer.py          # ChannelObserver for non-destructive monitoring
+│   ├── output_log.py        # Capture and log creature output
+│   ├── persistence.py       # Session store attachment + resume helpers
+│   ├── tool_manager.py      # Terrarium-specific tool management
+│   └── tool_registration.py # Deferred terrarium tool loading
+│
+├── api/                     # FastAPI HTTP API (in-package)
+│   ├── app.py               # FastAPI factory + middleware
+│   ├── main.py              # CLI entry point (default port 8001)
+│   ├── deps.py              # Dependency injection
+│   ├── schemas.py           # Pydantic request/response models
+│   ├── events.py            # Shared event log + StreamOutput
+│   ├── routes/              # REST endpoints (agents, terrariums, creatures, channels, configs, sessions)
+│   └── ws/                  # WebSocket handlers (agents, channels, chat)
+│
+├── testing/                 # Test infrastructure
+│   ├── llm.py              # ScriptedLLM - deterministic mock
+│   ├── output.py           # OutputRecorder - capture for assertions
+│   ├── events.py           # EventRecorder - timing assertions
+│   └── agent.py            # TestAgentBuilder - test harness
 │
 ├── parsing/                 # Stream parsing (state machine)
-├── commands/                # Framework commands (##read##, ##info##)
-├── llm/                     # LLM abstraction (OpenAI, OpenRouter, Codex OAuth)
-├── prompt/                  # Prompt loading and templating
-└── utils/                   # Shared utilities
-
-apps/
-├── api/                     # FastAPI HTTP API (18 REST + 4 WebSocket)
-│   └── events.py           # Shared event log + StreamOutput (used by REST + WS)
-└── web/                     # Vue 3 frontend (Vite + Element Plus + Vue Flow)
+├── commands/                # Framework commands (##info##, ##read##)
+├── llm/                     # LLM abstraction (OpenAI, OpenRouter, Codex OAuth, profiles)
+├── prompt/                  # Prompt assembly, aggregation, plugins, skill loading
+├── packages.py              # Package manager for kt install / resolve
+└── utils/                   # Shared utilities (logging, async, file_guard)
 ```
 
 ## Prompt System Design (CRITICAL - MUST FOLLOW)
@@ -269,11 +306,15 @@ From specification:
 
 ## Current Focus
 
-Core framework complete. Current work areas:
+Core framework, session system, web dashboard, compaction, and memory are all implemented.
+
+**Implemented:**
 1. **Session persistence** - `.kohakutr` files via KohakuVault, full event recording, resume (`kt resume`)
-2. **Web dashboard** - Vue 3 frontend with real-time terrarium UI, topology graph, multi-agent chat
-3. **Context compaction** - Non-blocking compact with RAG memory (planned, see `plans/compact-design.md`)
-4. **Memory system** - KohakuVault-backed searchable memory with FTS5 + vector search (planned)
+2. **Web dashboard** - Vue 3 frontend (`src/kohakuterrarium-frontend/`) with real-time terrarium UI, multi-tab chat, tool accordion, session resume
+3. **Context compaction** - Non-blocking compact via `core/compact.py`, background summarization with configurable thresholds
+4. **Memory system** - FTS5 + vector search via `session/memory.py` and `session/embedding.py` (model2vec, sentence-transformer, API providers)
+5. **HTTP API** - FastAPI app in `api/` with REST + WebSocket, session management, config discovery
+6. **Package system** - `kt install` / `kt uninstall` for sharing creature/terrarium configs
 
 ## Session System
 
