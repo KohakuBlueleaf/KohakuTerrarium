@@ -65,10 +65,13 @@ class KohakuManager:
         self,
         config_path: str | None = None,
         config: AgentConfig | None = None,
+        llm_override: str | None = None,
     ) -> str:
         """Create and start a standalone agent. Returns agent_id."""
         if config_path:
-            session = await AgentSession.from_path(config_path)
+            session = await AgentSession.from_path(
+                config_path, llm_override=llm_override
+            )
         elif config:
             session = await AgentSession.from_config(config)
         else:
@@ -149,6 +152,13 @@ class KohakuManager:
         if not session:
             raise ValueError(f"Agent not found: {agent_id}")
         return session.agent.executor.cancel(job_id)
+
+    def agent_switch_model(self, agent_id: str, profile_name: str) -> str:
+        """Switch an agent's LLM model. Returns the new model name."""
+        session = self._agents.get(agent_id)
+        if not session:
+            raise ValueError(f"Agent not found: {agent_id}")
+        return session.agent.switch_model(profile_name)
 
     def agent_get_history(self, agent_id: str) -> list[dict]:
         """Get conversation history for an agent."""
@@ -473,6 +483,16 @@ class KohakuManager:
         """Wire a creature to a channel (listen or send)."""
         runtime = self._get_runtime(terrarium_id)
         await runtime.wire_channel(creature, channel, direction)
+
+    def creature_switch_model(
+        self, terrarium_id: str, name: str, profile_name: str
+    ) -> str:
+        """Switch a creature's LLM model. Returns the new model name."""
+        runtime = self._get_runtime(terrarium_id)
+        agent = runtime.get_creature_agent(name)
+        if agent is None:
+            raise ValueError(f"Creature not found: {name}")
+        return agent.switch_model(profile_name)
 
     async def creature_interrupt(self, terrarium_id: str, name: str) -> None:
         """Interrupt a creature's current turn."""

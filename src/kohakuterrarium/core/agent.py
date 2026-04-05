@@ -370,6 +370,31 @@ class Agent(AgentInitMixin, AgentHandlersMixin):
                 task.cancel()
         logger.info("Agent interrupted", agent_name=self.config.name)
 
+    def switch_model(self, profile_name: str) -> str:
+        """Switch the LLM provider to a different model profile.
+
+        Args:
+            profile_name: Name of the LLM profile/preset (e.g. "claude-opus-4.6")
+
+        Returns:
+            The model identifier string of the new provider.
+        """
+        from kohakuterrarium.bootstrap.llm import create_llm_from_profile_name
+
+        new_llm = create_llm_from_profile_name(profile_name)
+        self.llm = new_llm
+        self.controller.llm = new_llm
+        if self.compact_manager:
+            self.compact_manager._llm = new_llm
+        model_name = getattr(new_llm, "model", profile_name)
+        logger.info(
+            "Model switched",
+            agent_name=self.config.name,
+            profile=profile_name,
+            model=model_name,
+        )
+        return model_name
+
     async def stop(self) -> None:
         """Stop all agent modules."""
         logger.info("Stopping agent", agent_name=self.config.name)

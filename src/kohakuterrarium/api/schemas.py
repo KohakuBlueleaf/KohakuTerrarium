@@ -7,6 +7,7 @@ class TerrariumCreate(BaseModel):
     """Request body for creating a terrarium."""
 
     config_path: str
+    llm: str | None = None  # LLM profile override for all creatures
 
 
 class TerrariumStatus(BaseModel):
@@ -54,6 +55,13 @@ class AgentCreate(BaseModel):
     """Request body for creating a standalone agent."""
 
     config_path: str
+    llm: str | None = None  # LLM profile override
+
+
+class ModelSwitch(BaseModel):
+    """Request body for switching an agent/creature's LLM model."""
+
+    model: str  # Profile name (e.g. "claude-opus-4.6", "gemini-3.1-pro")
 
 
 class AgentChat(BaseModel):

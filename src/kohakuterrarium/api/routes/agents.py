@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from kohakuterrarium.api.deps import get_manager
-from kohakuterrarium.api.schemas import AgentChat, AgentCreate
+from kohakuterrarium.api.schemas import AgentChat, AgentCreate, ModelSwitch
 
 router = APIRouter()
 
@@ -12,7 +12,9 @@ router = APIRouter()
 async def create_agent(req: AgentCreate, manager=Depends(get_manager)):
     """Create and start a standalone agent."""
     try:
-        agent_id = await manager.agent_create(config_path=req.config_path)
+        agent_id = await manager.agent_create(
+            config_path=req.config_path, llm_override=req.llm
+        )
         return {"agent_id": agent_id, "status": "running"}
     except Exception as e:
         raise HTTPException(400, str(e))
@@ -81,6 +83,16 @@ def agent_history(agent_id: str, manager=Depends(get_manager)):
         return {"agent_id": agent_id, "events": history}
     except ValueError as e:
         raise HTTPException(404, str(e))
+
+
+@router.post("/{agent_id}/model")
+def switch_agent_model(agent_id: str, req: ModelSwitch, manager=Depends(get_manager)):
+    """Switch the agent's LLM model mid-session."""
+    try:
+        model = manager.agent_switch_model(agent_id, req.model)
+        return {"status": "switched", "model": model}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @router.post("/{agent_id}/chat")

@@ -111,6 +111,21 @@ def _create_from_profile(profile: LLMProfile) -> LLMProvider:
     return provider
 
 
+def create_llm_from_profile_name(name: str) -> LLMProvider:
+    """Create an LLM provider from a profile/preset name.
+
+    Used for live model switching. Resolves the name to a profile,
+    then creates the appropriate provider.
+
+    Raises:
+        ValueError: If profile not found or API key missing.
+    """
+    profile = resolve_controller_llm({}, llm_override=name)
+    if not profile:
+        raise ValueError(f"Model profile not found: {name}")
+    return _create_from_profile(profile)
+
+
 def _create_from_inline(config: AgentConfig) -> LLMProvider:
     """Create LLM provider from inline controller config (backward compat)."""
     if config.auth_mode == "codex-oauth":

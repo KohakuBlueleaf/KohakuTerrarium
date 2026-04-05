@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from kohakuterrarium.api.deps import get_manager
-from kohakuterrarium.api.schemas import CreatureAdd, WireChannel
+from kohakuterrarium.api.schemas import CreatureAdd, ModelSwitch, WireChannel
 from kohakuterrarium.terrarium.config import CreatureConfig
 
 router = APIRouter()
@@ -81,6 +81,18 @@ async def stop_creature_task(
         raise HTTPException(404, f"Task not found or already completed: {job_id}")
     except ValueError as e:
         raise HTTPException(404, str(e))
+
+
+@router.post("/{name}/model")
+def switch_creature_model(
+    terrarium_id: str, name: str, req: ModelSwitch, manager=Depends(get_manager)
+):
+    """Switch a creature's LLM model mid-session."""
+    try:
+        model = manager.creature_switch_model(terrarium_id, name, req.model)
+        return {"status": "switched", "creature": name, "model": model}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @router.post("/{name}/wire")

@@ -47,9 +47,11 @@ class AgentSession:
         return session
 
     @classmethod
-    async def from_path(cls, config_path: str) -> "AgentSession":
+    async def from_path(
+        cls, config_path: str, llm_override: str | None = None
+    ) -> "AgentSession":
         """Create session from agent config path."""
-        agent = Agent.from_path(config_path)
+        agent = Agent.from_path(config_path, llm_override=llm_override)
         session = cls(agent)
         await session.start()
         return session
