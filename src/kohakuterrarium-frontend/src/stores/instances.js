@@ -141,6 +141,10 @@ function _mapAgent(data) {
     type: "creature",
     config_name: data.name || "agent",
     model: data.model || "",
+    provider: data.provider || "",
+    session_id: data.session_id || "",
+    max_context: data.max_context || 0,
+    compact_threshold: data.compact_threshold || 0,
     status: data.running ? "running" : "stopped",
     has_root: false,
     creatures: [

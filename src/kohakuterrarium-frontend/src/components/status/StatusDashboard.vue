@@ -100,16 +100,16 @@
               {{ chat.sessionInfo.model || instance?.model || '--' }}
             </span>
           </div>
-          <div v-if="currentModelProfile" class="flex items-center gap-2">
+          <div class="flex items-center gap-2">
             <span class="text-warm-400 w-16">Provider</span>
             <span class="text-warm-600 dark:text-warm-400 text-[11px]">
-              {{ currentModelProfile.login_provider }}
+              {{ currentModelProfile?.login_provider || instance?.provider || '--' }}
             </span>
           </div>
           <div class="flex items-center gap-2">
             <span class="text-warm-400 w-16">Session</span>
             <span class="text-warm-600 dark:text-warm-400 font-mono text-[10px] truncate max-w-32">
-              {{ chat.sessionInfo.sessionId || '--' }}
+              {{ chat.sessionInfo.sessionId || instance?.session_id || '--' }}
             </span>
           </div>
         </div>
@@ -158,7 +158,7 @@
                 v-if="compactThresholdPct > 0"
                 class="absolute top-0 h-full w-0.5 bg-amber opacity-60"
                 :style="{ left: compactThresholdPct + '%' }"
-                :title="'Compact at ' + formatTokens(chat.sessionInfo.compactThreshold)"
+                :title="'Compact at ' + formatTokens(compactThreshold)"
               />
             </div>
           </div>
@@ -315,16 +315,22 @@ const totalUsage = computed(() => {
   return { prompt, completion, cached };
 });
 
-const maxContext = computed(() => chat.sessionInfo.maxContext || 0);
+const maxContext = computed(
+  () => chat.sessionInfo.maxContext || props.instance?.max_context || 0
+);
 
 const contextPct = computed(() => {
   if (!maxContext.value || !totalUsage.value.prompt) return 0;
   return Math.min(100, Math.round((totalUsage.value.prompt / maxContext.value) * 100));
 });
 
+const compactThreshold = computed(
+  () => chat.sessionInfo.compactThreshold || props.instance?.compact_threshold || 0
+);
+
 const compactThresholdPct = computed(() => {
-  if (!maxContext.value || !chat.sessionInfo.compactThreshold) return 0;
-  return Math.min(100, Math.round((chat.sessionInfo.compactThreshold / maxContext.value) * 100));
+  if (!maxContext.value || !compactThreshold.value) return 0;
+  return Math.min(100, Math.round((compactThreshold.value / maxContext.value) * 100));
 });
 
 const currentModelProfile = computed(() => {
