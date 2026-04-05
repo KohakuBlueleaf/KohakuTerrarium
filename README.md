@@ -577,14 +577,39 @@ docs/             # Concepts, architecture, guides, API reference
 
 ## Documentation Map
 
-If you want more detail after the README:
+Full documentation lives in [`docs/`](docs/README.md). Key starting points:
 
-- `docs/guide/getting-started.md` — installation, authentication, first agent
-- `docs/guide/configuration.md` — creature and terrarium YAML reference
-- `docs/concepts/overview.md` — core abstractions and why the split exists
-- `docs/concepts/agents.md` — agent framework internals and execution model
-- `docs/api-reference/http.md` — HTTP and WebSocket API reference
-- `docs/api-reference/cli.md` — CLI reference
+**Guides** — [docs/guide/](docs/guide/README.md)
+
+- [Getting Started](docs/guide/getting-started.md) — installation, authentication, first agent
+- [Configuration Reference](docs/guide/configuration.md) — creature and terrarium YAML reference
+- [Creatures](docs/guide/creatures.md) — pre-built creatures, inheritance, creating your own
+- [Terrariums](docs/guide/terrariums.md) — multi-agent setup, channel wiring, root agent
+- [Sessions](docs/guide/sessions.md) — persistence, resume, memory search
+- [Examples](docs/guide/examples.md) — walkthrough of included example agents and terrariums
+
+**Concepts** — [docs/concepts/](docs/concepts/README.md)
+
+- [Overview](docs/concepts/overview.md) — core abstractions and why the split exists
+- [Agents](docs/concepts/agents.md) — creature lifecycle, controller as orchestrator, sub-agents
+- [Terrariums](docs/concepts/terrariums.md) — pure wiring layer, root agent, horizontal composition
+- [Channels](docs/concepts/channels.md) — queue/broadcast types, channel triggers, callbacks
+- [Execution Model](docs/concepts/execution.md) — event sources, processing loop, tool modes
+- [Prompt System](docs/concepts/prompts.md) — system prompt aggregation, skill modes, topology injection
+- [Serving Layer](docs/concepts/serving.md) — KohakuManager, unified WebSocket, session recording
+- [Environment-Session](docs/concepts/environment.md) — isolation, shared state, session lifecycle
+- [Tool Formats](docs/concepts/tool-formats.md) — call syntax, parsing, format configuration
+
+**API Reference** — [docs/api-reference/](docs/api-reference/README.md)
+
+- [Python API](docs/api-reference/python.md) — Agent, SessionStore, TerrariumRuntime, all modules
+- [HTTP API](docs/api-reference/http.md) — REST + WebSocket + config discovery + sessions
+- [CLI Reference](docs/api-reference/cli.md) — `kt run`, `kt resume`, `kt terrarium run`, `kt login`
+
+**Contributing** — [docs/develop/](docs/develop/README.md)
+
+- [Testing](docs/develop/testing.md) — test infrastructure, unit/integration coverage
+- [Framework Internals](docs/develop/internals.md) — import analysis, internal decisions
 
 ## License
 
