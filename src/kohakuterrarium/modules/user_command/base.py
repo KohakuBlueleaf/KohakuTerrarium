@@ -21,11 +21,25 @@ class CommandLayer(Enum):
 
 @dataclass
 class UserCommandResult:
-    """Result of executing a user command."""
+    """Result of executing a user command.
 
-    output: str = ""  # Displayed to user
+    For CLI/TUI: ``output`` is printed as text.
+    For web frontend: ``data`` carries structured payload that the
+    frontend can render as a modal, selector, table, etc.
+
+    ``data`` convention::
+
+        {"type": "text"}                          — plain text (default)
+        {"type": "select", "options": [...],      — show picker
+         "endpoint": "/api/agents/{id}/model"}
+        {"type": "table", "columns": [...],       — render table
+         "rows": [...]}
+    """
+
+    output: str = ""  # Plain text (CLI/TUI display)
     consumed: bool = True  # If True, don't pass text to LLM
     error: str | None = None
+    data: dict[str, Any] | None = None  # Structured payload for rich UI
 
     @property
     def success(self) -> bool:

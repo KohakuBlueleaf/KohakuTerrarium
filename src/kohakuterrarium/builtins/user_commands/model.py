@@ -31,8 +31,10 @@ class ModelCommand(BaseUserCommand):
         if context.agent:
             current = getattr(context.agent.llm, "model", "")
 
-        lines = [f"Current model: {current}", ""]
         available = [e for e in entries if e.get("available")]
+
+        # Plain text for CLI/TUI
+        lines = [f"Current model: {current}", ""]
         if available:
             lines.append("Available models:")
             for e in available:
@@ -45,7 +47,27 @@ class ModelCommand(BaseUserCommand):
             lines.append("Run: kt login <provider>")
         lines.append("")
         lines.append("Switch: /model <name>")
-        return UserCommandResult(output="\n".join(lines))
+
+        # Structured data for web frontend (renders as selector/modal)
+        data = {
+            "type": "select",
+            "title": "Switch Model",
+            "current": current,
+            "options": [
+                {
+                    "value": e["name"],
+                    "label": e["name"],
+                    "model": e["model"],
+                    "provider": e.get("login_provider", ""),
+                    "context": f"{e.get('max_context', 0) // 1000}k",
+                    "selected": e["model"] == current,
+                }
+                for e in available
+            ],
+            "action": "model",  # Frontend sends /model <selected_value>
+        }
+
+        return UserCommandResult(output="\n".join(lines), data=data)
 
     def _switch_model(
         self, name: str, context: UserCommandContext
@@ -54,6 +76,9 @@ class ModelCommand(BaseUserCommand):
             return UserCommandResult(error="No agent context for model switching.")
         try:
             model = context.agent.switch_model(name)
-            return UserCommandResult(output=f"Switched to: {model}")
+            return UserCommandResult(
+                output=f"Switched to: {model}",
+                data={"type": "notify", "message": f"Model switched to {model}"},
+            )
         except ValueError as e:
             return UserCommandResult(error=str(e))

@@ -180,12 +180,15 @@ class KohakuManager:
             session=getattr(session.agent, "session", None),
         )
         result = await cmd.execute(args, context)
-        return {
+        resp: dict = {
             "command": command,
             "output": result.output,
             "error": result.error,
             "success": result.success,
         }
+        if result.data is not None:
+            resp["data"] = result.data
+        return resp
 
     def agent_get_history(self, agent_id: str) -> list[dict]:
         """Get conversation history for an agent."""
