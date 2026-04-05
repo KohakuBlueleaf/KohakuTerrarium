@@ -141,5 +141,6 @@ def run_desktop_app(port: int = 8001) -> None:
         f"http://127.0.0.1:{port}",
         width=1280,
         height=800,
+        zoomable=True,
     )
     webview.start()
