@@ -38,7 +38,7 @@
         >{{ elapsed }}</span
       >
       <span
-        v-if="tc.result || tc.tools_used?.length"
+        v-if="tc.result || tc.tools_used?.length || tc.children?.length || tc.status === 'running'"
         class="i-carbon-chevron-down text-warm-400 transition-transform text-[10px]"
         :class="{ 'rotate-180': expanded }"
       />
@@ -69,18 +69,20 @@
               :class="
                 child.status === 'error'
                   ? 'text-coral'
-                  : 'text-iolite dark:text-iolite-light'
+                  : child.status === 'running'
+                    ? 'text-amber'
+                    : 'text-sage dark:text-sage-light'
               "
             >
-              {{ child.status === "error" ? "\u2717" : "\u2713" }}
+              {{ child.status === "error" ? "\u2717" : child.status === "running" ? "\u25CF" : "\u2713" }}
             </span>
             <span class="text-iolite dark:text-iolite-light font-medium">{{
               child.name
             }}</span>
             <span
-              v-if="child.args?.info"
+              v-if="child.info || child.args?.info"
               class="text-warm-400 dark:text-warm-500 truncate"
-              >{{ child.args.info.slice(0, 60) }}</span
+              >{{ (child.info || child.args?.info || "").slice(0, 80) }}</span
             >
           </div>
         </div>
@@ -115,6 +117,16 @@
           (interrupted)
         </div>
         <div v-else class="px-3 py-2 text-xs text-warm-400">(running...)</div>
+        <!-- Sub-agent stats: turns, tokens, duration -->
+        <div
+          v-if="tc.turns || tc.total_tokens"
+          class="px-3 py-1 text-[10px] text-warm-400 font-mono border-t border-taaffeite/10 dark:border-taaffeite/15 bg-taaffeite/2 dark:bg-taaffeite/4 flex gap-3"
+        >
+          <span v-if="tc.turns">{{ tc.turns }} turns</span>
+          <span v-if="tc.total_tokens">{{ tc.total_tokens.toLocaleString() }} tokens</span>
+          <span v-if="tc.prompt_tokens">({{ tc.prompt_tokens.toLocaleString() }} in / {{ (tc.completion_tokens || 0).toLocaleString() }} out)</span>
+          <span v-if="tc.duration">{{ tc.duration.toFixed(1) }}s</span>
+        </div>
       </template>
       <template v-else>
         <!-- Tool raw output -->
@@ -136,9 +148,9 @@ const props = defineProps({
   expanded: { type: Boolean, default: false },
 });
 
-defineEmits(["toggle"]);
+const emit = defineEmits(["toggle"]);
 
-// Elapsed time for running tools
+// Elapsed timer for running tools
 const elapsedSec = ref(0);
 let _timer = null;
 
@@ -163,7 +175,22 @@ const elapsed = computed(() => {
   if (props.tc.status === "running" && elapsedSec.value > 0) {
     return `${elapsedSec.value}s`;
   }
+  if (props.tc.status !== "running" && props.tc.duration) {
+    return `${props.tc.duration.toFixed(1)}s`;
+  }
   return "";
+});
+
+// Auto-expand running sub-agents when they get children
+watchEffect(() => {
+  if (
+    props.tc.kind === "subagent" &&
+    props.tc.status === "running" &&
+    props.tc.children?.length > 0 &&
+    !props.expanded
+  ) {
+    emit("toggle");
+  }
 });
 
 const statusIcon = computed(() => {
@@ -173,10 +200,7 @@ const statusIcon = computed(() => {
     return { icon: "\u2717", class: "text-coral" };
   if (props.tc.status === "interrupted")
     return { icon: "\u25cb", class: "text-amber" };
-  // Done: type-specific color (tool = iolite, sub-agent = taaffeite)
-  if (props.tc.kind === "subagent")
-    return { icon: "\u2713", class: "text-taaffeite dark:text-taaffeite-light" };
-  return { icon: "\u2713", class: "text-iolite dark:text-iolite-light" };
+  return { icon: "\u2713", class: "text-sage" };
 });
 
 function formatArgs(args) {

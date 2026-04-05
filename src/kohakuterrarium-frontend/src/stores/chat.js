@@ -1,5 +1,4 @@
-import { ElMessage, ElMessageBox } from "element-plus";
-
+import { ElMessage } from "element-plus";
 import { terrariumAPI, agentAPI } from "@/utils/api";
 import { useMessagesStore } from "@/stores/messages";
 import { useInstancesStore } from "@/stores/instances";
@@ -155,9 +154,12 @@ function _replayEvents(messages, events) {
     } else if (t === "text") {
       appendText(evt.content || "");
     } else if (t === "processing_end" || t === "idle") {
-      // Do NOT clear curSubagent here. Sub-agent tools arrive AFTER
-      // processing_end because sub-agents run in the background.
-      // curSubagent is cleared only by subagent_result/subagent_error.
+      // Mark interrupted sub-agents (no subagent_result before processing_end)
+      if (curSubagent && curSubagent.status === "done" && !curSubagent.result) {
+        curSubagent.status = "interrupted";
+        curSubagent.result = "(interrupted)";
+      }
+      curSubagent = null;
       cur = null;
 
     // ── StreamOutput format (live WS): type="activity" wrapper ──
@@ -230,33 +232,9 @@ function _replayEvents(messages, events) {
       } else if (evt.activity === "tool_error") {
         updateSubagentTool(toolName, evt.detail || "", { error: true });
       }
-    } else if (t === "channel_message") {
-      result.push({
-        id: "ch_" + result.length,
-        role: "channel",
-        sender: evt.sender || "",
-        content: evt.content || "",
-        timestamp: "",
-      });
-    } else if (t === "compact_summary" || t === "compact_complete") {
-      cur = null;
-      result.push({
-        id: "compact_" + result.length,
-        role: "compact",
-        round: evt.compact_round || evt.round || 0,
-        summary: evt.summary || "",
-        messagesCompacted: evt.messages_compacted || 0,
-        timestamp: "",
-      });
-    } else if (t === "token_usage" || t === "processing_complete" || t === "compact_start") {
+    } else if (t === "token_usage" || t === "processing_complete") {
       // skip
     }
-  }
-
-  // Mark sub-agents that never got a result as interrupted
-  if (curSubagent && !curSubagent.result) {
-    curSubagent.status = "interrupted";
-    curSubagent.result = "(interrupted)";
   }
 
   // Clean up empty parts
@@ -294,26 +272,18 @@ export const useChatStore = defineStore("chat", {
     /** @type {string[]} */
     tabs: [],
     processing: false,
-    /** @type {Object<string, {prompt: number, completion: number, total: number, cached: number}>} Per-source token usage */
+    /** @type {Object<string, {prompt: number, completion: number, total: number}>} Per-source token usage */
     tokenUsage: {},
-    /** @type {Object<string, {name: string, type: string, startedAt: number}>} Running background jobs */
-    runningJobs: {},
-    /** @type {Object<string, number>} Unread message counts per tab */
-    unreadCounts: {},
-    /** @type {{sessionId: string, model: string, agentName: string, compactThreshold: number}} Session metadata */
-    sessionInfo: { sessionId: "", model: "", agentName: "", maxContext: 0, compactThreshold: 0 },
     /** @type {string | null} */
     _instanceId: null,
     /** @type {string | null} */
     _instanceType: null,
     /** @type {WebSocket | null} Single WS for the instance */
     _ws: null,
-    /** WebSocket reconnection state */
-    reconnecting: false,
-    reconnectAttempt: 0,
-    connectionLost: false,
-    /** @type {number | null} */
-    _reconnectTimer: null,
+    /** @type {{sessionId: string, model: string, agentName: string, maxContext: number, compactThreshold: number}} */
+    sessionInfo: { sessionId: "", model: "", agentName: "", maxContext: 0, compactThreshold: 0 },
+    /** @type {Object<string, {name: string, type: string, startedAt: number}>} */
+    runningJobs: {},
   }),
 
   getters: {
@@ -322,7 +292,6 @@ export const useChatStore = defineStore("chat", {
       return state.messagesByTab[state.activeTab] || [];
     },
     hasRunningJobs: (state) => Object.keys(state.runningJobs).length > 0,
-    isReconnecting: (state) => state.reconnecting,
   },
 
   actions: {
@@ -333,10 +302,6 @@ export const useChatStore = defineStore("chat", {
       this._instanceType = instance.type;
       this.tabs = [];
       this.messagesByTab = {};
-      this.sessionInfo = { sessionId: "", model: "", agentName: "", compactThreshold: 0 };
-      this.reconnecting = false;
-      this.reconnectAttempt = 0;
-      this.connectionLost = false;
 
       if (instance.type === "terrarium") {
         if (instance.has_root) {
@@ -351,18 +316,15 @@ export const useChatStore = defineStore("chat", {
         this._connectCreature(instance.id);
       }
 
-      // Restore saved tabs/active tab for this instance
-      this._restoreTabs();
-      if (!this.activeTab) this.activeTab = this.tabs[0] || null;
+      this.activeTab = this.tabs[0] || null;
     },
 
     openTab(tabKey) {
       this._addTab(tabKey);
       this.activeTab = tabKey;
-      this._saveTabs();
 
       // Load history for creature/root tabs
-      if (this._instanceType === "terrarium") {
+      if (!tabKey.startsWith("ch:") && this._instanceType === "terrarium") {
         this._loadHistory(tabKey);
       }
     },
@@ -376,11 +338,8 @@ export const useChatStore = defineStore("chat", {
 
     setActiveTab(tab) {
       this.activeTab = tab;
-      // Clear unread count for the tab we're switching to
-      if (tab) delete this.unreadCounts[tab];
-      this._saveTabs();
       // Load history if tab has no messages yet (tab switch catch-up)
-      if (tab && this._instanceType === "terrarium") {
+      if (tab && !tab.startsWith("ch:") && this._instanceType === "terrarium") {
         const msgs = this.messagesByTab[tab];
         if (msgs && msgs.length === 0) {
           this._loadHistory(tab);
@@ -388,37 +347,11 @@ export const useChatStore = defineStore("chat", {
       }
     },
 
-    async interrupt() {
-      if (!this._instanceId || !this.processing) return;
-      const target = this.activeTab;
-      if (!target || target.startsWith("ch:")) return;
-
-      try {
-        if (this._instanceType === "terrarium") {
-          await terrariumAPI.interruptCreature(this._instanceId, target);
-        } else {
-          await agentAPI.interrupt(this._instanceId);
-        }
-        this.processing = false;
-      } catch (err) {
-        console.error("Interrupt failed:", err);
-      }
-    },
-
     async send(text) {
-      if (!this.activeTab || !text.trim()) return;
-
-      const tab = this.activeTab;
-
-      // Slash command interception: if message starts with "/", handle as command
-      if (text.startsWith("/")) {
-        await this._handleSlashCommand(tab, text);
-        return;
-      }
-
-      if (!this._ws) return;
+      if (!this.activeTab || !text.trim() || !this._ws) return;
 
       // Push user message immediately
+      const tab = this.activeTab;
       this._addMsg(tab, {
         id: "u_" + Date.now(),
         role: "user",
@@ -451,134 +384,6 @@ export const useChatStore = defineStore("chat", {
       }
     },
 
-    /** Handle slash command input */
-    async _handleSlashCommand(tab, text) {
-      const trimmed = text.slice(1).trim();
-      const spaceIdx = trimmed.indexOf(" ");
-      const command = spaceIdx === -1 ? trimmed : trimmed.slice(0, spaceIdx);
-      const args = spaceIdx === -1 ? "" : trimmed.slice(spaceIdx + 1).trim();
-
-      if (!command) return;
-
-      // Show the command as a user message
-      this._addMsg(tab, {
-        id: "cmd_" + Date.now(),
-        role: "user",
-        content: text,
-        timestamp: new Date().toISOString(),
-      });
-
-      try {
-        let result;
-        if (this._instanceType === "terrarium" && !tab.startsWith("ch:")) {
-          result = await terrariumAPI.executeCreatureCommand(
-            this._instanceId, tab, command, args,
-          );
-        } else {
-          result = await agentAPI.executeCommand(this._instanceId, command, args);
-        }
-
-        // Handle structured data responses
-        if (result.data) {
-          await this._handleCommandData(tab, command, args, result.data);
-        }
-
-        // Show output as system message
-        if (result.output) {
-          this._addMsg(tab, {
-            id: "cmdout_" + Date.now(),
-            role: "system",
-            content: result.output,
-            timestamp: new Date().toISOString(),
-          });
-        }
-      } catch (err) {
-        const detail = err.response?.data?.detail || err.message || "Command failed";
-        this._addMsg(tab, {
-          id: "cmderr_" + Date.now(),
-          role: "system",
-          content: `Error: /${command} - ${detail}`,
-          isError: true,
-          timestamp: new Date().toISOString(),
-        });
-      }
-    },
-
-    /** Handle structured command response data */
-    async _handleCommandData(tab, command, originalArgs, data) {
-      if (data.type === "select") {
-        // Show selection dialog
-        try {
-          const options = (data.options || []).map((opt) =>
-            typeof opt === "string" ? { label: opt, value: opt } : opt,
-          );
-          const { value } = await ElMessageBox({
-            title: data.title || `Select option for /${command}`,
-            message: () => {
-              // Build HTML list of options
-              const items = options.map((o, i) =>
-                `<div style="padding: 6px 12px; cursor: pointer; border-radius: 4px; margin: 2px 0;"
-                      data-index="${i}">${o.label || o.value}</div>`,
-              ).join("");
-              return `<div>${data.message || ""}<div style="margin-top: 8px">${items}</div></div>`;
-            },
-            showInput: true,
-            inputPlaceholder: "Type selection...",
-            dangerouslyUseHTMLString: true,
-            confirmButtonText: "Select",
-            cancelButtonText: "Cancel",
-          });
-          if (value) {
-            // Re-send command with selected value
-            await this._handleSlashCommand(tab, `/${command} ${value}`);
-          }
-        } catch {
-          // User cancelled
-        }
-      } else if (data.type === "confirm") {
-        try {
-          await ElMessageBox.confirm(
-            data.message || `Confirm action for /${command}?`,
-            data.title || "Confirm",
-            {
-              confirmButtonText: "Yes",
-              cancelButtonText: "No",
-              type: "warning",
-            },
-          );
-          // User confirmed: re-send with action_args
-          const confirmArgs = data.action_args || originalArgs;
-          await this._handleSlashCommand(tab, `/${command} ${confirmArgs}`);
-        } catch {
-          // User declined
-        }
-      } else if (data.type === "notify") {
-        ElMessage({
-          message: data.message || "",
-          type: data.level || "info",
-          duration: data.duration || 3000,
-        });
-      } else if (data.type === "info_panel") {
-        this._addMsg(tab, {
-          id: "info_" + Date.now(),
-          role: "system",
-          content: data.content || data.message || "",
-          title: data.title || "",
-          timestamp: new Date().toISOString(),
-        });
-      } else if (data.type === "list") {
-        const items = (data.items || []).map((item) =>
-          typeof item === "string" ? item : `${item.label || item.name}: ${item.value || item.description || ""}`,
-        ).join("\n");
-        this._addMsg(tab, {
-          id: "list_" + Date.now(),
-          role: "system",
-          content: data.title ? `${data.title}\n${items}` : items,
-          timestamp: new Date().toISOString(),
-        });
-      }
-    },
-
     async _loadHistory(target) {
       try {
         const { messages, events } = await terrariumAPI.getHistory(
@@ -598,96 +403,32 @@ export const useChatStore = defineStore("chat", {
 
     /** Connect single WS for terrarium */
     _connectTerrarium(terrariumId) {
-      const url = wsUrl(`/ws/terrariums/${terrariumId}`);
-      this._connectWs(url);
+      const ws = new WebSocket(wsUrl(`/ws/terrariums/${terrariumId}`));
+      ws.onmessage = (event) => this._onMessage(JSON.parse(event.data));
+      ws.onclose = () => {
+        this.processing = false;
+      };
+      this._ws = ws;
 
       // Load history for initial tab
-      if (this.tabs[0]) {
+      if (this.tabs[0] && !this.tabs[0].startsWith("ch:")) {
         this._loadHistory(this.tabs[0]);
-      }
-      // Also preload channel histories
-      for (const tab of this.tabs) {
-        if (tab.startsWith("ch:")) {
-          this._loadHistory(tab);
-        }
       }
     },
 
     /** Connect single WS for standalone creature */
     _connectCreature(agentId) {
-      const url = wsUrl(`/ws/creatures/${agentId}`);
-      this._connectWs(url);
+      const ws = new WebSocket(wsUrl(`/ws/creatures/${agentId}`));
+      ws.onmessage = (event) => this._onMessage(JSON.parse(event.data));
+      ws.onclose = () => {
+        this.processing = false;
+      };
+      this._ws = ws;
 
       // Load history for the creature tab
       const tabKey = this.tabs[0];
       if (tabKey) {
         this._loadAgentHistory(agentId, tabKey);
-      }
-    },
-
-    /** Create WebSocket with reconnection logic */
-    _connectWs(url) {
-      if (this._ws) {
-        this._ws.close();
-        this._ws = null;
-      }
-
-      const ws = new WebSocket(url);
-      ws.onopen = () => {
-        // On successful connection (including reconnect)
-        if (this.reconnecting) {
-          this.reconnecting = false;
-          this.reconnectAttempt = 0;
-          this.connectionLost = false;
-          // Reload history to fill any gap during disconnection
-          this._reloadAllHistory();
-        }
-      };
-      ws.onmessage = (event) => this._onMessage(JSON.parse(event.data));
-      ws.onclose = () => {
-        this.processing = false;
-        this._scheduleReconnect(url);
-      };
-      ws.onerror = () => {
-        // onerror is always followed by onclose, so reconnect is handled there
-      };
-      this._ws = ws;
-    },
-
-    /** Schedule a reconnection attempt with exponential backoff */
-    _scheduleReconnect(url) {
-      // Don't reconnect if we've been cleaned up (user navigated away)
-      if (!this._instanceId) return;
-
-      const MAX_RETRIES = 10;
-      const MAX_DELAY = 30000;
-
-      if (this.reconnectAttempt >= MAX_RETRIES) {
-        this.reconnecting = false;
-        this.connectionLost = true;
-        return;
-      }
-
-      this.reconnecting = true;
-      const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempt), MAX_DELAY);
-      this.reconnectAttempt++;
-
-      this._reconnectTimer = setTimeout(() => {
-        this._reconnectTimer = null;
-        if (this._instanceId) {
-          this._connectWs(url);
-        }
-      }, delay);
-    },
-
-    /** Reload all tab histories after reconnection */
-    _reloadAllHistory() {
-      for (const tab of this.tabs) {
-        if (this._instanceType === "terrarium") {
-          this._loadHistory(tab);
-        } else {
-          this._loadAgentHistory(this._instanceId, tab);
-        }
       }
     },
 
@@ -708,23 +449,16 @@ export const useChatStore = defineStore("chat", {
     /** Restore token usage from event log (for page refresh) */
     _restoreTokenUsage(source, events) {
       for (const evt of events) {
-        // Handle both StreamOutput format (type=activity, activity_type=token_usage)
-        // and SessionStore format (type=token_usage directly)
-        const isTokenEvt =
-          (evt.type === "activity" && evt.activity_type === "token_usage") ||
-          evt.type === "token_usage";
-        if (isTokenEvt) {
+        if (evt.type === "activity" && evt.activity_type === "token_usage") {
           const prev = this.tokenUsage[source] || {
             prompt: 0,
             completion: 0,
             total: 0,
-            cached: 0,
           };
           this.tokenUsage[source] = {
-            prompt: prev.prompt + (evt.prompt_tokens || 0),
+            prompt: evt.prompt_tokens || prev.prompt,
             completion: prev.completion + (evt.completion_tokens || 0),
-            total: prev.total + (evt.total_tokens || 0),
-            cached: prev.cached + (evt.cached_tokens || 0),
+            total: evt.total_tokens || prev.total,
           };
         }
       }
@@ -762,11 +496,11 @@ export const useChatStore = defineStore("chat", {
       const at = data.activity_type;
       const name = data.name || "unknown";
 
-      // Forward to status store for dashboard tracking
+      // Forward ALL activities to status store for dashboard
       const statusStore = useStatusStore();
       statusStore.handleActivity(data);
 
-      // Session info: model, compact threshold, session ID, agent name
+      // Session info: model, context, session ID
       if (at === "session_info") {
         this.sessionInfo = {
           sessionId: data.session_id || "",
@@ -784,13 +518,11 @@ export const useChatStore = defineStore("chat", {
           prompt: 0,
           completion: 0,
           total: 0,
-          cached: 0,
         };
         this.tokenUsage[source] = {
-          prompt: prev.prompt + (data.prompt_tokens || 0),
+          prompt: data.prompt_tokens || prev.prompt,
           completion: prev.completion + (data.completion_tokens || 0),
-          total: prev.total + (data.total_tokens || 0),
-          cached: prev.cached + (data.cached_tokens || 0),
+          total: data.total_tokens || prev.total,
         };
         return;
       }
@@ -798,19 +530,6 @@ export const useChatStore = defineStore("chat", {
       // Ensure we have a tab for this source (non-usage events need it)
       if (!this.messagesByTab[source]) return;
       const msgs = this.messagesByTab[source];
-
-      // Compact complete: show summary accordion
-      if (at === "compact_complete") {
-        msgs.push({
-          id: "compact_" + Date.now(),
-          role: "compact",
-          round: data.round || 0,
-          summary: data.summary || "",
-          messagesCompacted: data.messages_compacted || 0,
-          timestamp: new Date().toISOString(),
-        });
-        return;
-      }
 
       // Trigger fired: show with expandable message content
       if (at === "trigger_fired") {
@@ -849,9 +568,13 @@ export const useChatStore = defineStore("chat", {
           tools_used: data.tools_used || [],
           startedAt: Date.now(),
         });
-        // Track background jobs
+        // Track as running job (for ChatPanel running tasks bar)
         if (data.background || at === "subagent_start") {
-          this.runningJobs[toolId] = { name, type: at === "subagent_start" ? "subagent" : "tool", startedAt: Date.now() };
+          this.runningJobs[toolId] = {
+            name,
+            type: at === "subagent_start" ? "subagent" : "tool",
+            startedAt: Date.now(),
+          };
         }
       } else if (at === "tool_done" || at === "subagent_done") {
         const last = msgs[msgs.length - 1];
@@ -866,6 +589,11 @@ export const useChatStore = defineStore("chat", {
             tc.status = "done";
             tc.result = data.result || data.detail || "";
             if (data.tools_used) tc.tools_used = data.tools_used;
+            if (data.turns) tc.turns = data.turns;
+            if (data.duration) tc.duration = data.duration;
+            if (data.total_tokens) tc.total_tokens = data.total_tokens;
+            if (data.prompt_tokens) tc.prompt_tokens = data.prompt_tokens;
+            if (data.completion_tokens) tc.completion_tokens = data.completion_tokens;
             delete this.runningJobs[tc.id];
           }
         }
@@ -885,7 +613,7 @@ export const useChatStore = defineStore("chat", {
           }
         }
       } else if (at?.startsWith("subagent_tool_")) {
-        // Sub-agent internal tool activity: attach to the running sub-agent part
+        // Sub-agent internal tool activity: build children with status
         const last = msgs[msgs.length - 1];
         if (last?.parts) {
           const saName = data.subagent || data.name;
@@ -897,14 +625,19 @@ export const useChatStore = defineStore("chat", {
             );
           if (sa) {
             if (!sa.children) sa.children = [];
+            if (!sa.tools_used) sa.tools_used = [];
             const toolName = data.tool || data.detail || "";
-            if (at === "subagent_tool_start" && toolName) {
+            const subAct = at.replace("subagent_", "");
+            if (subAct === "tool_start" && toolName) {
               sa.children.push({
                 name: toolName,
                 info: data.detail || "",
                 status: "running",
               });
-            } else if (at === "subagent_tool_done" && toolName) {
+              if (!sa.tools_used.includes(toolName)) {
+                sa.tools_used.push(toolName);
+              }
+            } else if (subAct === "tool_done" && toolName) {
               const child = [...sa.children].reverse().find(
                 (c) => c.name === toolName && c.status === "running",
               );
@@ -912,7 +645,7 @@ export const useChatStore = defineStore("chat", {
                 child.status = "done";
                 child.info = data.detail || child.info;
               }
-            } else if (at === "subagent_tool_error" && toolName) {
+            } else if (subAct === "tool_error" && toolName) {
               const child = [...sa.children].reverse().find(
                 (c) => c.name === toolName && c.status === "running",
               );
@@ -920,11 +653,6 @@ export const useChatStore = defineStore("chat", {
                 child.status = "error";
                 child.info = data.detail || child.info;
               }
-            }
-            // Also maintain tools_used list for the summary view
-            if (!sa.tools_used) sa.tools_used = [];
-            if (toolName && !sa.tools_used.includes(toolName)) {
-              sa.tools_used.push(toolName);
             }
           }
         }
@@ -947,10 +675,6 @@ export const useChatStore = defineStore("chat", {
           content: data.content,
           timestamp: data.timestamp,
         });
-        // Track unread if not on this tab
-        if (this.activeTab !== tabKey) {
-          this.unreadCounts[tabKey] = (this.unreadCounts[tabKey] || 0) + 1;
-        }
       }
 
       // Update shared messages store (for inspector)
@@ -1024,47 +748,19 @@ export const useChatStore = defineStore("chat", {
     },
 
     _cleanup() {
-      if (this._reconnectTimer !== null) {
-        clearTimeout(this._reconnectTimer);
-        this._reconnectTimer = null;
-      }
       if (this._ws) {
-        // Prevent onclose from triggering reconnect during intentional cleanup
-        this._ws.onclose = null;
-        this._ws.onerror = null;
+        this._ws.onclose = null; // prevent spurious reconnect
         this._ws.close();
         this._ws = null;
       }
-      this.reconnecting = false;
-      this.reconnectAttempt = 0;
-      this.connectionLost = false;
-    },
-
-    _saveTabs() {
-      if (!this._instanceId) return;
-      const key = `chat-tabs-${this._instanceId}`;
-      localStorage.setItem(key, JSON.stringify({
-        tabs: this.tabs,
-        activeTab: this.activeTab,
-      }));
-    },
-
-    _restoreTabs() {
-      if (!this._instanceId) return;
-      const key = `chat-tabs-${this._instanceId}`;
-      try {
-        const saved = JSON.parse(localStorage.getItem(key) || "null");
-        if (saved?.tabs?.length) {
-          for (const tab of saved.tabs) {
-            this._addTab(tab);
-          }
-          if (saved.activeTab && this.tabs.includes(saved.activeTab)) {
-            this.activeTab = saved.activeTab;
-          }
-        }
-      } catch {
-        // ignore corrupt data
-      }
+      this._instanceId = null;
+      this._instanceType = null;
+      this.processing = false;
+      this.runningJobs = {};
+      this.sessionInfo = { sessionId: "", model: "", agentName: "", maxContext: 0, compactThreshold: 0 };
+      // Reset status store too
+      const statusStore = useStatusStore();
+      statusStore.reset();
     },
   },
 });
