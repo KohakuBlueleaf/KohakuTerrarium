@@ -1,17 +1,9 @@
 <template>
-  <div
-    v-if="!instance"
-    class="h-full flex items-center justify-center text-secondary"
-  >
-    Loading instance...
-  </div>
-  <div v-else class="h-full flex flex-col overflow-hidden">
-    <!-- Instance header bar -->
-    <div
-      class="flex items-center gap-3 px-4 py-2 border-b border-b-warm-200 dark:border-b-warm-700 bg-white dark:bg-warm-900 shrink-0"
-    >
+  <div v-if="instance" class="flex flex-col h-full bg-warm-50 dark:bg-warm-900">
+    <!-- Header -->
+    <div class="flex items-center gap-3 px-4 py-2 border-b border-warm-200 dark:border-warm-700 bg-white dark:bg-warm-800">
       <StatusDot :status="instance.status" />
-      <span class="font-semibold text-warm-800 dark:text-warm-200 text-sm">{{
+      <span class="font-medium text-warm-700 dark:text-warm-300">{{
         instance.config_name
       }}</span>
       <span
@@ -25,7 +17,7 @@
       <el-tooltip content="Stop instance" placement="bottom">
         <button
           class="nav-item !w-7 !h-7 text-coral hover:!text-coral-shadow"
-          @click="handleStop"
+          @click="showStopConfirm = true"
         >
           <div class="i-carbon-stop-filled text-sm" />
         </button>
@@ -50,6 +42,28 @@
         </template>
       </SplitPane>
     </div>
+
+    <!-- Stop confirmation dialog -->
+    <el-dialog
+      v-model="showStopConfirm"
+      title="Stop Instance"
+      width="400px"
+      :close-on-click-modal="true"
+    >
+      <p class="text-warm-600 dark:text-warm-300">
+        Stop <strong>{{ instance.config_name }}</strong>?
+        This will terminate the {{ instance.type }} and all its processes.
+      </p>
+      <template #footer>
+        <el-button size="small" @click="showStopConfirm = false">Cancel</el-button>
+        <el-button
+          size="small"
+          type="danger"
+          :loading="stopping"
+          @click="confirmStop"
+        >Stop</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -60,7 +74,6 @@ import ChatPanel from "@/components/chat/ChatPanel.vue";
 import StatusDashboard from "@/components/status/StatusDashboard.vue";
 import { useInstancesStore } from "@/stores/instances";
 import { useChatStore } from "@/stores/chat";
-import { ElMessageBox } from "element-plus";
 
 const route = useRoute();
 const router = useRouter();
@@ -68,6 +81,8 @@ const instances = useInstancesStore();
 const chat = useChatStore();
 
 const instance = computed(() => instances.current);
+const showStopConfirm = ref(false);
+const stopping = ref(false);
 
 onMounted(() => {
   loadInstance();
@@ -88,21 +103,16 @@ function handleOpenTab(tabKey) {
   chat.openTab(tabKey);
 }
 
-async function handleStop() {
+async function confirmStop() {
+  stopping.value = true;
   try {
-    await ElMessageBox.confirm(
-      `Stop instance "${instance.value?.config_name}"?`,
-      "Confirm",
-      {
-        confirmButtonText: "Stop",
-        cancelButtonText: "Cancel",
-        type: "warning",
-      },
-    );
     await instances.stop(route.params.id);
+    showStopConfirm.value = false;
     router.push("/");
-  } catch {
-    // cancelled
+  } catch (err) {
+    console.error("Stop failed:", err);
+  } finally {
+    stopping.value = false;
   }
 }
 </script>

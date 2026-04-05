@@ -4,8 +4,9 @@ import { createRouter, createWebHistory } from "vue-router";
 import { routes } from "vue-router/auto-routes";
 import App from "./App.vue";
 
-import "@vue-flow/core/dist/style.css";
-import "@vue-flow/core/dist/theme-default.css";
+import "element-plus/es/components/message/style/css";
+import "element-plus/es/components/message-box/style/css";
+import "element-plus/es/components/notification/style/css";
 import "uno.css";
 import "./style.css";
 

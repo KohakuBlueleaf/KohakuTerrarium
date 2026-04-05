@@ -78,11 +78,33 @@
         </div>
       </div>
     </div>
+
+    <!-- Stop confirmation dialog -->
+    <el-dialog
+      v-model="showStopConfirm"
+      title="Stop Instance"
+      width="400px"
+      :close-on-click-modal="true"
+    >
+      <p class="text-warm-600 dark:text-warm-300">
+        Stop <strong>{{ stopTarget?.config_name }}</strong>?
+        This will terminate the {{ stopTarget?.type }} and all its processes.
+      </p>
+      <template #footer>
+        <el-button size="small" @click="showStopConfirm = false">Cancel</el-button>
+        <el-button
+          size="small"
+          type="danger"
+          :loading="stopping"
+          @click="confirmStop"
+        >Stop</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage } from "element-plus";
 import StatusDot from "@/components/common/StatusDot.vue";
 import GemBadge from "@/components/common/GemBadge.vue";
 import { useInstancesStore } from "@/stores/instances";
@@ -95,6 +117,10 @@ instances.startPolling();
 onUnmounted(() => {
   instances.stopPolling();
 });
+
+const showStopConfirm = ref(false);
+const stopTarget = ref(null);
+const stopping = ref(false);
 
 const stats = computed(() => [
   {
@@ -119,27 +145,22 @@ const stats = computed(() => [
   },
 ]);
 
-async function handleStop(inst) {
-  try {
-    await ElMessageBox.confirm(
-      `Stop "${inst.config_name}"? This will terminate the ${inst.type} and all its processes.`,
-      "Stop Instance",
-      {
-        confirmButtonText: "Stop",
-        cancelButtonText: "Cancel",
-        type: "warning",
-      },
-    );
-  } catch {
-    // User cancelled
-    return;
-  }
+function handleStop(inst) {
+  stopTarget.value = inst;
+  showStopConfirm.value = true;
+}
 
+async function confirmStop() {
+  if (!stopTarget.value) return;
+  stopping.value = true;
   try {
-    await instances.stop(inst.id);
-    ElMessage({ message: `Stopped ${inst.config_name}`, type: "success" });
+    await instances.stop(stopTarget.value.id);
+    ElMessage({ message: `Stopped ${stopTarget.value.config_name}`, type: "success" });
+    showStopConfirm.value = false;
   } catch (err) {
     ElMessage({ message: `Failed to stop: ${err.message || "Unknown error"}`, type: "error" });
+  } finally {
+    stopping.value = false;
   }
 }
 </script>
