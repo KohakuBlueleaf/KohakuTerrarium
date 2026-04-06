@@ -139,19 +139,19 @@ def _scan_terrarium_configs() -> list[dict]:
 
 
 @router.get("/creatures")
-def list_creature_configs():
+async def list_creature_configs():
     """List available creature configs from configured directories."""
     return _scan_creature_configs()
 
 
 @router.get("/terrariums")
-def list_terrarium_configs():
+async def list_terrarium_configs():
     """List available terrarium configs from configured directories."""
     return _scan_terrarium_configs()
 
 
 @router.get("/server-info")
-def server_info():
+async def server_info():
     """Return server environment info (cwd, platform, etc.)."""
     return {
         "cwd": os.getcwd(),
@@ -160,13 +160,13 @@ def server_info():
 
 
 @router.get("/models")
-def list_models():
+async def list_models():
     """List available LLM models/profiles with availability status."""
     return list_all_models()
 
 
 @router.get("/commands")
-def list_commands():
+async def list_commands():
     """List available user slash commands."""
     result = []
     for name in list_builtin_user_commands():

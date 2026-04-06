@@ -10,7 +10,7 @@ router = APIRouter()
 
 
 @router.get("")
-def list_creatures(terrarium_id: str, manager=Depends(get_manager)):
+async def list_creatures(terrarium_id: str, manager=Depends(get_manager)):
     """List all creatures in a terrarium."""
     try:
         status = manager.terrarium_status(terrarium_id)
@@ -62,7 +62,7 @@ async def interrupt_creature(
 
 
 @router.get("/{name}/jobs")
-def creature_jobs(terrarium_id: str, name: str, manager=Depends(get_manager)):
+async def creature_jobs(terrarium_id: str, name: str, manager=Depends(get_manager)):
     """List running background jobs for a creature."""
     try:
         return manager.creature_get_jobs(terrarium_id, name)

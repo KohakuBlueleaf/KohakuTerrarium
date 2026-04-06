@@ -50,7 +50,7 @@ class DefaultModelRequest(BaseModel):
 
 
 @router.get("/keys")
-def get_keys():
+async def get_keys():
     """List stored API keys (masked) + availability status."""
     masked = list_api_keys()
     # Add provider list with status
@@ -80,7 +80,7 @@ def get_keys():
 
 
 @router.post("/keys")
-def set_key(req: ApiKeyRequest):
+async def set_key(req: ApiKeyRequest):
     """Save an API key for a provider."""
     if not req.provider or not req.key:
         raise HTTPException(400, "Provider and key are required")
@@ -89,7 +89,7 @@ def set_key(req: ApiKeyRequest):
 
 
 @router.delete("/keys/{provider}")
-def remove_key(provider: str):
+async def remove_key(provider: str):
     """Remove a stored API key."""
     save_api_key(provider, "")
     return {"status": "removed", "provider": provider}
@@ -99,7 +99,7 @@ def remove_key(provider: str):
 
 
 @router.get("/profiles")
-def get_profiles():
+async def get_profiles():
     """List user-defined custom model profiles."""
     profiles = load_profiles()
     return {
@@ -122,7 +122,7 @@ def get_profiles():
 
 
 @router.post("/profiles")
-def create_profile(req: ProfileRequest):
+async def create_profile(req: ProfileRequest):
     """Create or update a custom model profile."""
     if not req.name or not req.model:
         raise HTTPException(400, "Name and model are required")
@@ -143,7 +143,7 @@ def create_profile(req: ProfileRequest):
 
 
 @router.delete("/profiles/{name}")
-def remove_profile(name: str):
+async def remove_profile(name: str):
     """Delete a custom model profile."""
     if not delete_profile(name):
         raise HTTPException(404, f"Profile not found: {name}")
@@ -154,13 +154,13 @@ def remove_profile(name: str):
 
 
 @router.get("/default-model")
-def get_default():
+async def get_default():
     """Get the current default model name."""
     return {"default_model": get_default_model()}
 
 
 @router.post("/default-model")
-def set_default(req: DefaultModelRequest):
+async def set_default(req: DefaultModelRequest):
     """Set the default model."""
     set_default_model(req.name)
     return {"status": "set", "default_model": req.name}
@@ -170,6 +170,6 @@ def set_default(req: DefaultModelRequest):
 
 
 @router.get("/models")
-def get_all_models():
+async def get_all_models():
     """List all available models (presets + user profiles) with status."""
     return list_all()

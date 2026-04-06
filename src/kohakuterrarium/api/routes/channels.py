@@ -9,7 +9,7 @@ router = APIRouter()
 
 
 @router.get("")
-def list_channels(terrarium_id: str, manager=Depends(get_manager)):
+async def list_channels(terrarium_id: str, manager=Depends(get_manager)):
     """List all channels in a terrarium."""
     try:
         return manager.terrarium_channel_list(terrarium_id)

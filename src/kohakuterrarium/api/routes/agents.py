@@ -26,13 +26,13 @@ async def create_agent(req: AgentCreate, manager=Depends(get_manager)):
 
 
 @router.get("")
-def list_agents(manager=Depends(get_manager)):
+async def list_agents(manager=Depends(get_manager)):
     """List all running agents."""
     return manager.agent_list()
 
 
 @router.get("/{agent_id}")
-def get_agent(agent_id: str, manager=Depends(get_manager)):
+async def get_agent(agent_id: str, manager=Depends(get_manager)):
     """Get status of a specific agent."""
     try:
         return manager.agent_status(agent_id)
@@ -51,7 +51,7 @@ async def stop_agent(agent_id: str, manager=Depends(get_manager)):
 
 
 @router.post("/{agent_id}/interrupt")
-def interrupt_agent(agent_id: str, manager=Depends(get_manager)):
+async def interrupt_agent(agent_id: str, manager=Depends(get_manager)):
     """Interrupt the agent's current processing. Agent stays alive."""
     try:
         manager.agent_interrupt(agent_id)
@@ -61,7 +61,7 @@ def interrupt_agent(agent_id: str, manager=Depends(get_manager)):
 
 
 @router.get("/{agent_id}/jobs")
-def agent_jobs(agent_id: str, manager=Depends(get_manager)):
+async def agent_jobs(agent_id: str, manager=Depends(get_manager)):
     """List running background jobs for an agent."""
     try:
         return manager.agent_get_jobs(agent_id)
@@ -81,7 +81,7 @@ async def stop_agent_task(agent_id: str, job_id: str, manager=Depends(get_manage
 
 
 @router.get("/{agent_id}/history")
-def agent_history(agent_id: str, manager=Depends(get_manager)):
+async def agent_history(agent_id: str, manager=Depends(get_manager)):
     """Get conversation history + event log for a standalone agent."""
     try:
         history = manager.agent_get_history(agent_id)

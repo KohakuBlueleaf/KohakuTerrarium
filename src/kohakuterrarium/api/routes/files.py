@@ -171,7 +171,7 @@ def _detect_language(path: Path) -> str:
 
 
 @router.get("/tree")
-def get_file_tree(root: str, depth: int = 3):
+async def get_file_tree(root: str, depth: int = 3):
     """Return a nested file tree starting from the given root directory."""
     root_path = _validate_path(root)
     if not root_path.is_dir():
@@ -184,7 +184,7 @@ def get_file_tree(root: str, depth: int = 3):
 
 
 @router.get("/read")
-def read_file(path: str):
+async def read_file(path: str):
     """Read a file and return its content with metadata."""
     file_path = _validate_path(path)
     if not file_path.exists():
@@ -213,7 +213,7 @@ def read_file(path: str):
 
 
 @router.post("/write")
-def write_file(req: FileWrite):
+async def write_file(req: FileWrite):
     """Write content to a file, creating parent directories if needed."""
     file_path = _validate_path(req.path)
 
@@ -230,7 +230,7 @@ def write_file(req: FileWrite):
 
 
 @router.post("/rename")
-def rename_file(req: FileRename):
+async def rename_file(req: FileRename):
     """Rename or move a file/directory."""
     old = _validate_path(req.old_path)
     new = _validate_path(req.new_path)
@@ -252,7 +252,7 @@ def rename_file(req: FileRename):
 
 
 @router.post("/delete")
-def delete_file(req: FileDelete):
+async def delete_file(req: FileDelete):
     """Delete a file or empty directory."""
     target = _validate_path(req.path)
 
@@ -273,7 +273,7 @@ def delete_file(req: FileDelete):
 
 
 @router.post("/mkdir")
-def make_directory(req: FileMkdir):
+async def make_directory(req: FileMkdir):
     """Create a directory, including parent directories."""
     dir_path = _validate_path(req.path)
 

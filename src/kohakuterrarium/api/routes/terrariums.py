@@ -20,13 +20,13 @@ async def create_terrarium(req: TerrariumCreate, manager=Depends(get_manager)):
 
 
 @router.get("")
-def list_terrariums(manager=Depends(get_manager)):
+async def list_terrariums(manager=Depends(get_manager)):
     """List all running terrariums."""
     return manager.terrarium_list()
 
 
 @router.get("/{terrarium_id}")
-def get_terrarium(terrarium_id: str, manager=Depends(get_manager)):
+async def get_terrarium(terrarium_id: str, manager=Depends(get_manager)):
     """Get status of a specific terrarium."""
     try:
         return manager.terrarium_status(terrarium_id)
@@ -57,7 +57,7 @@ async def add_channel(terrarium_id: str, req: ChannelAdd, manager=Depends(get_ma
 
 
 @router.get("/{terrarium_id}/history/{target}")
-def terrarium_history(terrarium_id: str, target: str, manager=Depends(get_manager)):
+async def terrarium_history(terrarium_id: str, target: str, manager=Depends(get_manager)):
     """Get full history for a creature or root agent.
 
     target: "root" for root agent, or creature name.

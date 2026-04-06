@@ -18,7 +18,7 @@ _SESSION_DIR = Path.home() / ".kohakuterrarium" / "sessions"
 
 
 @router.get("")
-def list_sessions(limit: int = 20):
+async def list_sessions(limit: int = 20):
     """List saved sessions, most recent first."""
     if not _SESSION_DIR.exists():
         return []
@@ -54,7 +54,7 @@ def list_sessions(limit: int = 20):
 
 
 @router.delete("/{session_name}")
-def delete_session(session_name: str):
+async def delete_session(session_name: str):
     """Delete a saved session file."""
     path = None
     for ext in (".kohakutr", ".kt"):

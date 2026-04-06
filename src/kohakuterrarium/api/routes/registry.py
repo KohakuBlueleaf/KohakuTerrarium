@@ -167,13 +167,13 @@ def _scan_all_configs() -> list[dict]:
 
 
 @router.get("")
-def list_local():
+async def list_local():
     """List all locally available creature and terrarium configs with details."""
     return _scan_all_configs()
 
 
 @router.get("/remote")
-def list_remote():
+async def list_remote():
     """List known remote repos from the bundled registry.json."""
     if not _REGISTRY_JSON.exists():
         return {"repos": []}
@@ -186,7 +186,7 @@ def list_remote():
 
 
 @router.post("/install")
-def install(req: InstallRequest):
+async def install(req: InstallRequest):
     """Install a package from a git URL."""
     try:
         name = install_package(source=req.url, name_override=req.name)
@@ -197,7 +197,7 @@ def install(req: InstallRequest):
 
 
 @router.post("/uninstall")
-def uninstall(req: UninstallRequest):
+async def uninstall(req: UninstallRequest):
     """Uninstall a package by name."""
     removed = uninstall_package(req.name)
     if not removed:
