@@ -84,7 +84,7 @@ async def stop_creature_task(
 
 
 @router.post("/{name}/model")
-def switch_creature_model(
+async def switch_creature_model(
     terrarium_id: str, name: str, req: ModelSwitch, manager=Depends(get_manager)
 ):
     """Switch a creature's LLM model mid-session."""
