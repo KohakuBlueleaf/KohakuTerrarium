@@ -47,10 +47,24 @@
         </div>
       </div>
 
-      <!-- Session list -->
-      <div v-else class="flex flex-col gap-2">
-        <div
-          v-for="session in sortedSessions"
+      <!-- Search + Session list -->
+      <template v-else>
+        <div class="mb-4">
+          <input
+            v-model="searchQuery"
+            type="text"
+            class="input-field w-full"
+            placeholder="Search sessions by name, config, agents, preview..."
+          />
+        </div>
+
+        <div v-if="filteredSessions.length === 0" class="card p-8 text-center text-secondary">
+          No sessions match "{{ searchQuery }}"
+        </div>
+
+        <div v-else class="flex flex-col gap-2">
+          <div
+            v-for="session in filteredSessions"
           :key="session.name"
           class="card-hover p-4 flex items-center gap-4"
         >
@@ -119,7 +133,8 @@
             </button>
           </div>
         </div>
-      </div>
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -136,12 +151,27 @@ const sessions = ref([]);
 const loading = ref(false);
 const error = ref(null);
 const resuming = ref(null);
+const searchQuery = ref("");
 
-const sortedSessions = computed(() => {
-  return [...sessions.value].sort((a, b) => {
+const filteredSessions = computed(() => {
+  const sorted = [...sessions.value].sort((a, b) => {
     const dateA = a.last_active ? new Date(a.last_active).getTime() : 0;
     const dateB = b.last_active ? new Date(b.last_active).getTime() : 0;
     return dateB - dateA;
+  });
+  const q = searchQuery.value.toLowerCase().trim();
+  if (!q) return sorted;
+  return sorted.filter((s) => {
+    const haystack = [
+      s.name,
+      s.config_path,
+      s.config_type,
+      s.terrarium_name,
+      s.preview,
+      s.pwd,
+      ...(s.agents || []),
+    ].join(" ").toLowerCase();
+    return haystack.includes(q);
   });
 });
 
