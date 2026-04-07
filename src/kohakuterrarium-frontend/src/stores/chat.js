@@ -541,11 +541,13 @@ export const useChatStore = defineStore("chat", {
       if (!this.activeTab || !text.trim() || !this._ws) return;
 
       const tab = this.activeTab;
+      const isQueued = this.processing;
       this._addMsg(tab, {
         id: "u_" + Date.now(),
         role: "user",
         content: text,
         timestamp: new Date().toISOString(),
+        queued: isQueued || undefined,
       });
 
       if (tab.startsWith("ch:")) {
@@ -664,9 +666,14 @@ export const useChatStore = defineStore("chat", {
       const source = data.source || "";
 
       if (data.type === "text") {
+        // If we get text chunks but processing is false (e.g. reconnect mid-stream),
+        // set processing to true so the UI shows "KohakUwUing"
+        if (!this.processing) this.processing = true;
         this._appendStreamChunk(source, data.content);
       } else if (data.type === "processing_start") {
         this.processing = true;
+        // Promote queued user messages (agent is now processing them)
+        this._promoteQueuedMessages(source);
       } else if (data.type === "processing_end") {
         this._finishStream(source);
       } else if (data.type === "idle") {
@@ -765,6 +772,8 @@ export const useChatStore = defineStore("chat", {
       }
 
       if (at === "tool_start" || at === "subagent_start") {
+        // Tool/subagent activity means the agent is processing
+        if (!this.processing) this.processing = true;
         const last = this._ensureAssistantMsg(msgs);
         if (last.parts.length > 0) {
           const tail = last.parts[last.parts.length - 1];
@@ -951,6 +960,17 @@ export const useChatStore = defineStore("chat", {
       if (instStore.current) {
         const ch = instStore.current.channels.find((c) => c.name === data.channel);
         if (ch) ch.message_count = (ch.message_count || 0) + 1;
+      }
+    },
+
+    /** Promote queued user messages to normal (agent picked them up). */
+    _promoteQueuedMessages(source) {
+      const msgs = this.messagesByTab[source];
+      if (!msgs) return;
+      for (const msg of msgs) {
+        if (msg.role === "user" && msg.queued) {
+          delete msg.queued;
+        }
       }
     },
 
