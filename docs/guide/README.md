@@ -7,4 +7,6 @@ Practical how-to guides for building agents and terrariums.
 - [Creatures](creatures.md) — pre-built creatures, inheritance, creating your own
 - [Terrariums](terrariums.md) — multi-agent setup, channel wiring, root agent binding
 - [Sessions](sessions.md) — persistence, resume, `.kohakutr` files, memory search
+- [Custom Modules](custom-modules.md) — build custom tools, inputs, outputs, triggers, sub-agents
+- [Plugins](plugins.md) — intercept agent flows with prompt plugins and lifecycle hooks
 - [Examples](examples.md) — walkthrough of included example agents and terrariums
