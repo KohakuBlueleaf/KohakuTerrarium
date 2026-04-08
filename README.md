@@ -6,7 +6,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/license-KohakuTerrarium--1.0-green" alt="License">
-  <img src="https://img.shields.io/badge/version-1.0.0b1-orange" alt="Version">
+  <img src="https://img.shields.io/badge/version-1.0.0b4-orange" alt="Version">
 </p>
 
 ---
@@ -58,6 +58,8 @@ Beyond the creature / terrarium philosophy, KohakuTerrarium already has a strong
 - **Frontier-style built-in working set**: the default `general` creature ships with file, shell, search, JSON, HTTP, channel, trigger, and introspection tools, plus built-in sub-agents for exploration, planning, implementation, review, summarization, and research.
 - **Non-blocking execution and compaction flow**: tools start immediately during LLM streaming, background jobs do not block the agent loop, and compaction / resume are built into the runtime instead of bolted on afterward.
 - **Session history as operational memory**: `.kohakutr` session files persist conversations, events, jobs, tool metadata, sub-agent state, scratchpad state, channel history, and resumable triggers in a structured store rather than a flat transcript.
+- **Plugin and extension system**: prompt plugins inject context before LLM calls; lifecycle plugins intercept tool execution, sub-agent dispatch, and event processing. Custom modules (tools, inputs, outputs, triggers) are loaded from agent folders or installable packages.
+- **Desktop app**: `kt app` launches a native window via pywebview with text selection, copy support, and close confirmation — same web UI, no browser needed.
 
 ## Architecture at a Glance
 
@@ -467,11 +469,11 @@ The default `general` creature ships with 21 built-in tools:
 | `search_memory` | Search session history with keyword or semantic matching |
 | `info` | Load full documentation for a tool or sub-agent |
 | `ask_user` | Ask the user a question mid-execution |
-| `http` | Make HTTP requests to APIs and web pages |
+| `web_fetch` | Fetch and read web pages (crawl4ai, trafilatura, or Jina) |
+| `web_search` | Search the web (DuckDuckGo) |
 | `json_read` | Read and query JSON files |
 | `json_write` | Modify JSON files at specific paths |
 | `send_message` | Send a message to a named channel |
-| `wait_channel` | Wait for a message on a named channel |
 | `stop_task` | Cancel a running background tool or sub-agent by job ID |
 | `list_triggers` | Inspect active triggers on the current agent |
 | `create_trigger` | Create timer, scheduler, or channel triggers dynamically |
@@ -539,7 +541,7 @@ The HTTP API and web dashboard are application layers built on top of the servin
 | `kt terrarium run <path>` | Run a multi-agent terrarium with TUI |
 | `kt terrarium info <path>` | Show terrarium config details |
 | `kt resume [session] [--last]` | Resume a session (interactive picker if no arg) |
-| `kt login <provider>` | Authenticate (codex, openrouter, openai, anthropic, gemini) |
+| `kt login <provider>` | Authenticate (codex, openrouter, openai, anthropic, gemini, mimo) |
 | `kt model list` | Show available LLM profiles and presets |
 | `kt model default <name>` | Set the default model |
 | `kt model show <name>` | Show details for a profile |
@@ -550,12 +552,18 @@ The HTTP API and web dashboard are application layers built on top of the servin
 | `kt list` | Show installed packages and agents |
 | `kt edit <@pkg/path>` | Edit a config in `$EDITOR` |
 | `kt info <path>` | Show agent config details |
+| `kt web [--port PORT]` | Serve web UI + API (single process) |
+| `kt app [--port PORT]` | Launch native desktop app (pywebview) |
+| `kt extension list` | Show installed extension modules |
+| `kt extension info <name>` | Show package extension details |
 
 ## Project Structure
 
 ```text
 src/kohakuterrarium/
-  core/           # Agent runtime, controller, executor, events, environment
+  core/           # Agent runtime, controller, executor, backgroundify, events, environment
+  bootstrap/      # Agent initialization factories (LLM, tools, I/O, sub-agents, triggers)
+  cli/            # CLI command handlers (run, resume, login, model, packages, search)
   terrarium/      # Multi-agent runtime, config loading, hot-plug, topology wiring
   builtins/       # Built-in tools, sub-agents, I/O modules, TUI, slash commands
   builtin_skills/ # Markdown skill manifests for on-demand tool/subagent docs
@@ -587,6 +595,8 @@ Full documentation lives in [`docs/`](docs/README.md). Key starting points:
 - [Creatures](docs/guide/creatures.md) — pre-built creatures, inheritance, creating your own
 - [Terrariums](docs/guide/terrariums.md) — multi-agent setup, channel wiring, root agent
 - [Sessions](docs/guide/sessions.md) — persistence, resume, memory search
+- [Custom Modules](docs/guide/custom-modules.md) — build custom tools, inputs, outputs, triggers, sub-agents
+- [Plugins](docs/guide/plugins.md) — intercept agent flows with prompt and lifecycle plugins
 - [Examples](docs/guide/examples.md) — walkthrough of included example agents and terrariums
 
 **Concepts** — [docs/concepts/](docs/concepts/README.md)
