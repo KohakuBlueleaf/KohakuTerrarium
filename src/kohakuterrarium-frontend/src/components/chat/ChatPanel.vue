@@ -241,6 +241,10 @@ function closeTab(tab) {
 }
 
 function onInputKeydown(e) {
+  // Skip if IME composition is active (e.g. Chinese/Japanese/Korean input).
+  // During composition, Enter confirms the selected candidate — not send.
+  if (e.isComposing || e.keyCode === 229) return;
+
   if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey) {
     e.preventDefault();
     send();
