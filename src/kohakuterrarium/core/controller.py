@@ -547,6 +547,16 @@ class Controller:
             self.conversation.append("user", user_content)
 
         messages = self.conversation.to_messages()
+
+        # Plugin pre-hook: transform messages before LLM call
+        if self.plugins:
+            messages = await self.plugins.run_pre_hooks(
+                "pre_llm_call",
+                messages,
+                model=getattr(self.llm, "model", ""),
+                tools=self._get_native_tool_schemas() if self._is_native_mode else None,
+            )
+
         logger.info("Generating response...")
 
         if self._is_native_mode:
@@ -558,6 +568,18 @@ class Controller:
                 yield event
             self._log_token_usage()
             self.conversation.append("assistant", self._last_assistant_content)
+
+        # Plugin post-hook: observe response and usage
+        if self.plugins:
+            last = self.conversation.get_last_assistant_message()
+            response_text = last.get_text_content() if last else ""
+            await self.plugins.notify(
+                "post_llm_call",
+                messages=messages,
+                response=response_text,
+                usage=self._last_usage or {},
+                model=getattr(self.llm, "model", ""),
+            )
 
     async def _handle_command(self, event: CommandEvent) -> CommandResult:
         """Handle a framework command."""

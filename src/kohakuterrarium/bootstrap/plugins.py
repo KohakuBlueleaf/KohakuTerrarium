@@ -1,4 +1,4 @@
-"""Bootstrap plugin loading from agent config."""
+"""Bootstrap plugin loading — config + package discovery."""
 
 import importlib
 from typing import Any
@@ -6,6 +6,7 @@ from typing import Any
 from kohakuterrarium.core.loader import ModuleLoader
 from kohakuterrarium.modules.plugin.base import BasePlugin
 from kohakuterrarium.modules.plugin.manager import PluginManager
+from kohakuterrarium.packages import ensure_package_importable, list_packages
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -15,74 +16,117 @@ def init_plugins(
     plugin_configs: list[dict[str, Any]],
     loader: ModuleLoader | None = None,
 ) -> PluginManager:
-    """Create and populate a PluginManager from config entries.
+    """Create a PluginManager with config plugins + discovered packages.
 
-    Each entry in plugin_configs follows the same pattern as tools::
+    1. Plugins listed in config are loaded and enabled.
+    2. Plugins found in installed packages (but not in config) are
+       registered as available but disabled — user can enable at runtime.
 
-        - name: cost_tracker          # builtin (future)
-        - name: my_plugin
-          type: custom
-          module: ./plugins/my_plugin.py
-          class: MyPlugin
-          options: {budget: 5.0}
-        - name: pkg_plugin
-          type: package
-          module: my_pack.plugins.guard
-          class: PermissionGuard
-          options: {}
-
-    Returns an empty PluginManager if no configs (zero overhead).
+    Returns a PluginManager (possibly empty).
     """
     manager = PluginManager()
+    config_names: set[str] = set()
 
-    if not plugin_configs:
-        return manager
-
-    for cfg in plugin_configs:
-        if isinstance(cfg, str):
-            # Short form: just a name (builtin lookup, future)
-            logger.warning("Builtin plugin not found", plugin_name=cfg)
-            continue
-
-        name = cfg.get("name", "")
-        ptype = cfg.get("type", "custom")
-        module = cfg.get("module", "")
-        class_name = cfg.get("class", cfg.get("class_name", ""))
-        options = cfg.get("options", {})
-
-        if not module or not class_name:
-            logger.warning("Plugin missing module/class", plugin_name=name)
-            continue
-
-        try:
-            if loader:
-                plugin = loader.load_instance(
-                    module, class_name, module_type=ptype, options=options
-                )
-            else:
-                mod = importlib.import_module(module)
-                cls = getattr(mod, class_name)
-                plugin = cls(options=options) if options else cls()
-
-            if not isinstance(plugin, BasePlugin):
-                logger.warning(
-                    "Plugin does not extend BasePlugin",
-                    plugin_name=name,
-                    plugin_type=type(plugin).__name__,
-                )
-                continue
-
-            if not getattr(plugin, "name", "") or plugin.name == "unnamed":
-                plugin.name = name
-
+    # Phase 1: Load plugins from config (enabled)
+    for cfg in plugin_configs or []:
+        plugin = _load_one(cfg, loader)
+        if plugin:
+            config_names.add(plugin.name)
             manager.register(plugin)
 
-        except Exception:
-            logger.warning(
-                "Failed to load plugin",
-                plugin_name=name,
-                module=module,
-                exc_info=True,
-            )
+    # Phase 2: Discover plugins from installed packages (disabled if not in config)
+    _discover_package_plugins(manager, config_names, loader)
 
     return manager
+
+
+def _load_one(
+    cfg: dict[str, Any] | str, loader: ModuleLoader | None
+) -> BasePlugin | None:
+    """Load a single plugin from a config entry."""
+    if isinstance(cfg, str):
+        cfg = {"name": cfg}
+
+    name = cfg.get("name", "")
+    module = cfg.get("module", "")
+    class_name = cfg.get("class", cfg.get("class_name", ""))
+    options = cfg.get("options", {})
+
+    # If only name given, try to resolve from packages
+    if name and not module:
+        resolved = _resolve_from_packages(name)
+        if resolved:
+            module, class_name = resolved
+        else:
+            logger.debug("Plugin not found in packages", plugin_name=name)
+            return None
+
+    if not module or not class_name:
+        logger.warning("Plugin missing module/class", plugin_name=name)
+        return None
+
+    ptype = cfg.get("type", "package")
+    try:
+        if loader:
+            plugin = loader.load_instance(
+                module, class_name, module_type=ptype, options=options
+            )
+        else:
+            mod = importlib.import_module(module)
+            cls = getattr(mod, class_name)
+            plugin = cls(options=options) if options else cls()
+
+        if not isinstance(plugin, BasePlugin):
+            logger.warning("Not a BasePlugin", plugin_name=name)
+            return None
+
+        if not getattr(plugin, "name", "") or plugin.name == "unnamed":
+            plugin.name = name
+        return plugin
+
+    except Exception:
+        logger.warning("Failed to load plugin", plugin_name=name, exc_info=True)
+        return None
+
+
+def _discover_package_plugins(
+    manager: PluginManager, already_loaded: set[str], loader: ModuleLoader | None
+) -> None:
+    """Scan installed packages and register undiscovered plugins as disabled."""
+    try:
+        packages = list_packages()
+    except Exception:
+        return
+
+    for pkg in packages:
+        if not pkg.get("plugins"):
+            continue
+        # Make the package's Python modules importable
+        ensure_package_importable(pkg["name"])
+        for plugin_def in pkg.get("plugins", []):
+            if not isinstance(plugin_def, dict):
+                continue
+            name = plugin_def.get("name", "")
+            if not name or name in already_loaded:
+                continue
+            # Try to load it
+            plugin = _load_one(plugin_def, loader)
+            if plugin:
+                manager.register(plugin)
+                manager.disable(name)  # Available but not active
+
+
+def _resolve_from_packages(name: str) -> tuple[str, str] | None:
+    """Find a plugin by name in installed packages."""
+    try:
+        for pkg in list_packages():
+            for pdef in pkg.get("plugins", []):
+                if isinstance(pdef, dict) and pdef.get("name") == name:
+                    ensure_package_importable(pkg["name"])
+                    module = pdef.get("module", "")
+                    cls = pdef.get("class") or pdef.get("class_name", "")
+                    if module and cls:
+                        return (module, cls)
+    except Exception:
+        pass
+    return None

@@ -25,6 +25,7 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import yaml
@@ -316,6 +317,22 @@ def list_packages() -> list[dict]:
     return results
 
 
+def ensure_package_importable(package_name: str) -> bool:
+    """Add a package's root to sys.path so its Python modules are importable.
+
+    Called before importing plugin/tool modules from a package.
+    Returns True if the path was added (or already present).
+    """
+    pkg_root = _get_package_root(package_name)
+    if pkg_root is None:
+        return False
+    root_str = str(pkg_root)
+    if root_str not in sys.path:
+        sys.path.insert(0, root_str)
+        logger.debug("Added package to sys.path", package=package_name, path=root_str)
+    return True
+
+
 def get_package_modules(package_name: str, module_type: str) -> list[dict]:
     """Get modules of a specific type from a package manifest.
 
@@ -390,7 +407,7 @@ def _validate_package(pkg_dir: Path, name: str) -> None:
 
 
 def _install_python_deps(pkg_dir: Path) -> None:
-    """Install Python dependencies from the package if any."""
+    """Install Python dependencies and the package itself if applicable."""
     manifest = _load_manifest(pkg_dir)
     deps = manifest.get("python_dependencies", [])
     if deps:
@@ -404,7 +421,6 @@ def _install_python_deps(pkg_dir: Path) -> None:
         except subprocess.CalledProcessError as e:
             logger.warning("Dependency install failed", error=e.stderr.decode()[:200])
 
-    # Also check for requirements.txt
     req_file = pkg_dir / "requirements.txt"
     if req_file.exists():
         try:
@@ -417,3 +433,4 @@ def _install_python_deps(pkg_dir: Path) -> None:
             logger.warning(
                 "requirements.txt install failed", error=e.stderr.decode()[:200]
             )
+

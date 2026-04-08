@@ -155,6 +155,14 @@ class AgentToolsMixin:
                 name=tool_name,
             )
 
+        # Plugin callback
+        if hasattr(self, "plugins") and self.plugins:
+            asyncio.create_task(
+                self.plugins.notify(
+                    "on_task_promoted", job_id=job_id, tool_name=tool_name
+                )
+            )
+
         self.output_router.notify_activity(
             "task_promoted",
             f"[{label}] Moved to background",

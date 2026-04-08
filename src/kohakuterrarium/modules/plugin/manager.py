@@ -1,15 +1,18 @@
-"""Plugin manager — lifecycle and hook dispatch.
+"""Plugin manager — pre/post hook wrapping and callback dispatch.
 
-Three dispatch modes:
-  - call_hook: fire-and-forget (lifecycle, interrupts, compaction)
-  - call_hook_chain: pipeline (LLM, tools — each plugin transforms the value)
+Hooks use ``wrap_method()`` to decorate a real method at init time.
+The wrapper runs all pre_* plugins (by priority), calls the original,
+then runs all post_* plugins. Linear, not recursive.
 
-Critical: when no plugins are registered, all methods return immediately
-with zero overhead. The agent loop should not slow down without plugins.
+Callbacks use ``notify()`` for fire-and-forget notifications.
+
+When no plugins are registered, ``wrap_method()`` returns the original
+function unchanged — zero overhead.
 """
 
+import functools
 import inspect
-from typing import Any
+from typing import Any, Callable
 
 from kohakuterrarium.modules.plugin.base import (
     BasePlugin,
@@ -22,21 +25,23 @@ logger = get_logger(__name__)
 
 
 class PluginManager:
-    """Manages plugin lifecycle and hook dispatch."""
+    """Manages plugin lifecycle, hook wrapping, and callback dispatch."""
 
     def __init__(self) -> None:
         self._plugins: list[BasePlugin] = []
-        self._disabled: set[str] = set()  # plugin names that are disabled
+        self._disabled: set[str] = set()
+        self._needs_load: set[str] = set()  # Plugins enabled at runtime needing on_load
+        self._load_context: PluginContext | None = None  # Saved for runtime enable
 
     def __bool__(self) -> bool:
-        """Falsy when empty — allows ``if self.plugins:`` guards."""
         return len(self._plugins) > 0
 
     def __len__(self) -> int:
         return len(self._plugins)
 
+    # ── Registration ──
+
     def register(self, plugin: BasePlugin) -> None:
-        """Register a plugin and maintain priority order."""
         self._plugins.append(plugin)
         self._plugins.sort(key=lambda p: getattr(p, "priority", 50))
         logger.info(
@@ -45,16 +50,18 @@ class PluginManager:
             priority=getattr(plugin, "priority", 50),
         )
 
+    # ── Enable / Disable ──
+
     def enable(self, name: str) -> bool:
-        """Enable a previously disabled plugin. Returns True if found."""
+        """Enable a plugin. Returns True if found and was disabled."""
         if name in self._disabled:
             self._disabled.discard(name)
+            self._needs_load.add(name)
             logger.info("Plugin enabled", plugin_name=name)
             return True
         return any(getattr(p, "name", "") == name for p in self._plugins)
 
     def disable(self, name: str) -> bool:
-        """Disable a plugin by name. Returns True if found."""
         for p in self._plugins:
             if getattr(p, "name", "") == name:
                 self._disabled.add(name)
@@ -63,13 +70,11 @@ class PluginManager:
         return False
 
     def is_enabled(self, name: str) -> bool:
-        """Check if a plugin is enabled."""
         return name not in self._disabled and any(
             getattr(p, "name", "") == name for p in self._plugins
         )
 
     def list_plugins(self) -> list[dict[str, Any]]:
-        """List all plugins with their status."""
         return [
             {
                 "name": getattr(p, "name", "?"),
@@ -80,16 +85,18 @@ class PluginManager:
         ]
 
     def _active_plugins(self) -> list[BasePlugin]:
-        """Return only enabled plugins."""
         if not self._disabled:
             return self._plugins
         return [
             p for p in self._plugins if getattr(p, "name", "") not in self._disabled
         ]
 
+    # ── Lifecycle ──
+
     async def load_all(self, context: PluginContext) -> None:
-        """Call on_load for all plugins."""
-        for plugin in self._plugins:
+        """Call on_load for enabled plugins only."""
+        self._load_context = context
+        for plugin in self._active_plugins():
             try:
                 ctx = PluginContext(
                     agent_name=context.agent_name,
@@ -99,7 +106,7 @@ class PluginManager:
                     _agent=context._agent,
                     _plugin_name=getattr(plugin, "name", "unnamed"),
                 )
-                await self._call(plugin, "on_load", context=ctx)
+                await _call_method(plugin, "on_load", context=ctx)
             except Exception:
                 logger.warning(
                     "Plugin on_load failed",
@@ -107,11 +114,36 @@ class PluginManager:
                     exc_info=True,
                 )
 
+    async def load_pending(self) -> None:
+        """Call on_load for plugins that were enabled at runtime."""
+        if not self._needs_load or not self._load_context:
+            return
+        for plugin in self._plugins:
+            pname = getattr(plugin, "name", "")
+            if pname not in self._needs_load:
+                continue
+            try:
+                ctx = PluginContext(
+                    agent_name=self._load_context.agent_name,
+                    working_dir=self._load_context.working_dir,
+                    session_id=self._load_context.session_id,
+                    model=self._load_context.model,
+                    _agent=self._load_context._agent,
+                    _plugin_name=pname,
+                )
+                await _call_method(plugin, "on_load", context=ctx)
+            except Exception:
+                logger.warning(
+                    "on_load failed for runtime-enabled plugin",
+                    plugin_name=pname,
+                    exc_info=True,
+                )
+        self._needs_load.clear()
+
     async def unload_all(self) -> None:
-        """Call on_unload for all plugins (reverse order)."""
         for plugin in reversed(self._plugins):
             try:
-                await self._call(plugin, "on_unload")
+                await _call_method(plugin, "on_unload")
             except Exception:
                 logger.debug(
                     "Plugin on_unload failed",
@@ -119,67 +151,165 @@ class PluginManager:
                     exc_info=True,
                 )
 
-    async def call_hook(self, hook_name: str, **kwargs: Any) -> None:
-        """Fire-and-forget: call all plugins, ignore returns.
+    # ── Hook wrapping (decorator pattern, linear pre/post) ──
 
-        Used for lifecycle hooks, interrupts, compaction, event observation.
+    def wrap_method(
+        self,
+        pre_hook: str,
+        post_hook: str,
+        original: Callable,
+        *,
+        input_kwarg: str = "",
+        extra_kwargs: dict[str, Any] | None = None,
+    ) -> Callable:
+        """Wrap a method with pre/post hooks from all plugins.
+
+        Creates a single wrapper that:
+        1. Runs pre_* on all active plugins (can transform first arg)
+        2. Calls the original function
+        3. Runs post_* on all active plugins (can transform result)
+
+        If no plugins override the hooks, returns original unchanged.
+
+        Args:
+            pre_hook: Method name for pre-processing (e.g. "pre_llm_call")
+            post_hook: Method name for post-processing (e.g. "post_llm_call")
+            original: The real function to wrap
+            input_kwarg: If set, the first positional arg is also passed to
+                post hooks as this kwarg (e.g. "messages" so post_llm_call
+                receives the messages that were sent)
+
+        Returns:
+            Wrapped function, or original if no plugins apply.
         """
         if not self._plugins:
-            return
+            return original
 
-        for plugin in self._active_plugins():
-            method = getattr(plugin, hook_name, None)
-            if method is None:
-                continue
-            try:
-                await self._call(plugin, hook_name, **kwargs)
-            except Exception:
-                logger.warning(
-                    "Plugin hook failed",
-                    plugin_name=getattr(plugin, "name", "?"),
-                    hook=hook_name,
-                    exc_info=True,
-                )
+        # Check if any plugin actually overrides these hooks
+        has_pre = any(_has_override(p, pre_hook) for p in self._plugins)
+        has_post = any(_has_override(p, post_hook) for p in self._plugins)
+        if not has_pre and not has_post:
+            return original
 
-    async def call_hook_chain(self, hook_name: str, value: Any, **kwargs: Any) -> Any:
-        """Pipeline: each plugin transforms the value.
+        manager = self
+        injected = extra_kwargs or {}
 
-        First non-None return replaces the value for the next plugin.
-        PluginBlockError propagates to the caller (tool/sub-agent blocked).
-        Regular exceptions are logged and the plugin is skipped.
+        @functools.wraps(original)
+        async def wrapper(first_arg, *args, **kwargs):
+            active = manager._active_plugins()
+            hook_kw = {**kwargs, **injected}
+
+            # Pre hooks: transform first_arg
+            if has_pre:
+                for plugin in active:
+                    if not _has_override(plugin, pre_hook):
+                        continue
+                    try:
+                        modified = await _call_method(
+                            plugin, pre_hook, first_arg, **hook_kw
+                        )
+                        if modified is not None:
+                            first_arg = modified
+                    except PluginBlockError:
+                        raise
+                    except Exception:
+                        logger.warning(
+                            "Plugin pre-hook failed",
+                            plugin_name=getattr(plugin, "name", "?"),
+                            hook=pre_hook,
+                            exc_info=True,
+                        )
+
+            # Call original
+            result = await original(first_arg, *args, **kwargs)
+
+            # Post hooks: observe or transform result
+            if has_post:
+                post_kwargs = {**hook_kw}
+                if input_kwarg:
+                    post_kwargs[input_kwarg] = first_arg
+                for plugin in active:
+                    if not _has_override(plugin, post_hook):
+                        continue
+                    try:
+                        modified = await _call_method(
+                            plugin, post_hook, result, **post_kwargs
+                        )
+                        if modified is not None:
+                            result = modified
+                    except Exception:
+                        logger.warning(
+                            "Plugin post-hook failed",
+                            plugin_name=getattr(plugin, "name", "?"),
+                            hook=post_hook,
+                            exc_info=True,
+                        )
+
+            return result
+
+        return wrapper
+
+    # ── Standalone pre-hook runner (for async generators) ──
+
+    async def run_pre_hooks(self, hook_name: str, value: Any, **kwargs: Any) -> Any:
+        """Run pre-hooks linearly, returning the (possibly transformed) value.
+
+        Used where wrap_method can't apply (async generators like run_once).
         """
         if not self._plugins:
             return value
-
         for plugin in self._active_plugins():
-            method = getattr(plugin, hook_name, None)
-            if method is None:
+            if not _has_override(plugin, hook_name):
                 continue
             try:
-                result = await self._call(plugin, hook_name, value, **kwargs)
-                if result is not None:
-                    value = result
+                modified = await _call_method(plugin, hook_name, value, **kwargs)
+                if modified is not None:
+                    value = modified
             except PluginBlockError:
-                raise  # Propagate — caller handles as tool error
+                raise
             except Exception:
                 logger.warning(
-                    "Plugin hook failed",
+                    "Plugin pre-hook failed",
                     plugin_name=getattr(plugin, "name", "?"),
                     hook=hook_name,
                     exc_info=True,
                 )
-
         return value
 
-    @staticmethod
-    async def _call(
-        plugin: BasePlugin, method_name: str, *args: Any, **kwargs: Any
-    ) -> Any:
-        """Call a plugin method, handling both sync and async."""
-        method = getattr(plugin, method_name, None)
-        if method is None:
-            return None
-        if inspect.iscoroutinefunction(method):
-            return await method(*args, **kwargs)
-        # Sync method — call directly (don't block event loop for long)
-        return method(*args, **kwargs)
+    # ── Callbacks (fire-and-forget) ──
+
+    async def notify(self, callback_name: str, **kwargs: Any) -> None:
+        """Fire a callback on all active plugins."""
+        if not self._plugins:
+            return
+        for plugin in self._active_plugins():
+            if not hasattr(plugin, callback_name):
+                continue
+            try:
+                await _call_method(plugin, callback_name, **kwargs)
+            except Exception:
+                logger.warning(
+                    "Plugin callback failed",
+                    plugin_name=getattr(plugin, "name", "?"),
+                    callback=callback_name,
+                    exc_info=True,
+                )
+
+
+def _has_override(plugin: BasePlugin, method_name: str) -> bool:
+    """Check if a plugin overrides a method (not the default BasePlugin no-op)."""
+    method = getattr(type(plugin), method_name, None)
+    base_method = getattr(BasePlugin, method_name, None)
+    return method is not None and method is not base_method
+
+
+async def _call_method(
+    plugin: BasePlugin, method_name: str, *args: Any, **kwargs: Any
+) -> Any:
+    """Call a plugin method, handling both sync and async."""
+    method = getattr(plugin, method_name, None)
+    if method is None:
+        return None
+    if inspect.iscoroutinefunction(method):
+        return await method(*args, **kwargs)
+    return method(*args, **kwargs)

@@ -129,6 +129,8 @@ class AgentHandlersMixin(AgentToolsMixin):
             )
             await self.output_router.on_user_input(content)
 
+        if hasattr(self, "plugins") and self.plugins:
+            await self.plugins.notify("on_event", event=event)
         async with self._processing_lock:
             if not self._running:
                 logger.debug("Dropping event, agent stopped", event_type=event.type)
