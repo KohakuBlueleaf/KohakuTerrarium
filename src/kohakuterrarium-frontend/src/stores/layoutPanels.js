@@ -8,9 +8,14 @@
  */
 
 import ChatPanel from "@/components/chat/ChatPanel.vue";
+import StatusBar from "@/components/chrome/StatusBar.vue";
 import EditorMain from "@/components/editor/EditorMain.vue";
 import EditorStatus from "@/components/editor/EditorStatus.vue";
 import FileTree from "@/components/editor/FileTree.vue";
+import ActivityPanel from "@/components/panels/ActivityPanel.vue";
+import CreaturesPanel from "@/components/panels/CreaturesPanel.vue";
+import FilesPanel from "@/components/panels/FilesPanel.vue";
+import StatePanel from "@/components/panels/StatePanel.vue";
 import StatusDashboard from "@/components/status/StatusDashboard.vue";
 
 import { useLayoutStore } from "@/stores/layout";
@@ -102,6 +107,56 @@ export function registerBuiltinPanels() {
     component: EditorStatus,
     preferredZones: ["right-aux", "drawer"],
     orientation: "short-wide",
+    supportsDetach: false,
+  });
+
+  // ── Phase 3 rehomed panels ────────────────────────────────────
+
+  layout.registerPanel({
+    id: "files",
+    label: "Files",
+    component: FilesPanel,
+    preferredZones: ["left-sidebar"],
+    orientation: "tall-narrow",
+    supportsDetach: true,
+  });
+
+  layout.registerPanel({
+    id: "activity",
+    label: "Activity",
+    component: ActivityPanel,
+    preferredZones: ["right-sidebar", "right-aux"],
+    orientation: "tall-narrow",
+    supportsDetach: true,
+  });
+
+  layout.registerPanel({
+    id: "state",
+    label: "State",
+    component: StatePanel,
+    preferredZones: ["right-sidebar", "right-aux"],
+    orientation: "tall-narrow",
+    supportsDetach: true,
+  });
+
+  layout.registerPanel({
+    id: "creatures",
+    label: "Creatures",
+    component: CreaturesPanel,
+    preferredZones: ["left-sidebar", "right-sidebar"],
+    orientation: "tall-narrow",
+    supportsDetach: true,
+  });
+
+  // ── Chrome ────────────────────────────────────────────────────
+  // StatusBar is used via the layout store, but it's a chrome strip
+  // that doesn't support detach (always visible at workspace bottom).
+  layout.registerPanel({
+    id: "status-bar",
+    label: "Status Bar",
+    component: StatusBar,
+    preferredZones: ["status-bar"],
+    orientation: "thin-strip",
     supportsDetach: false,
   });
 

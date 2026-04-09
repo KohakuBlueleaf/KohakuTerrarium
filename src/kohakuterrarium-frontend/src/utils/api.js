@@ -246,6 +246,42 @@ export const agentAPI = {
     const { data } = await api.post(`/agents/${id}/command`, { command, args });
     return data;
   },
+
+  // ── Phase 1 read-only inspection endpoints ───────────────────────
+
+  /** @returns {Promise<Record<string, string>>} */
+  async getScratchpad(id) {
+    const { data } = await api.get(`/agents/${id}/scratchpad`);
+    return data;
+  },
+
+  /**
+   * Patch the scratchpad. Values may be `null` to delete a key.
+   * @param {string} id
+   * @param {Record<string, string | null>} updates
+   */
+  async patchScratchpad(id, updates) {
+    const { data } = await api.patch(`/agents/${id}/scratchpad`, { updates });
+    return data;
+  },
+
+  /** @returns {Promise<{trigger_id: string, trigger_type: string, running: boolean, created_at: string}[]>} */
+  async listTriggers(id) {
+    const { data } = await api.get(`/agents/${id}/triggers`);
+    return data;
+  },
+
+  /** @returns {Promise<{pwd: string, env: Record<string, string>}>} */
+  async getEnv(id) {
+    const { data } = await api.get(`/agents/${id}/env`);
+    return data;
+  },
+
+  /** @returns {Promise<{text: string}>} */
+  async getSystemPrompt(id) {
+    const { data } = await api.get(`/agents/${id}/system-prompt`);
+    return data;
+  },
 };
 
 /** File operations */
