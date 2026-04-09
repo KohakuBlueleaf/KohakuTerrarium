@@ -15,6 +15,7 @@ import FileTree from "@/components/editor/FileTree.vue";
 import ActivityPanel from "@/components/panels/ActivityPanel.vue";
 import CanvasPanel from "@/components/panels/CanvasPanel.vue";
 import CreaturesPanel from "@/components/panels/CreaturesPanel.vue";
+import DebugPanel from "@/components/panels/DebugPanel.vue";
 import FilesPanel from "@/components/panels/FilesPanel.vue";
 import SettingsPanel from "@/components/panels/SettingsPanel.vue";
 import StatePanel from "@/components/panels/StatePanel.vue";
@@ -314,6 +315,15 @@ export function registerBuiltinPanels() {
     component: SettingsPanel,
     preferredZones: ["main"],
     orientation: "tall-wide",
+    supportsDetach: true,
+  });
+
+  layout.registerPanel({
+    id: "debug",
+    label: "Debug",
+    component: DebugPanel,
+    preferredZones: ["drawer", "main"],
+    orientation: "short-wide",
     supportsDetach: true,
   });
 
