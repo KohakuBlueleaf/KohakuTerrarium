@@ -1,6 +1,7 @@
 """CLI resume command — resume an agent or terrarium from a session file."""
 
 import asyncio
+import sys
 
 from kohakuterrarium.cli.run import _resolve_session, _run_agent_rich_cli
 from kohakuterrarium.session.resume import (
@@ -22,6 +23,11 @@ def resume_cli(
 ) -> int:
     """Resume an agent or terrarium from a session file."""
     set_level(log_level)
+
+    # Resolve mode the same way ``kt run`` does — rich CLI on a TTY,
+    # plain otherwise. Keeps resume behavior consistent with run.
+    if io_mode is None:
+        io_mode = "cli" if sys.stdout.isatty() else "plain"
 
     path = _resolve_session(query, last=last)
     if path is None:

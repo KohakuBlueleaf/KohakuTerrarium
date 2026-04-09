@@ -277,6 +277,15 @@ class RichCLIApp:
         if not text.strip():
             return
 
+        # Cancel any still-running pending task before spawning a new one,
+        # so the processing-flag toggles and invalidate calls can't race
+        # across two concurrent ``_send`` wrappers. The agent itself
+        # queues user inputs sequentially via its input module, so this
+        # cancellation is purely about the UI wrapper — the agent turn
+        # already in progress will finish normally.
+        if self._pending_task and not self._pending_task.done():
+            self._pending_task.cancel()
+
         # Print user message into scrollback (via run_in_terminal so the
         # app area is correctly redrawn below it).
         self._commit_user_message(text)

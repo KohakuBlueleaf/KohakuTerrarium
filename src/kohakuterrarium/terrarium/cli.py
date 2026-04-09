@@ -122,11 +122,15 @@ async def run_terrarium_with_tui(runtime: TerrariumRuntime) -> None:
         creature_out._default_target = name
         handle.agent.output_router.default_output = creature_out
 
-    # Wire Escape interrupt, click-to-cancel, click-to-promote.
+    # Wire Escape interrupt, click-to-cancel, click-to-promote. Promote
+    # and cancel go through the TUISession attributes (session relays
+    # them into the app), matching how single-creature TUI wires things
+    # in core/agent.py. Escape is an app-level handler so it's wired on
+    # the app directly.
     if tui._app:
         tui._app.on_interrupt = root.interrupt
-        tui._app.on_promote_job = root._promote_handle
     tui.on_cancel_job = root._cancel_job
+    tui.on_promote_job = root._promote_handle
 
     # Start TUI app
     _app_task = asyncio.create_task(tui.run_app())  # noqa: F841

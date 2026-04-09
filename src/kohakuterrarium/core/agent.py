@@ -259,9 +259,12 @@ class Agent(AgentInitMixin, AgentHandlersMixin, AgentMessagesMixin):
 
     def _wire_completion_callbacks(self) -> None:
         """Wire executor and sub-agent completion/activity callbacks."""
-        # Background tools and sub-agents deliver results as trigger events
+        # Background tool completions are delivered through the executor's
+        # _on_complete callback. Sub-agent completions flow through the
+        # BackgroundifyHandle wrapper instead — see
+        # ``modules/subagent/manager.py._run_subagent`` and
+        # ``core/agent_tools.py._on_backgroundify_complete``.
         self.executor._on_complete = self._on_bg_complete
-        self.subagent_manager._on_complete = self._on_bg_complete
 
         # Wire sub-agent tool activity -> parent output
         def _on_sa_tool_activity(

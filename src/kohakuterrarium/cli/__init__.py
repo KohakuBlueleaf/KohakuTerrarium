@@ -109,8 +109,12 @@ def main() -> int:
     resume_parser.add_argument(
         "--mode",
         choices=["cli", "plain", "tui"],
-        default="tui",
-        help="Input/output mode (default: tui)",
+        default=None,
+        help=(
+            "Input/output mode. cli=rich inline (default if TTY), "
+            "plain=dumb stdout/stdin, tui=full-screen Textual app. "
+            "Defaults match `kt run`: cli on a TTY, plain otherwise."
+        ),
     )
     resume_parser.add_argument(
         "--llm",

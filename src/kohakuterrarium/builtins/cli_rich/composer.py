@@ -36,6 +36,9 @@ CTRL_ENTER_KEY = Keys.F20
 CTRL_SHIFT_ENTER_KEY = Keys.F21
 
 
+_MODIFIER_ENTER_REGISTERED = False
+
+
 def _register_modifier_enter_keys() -> None:
     """Teach prompt_toolkit to recognise Shift+Enter / Ctrl+Enter as
     distinct keys.
@@ -56,8 +59,15 @@ def _register_modifier_enter_keys() -> None:
 
     ``mods`` field: 2 = shift, 5 = ctrl, 6 = ctrl+shift.
 
-    Idempotent — safe to call multiple times.
+    Idempotent — guarded by a module-level flag so that re-importing
+    this module (e.g. inside tests) doesn't repeatedly mutate the
+    global ``ANSI_SEQUENCES`` table.
     """
+    global _MODIFIER_ENTER_REGISTERED
+    if _MODIFIER_ENTER_REGISTERED:
+        return
+    _MODIFIER_ENTER_REGISTERED = True
+
     # xterm modifyOtherKeys=2 — `ESC [ 27 ; mod ; 13 ~`
     ANSI_SEQUENCES["\x1b[27;2;13~"] = SHIFT_ENTER_KEY
     ANSI_SEQUENCES["\x1b[27;5;13~"] = CTRL_ENTER_KEY
