@@ -1,14 +1,13 @@
 /**
- * Panel registration glue — maps existing single-responsibility components
- * into the layout store as panels. Called once from main.js so every page
- * can reference them via the layout store instead of direct imports.
+ * Panel + preset registration. Called once from main.js (synchronous).
  *
- * Phase 2 registers only the panels used by the two legacy routes. Phase 3
- * will rehome more panels (Sessions, Registry, Settings, etc.) here.
+ * Presets use a binary split tree:
+ *   SplitNode = { type: "split", direction: "horizontal"|"vertical",
+ *                 ratio: 0-100, children: [Node, Node] }
+ *   LeafNode  = { type: "leaf", panelId: string }
  */
 
 import ChatPanel from "@/components/chat/ChatPanel.vue";
-import StatusBar from "@/components/chrome/StatusBar.vue";
 import EditorMain from "@/components/editor/EditorMain.vue";
 import EditorStatus from "@/components/editor/EditorStatus.vue";
 import FileTree from "@/components/editor/FileTree.vue";
@@ -23,75 +22,31 @@ import StatusDashboard from "@/components/status/StatusDashboard.vue";
 
 import { useLayoutStore } from "@/stores/layout";
 
-/** Legacy preset: matches the old /instances/:id layout exactly. */
-const LEGACY_INSTANCE_PRESET = {
-  id: "legacy-instance",
-  label: "Legacy Instance",
-  shortcut: "",
-  zones: {
-    "left-sidebar": { visible: false },
-    "left-aux": { visible: false },
-    main: { visible: true, size: 65 },
-    "right-aux": { visible: false },
-    "right-sidebar": { visible: true, size: 35 },
-    drawer: { visible: false },
-    "status-bar": { visible: false },
-  },
-  slots: [
-    { zoneId: "main", panelId: "chat" },
-    { zoneId: "right-sidebar", panelId: "status-dashboard" },
-  ],
-};
+// ─── Helper to build tree nodes concisely ────────────────────────
 
-/** Legacy preset: matches the old /editor/:id layout exactly. */
-const LEGACY_EDITOR_PRESET = {
-  id: "legacy-editor",
-  label: "Legacy Editor",
-  shortcut: "",
-  zones: {
-    "left-sidebar": { visible: true, size: 20 },
-    "left-aux": { visible: false },
-    main: { visible: true, size: 48 },
-    "right-aux": { visible: true, size: 32 },
-    "right-sidebar": { visible: false },
-    drawer: { visible: false },
-    "status-bar": { visible: false },
-  },
-  slots: [
-    { zoneId: "left-sidebar", panelId: "file-tree" },
-    { zoneId: "main", panelId: "monaco-editor" },
-    { zoneId: "right-aux", panelId: "chat", size: 70 },
-    { zoneId: "right-aux", panelId: "editor-status", size: 30 },
-  ],
-};
+function leaf(panelId) {
+  return { type: "leaf", panelId };
+}
 
-// ─── Phase 4 default presets — `ideas/frontend-panels.md` §7 ──────
-//
-// Presets that reference panels registered in later phases (canvas,
-// debug, sessions, settings) will still load; ZoneSlot renders a
-// "no such panel" placeholder for any unregistered id. The preset
-// definitions don't need to change when those phases land.
+function hsplit(ratio, left, right) {
+  return { type: "split", direction: "horizontal", ratio, children: [left, right] };
+}
+
+function vsplit(ratio, top, bottom) {
+  return { type: "split", direction: "vertical", ratio, children: [top, bottom] };
+}
+
+// ─── Presets ─────────────────────────────────────────────────────
 
 /** Chat focus — default for single-creature instances. */
 const CHAT_FOCUS_PRESET = {
   id: "chat-focus",
   label: "Chat Focus",
   shortcut: "Ctrl+1",
-  zones: {
-    "left-sidebar": { visible: false },
-    "left-aux": { visible: false },
-    main: { visible: true, size: 72 },
-    "right-aux": { visible: false },
-    "right-sidebar": { visible: true, size: 28 },
-    drawer: { visible: false },
-    "status-bar": { visible: true, size: 24 },
-  },
-  slots: [
-    { zoneId: "main", panelId: "chat" },
-    { zoneId: "right-sidebar", panelId: "activity", size: 50 },
-    { zoneId: "right-sidebar", panelId: "state", size: 50 },
-    { zoneId: "status-bar", panelId: "status-bar" },
-  ],
+  tree: hsplit(72,
+    leaf("chat"),
+    vsplit(50, leaf("activity"), leaf("state")),
+  ),
 };
 
 /** Workspace — files + editor + chat for code-work creatures. */
@@ -99,22 +54,13 @@ const WORKSPACE_PRESET = {
   id: "workspace",
   label: "Workspace",
   shortcut: "Ctrl+2",
-  zones: {
-    "left-sidebar": { visible: true, size: 18 },
-    "left-aux": { visible: false },
-    main: { visible: true, size: 50 },
-    "right-aux": { visible: true, size: 32 },
-    "right-sidebar": { visible: false },
-    drawer: { visible: false },
-    "status-bar": { visible: true, size: 24 },
-  },
-  slots: [
-    { zoneId: "left-sidebar", panelId: "files" },
-    { zoneId: "main", panelId: "monaco-editor" },
-    { zoneId: "right-aux", panelId: "chat", size: 65 },
-    { zoneId: "right-aux", panelId: "activity", size: 35 },
-    { zoneId: "status-bar", panelId: "status-bar" },
-  ],
+  tree: hsplit(20,
+    leaf("files"),
+    hsplit(62,
+      leaf("monaco-editor"),
+      vsplit(65, leaf("chat"), leaf("activity")),
+    ),
+  ),
 };
 
 /** Multi-creature — default for terrarium instances. */
@@ -122,87 +68,63 @@ const MULTI_CREATURE_PRESET = {
   id: "multi-creature",
   label: "Multi-creature",
   shortcut: "Ctrl+3",
-  zones: {
-    "left-sidebar": { visible: true, size: 18 },
-    "left-aux": { visible: false },
-    main: { visible: true, size: 54 },
-    "right-aux": { visible: false },
-    "right-sidebar": { visible: true, size: 28 },
-    drawer: { visible: false },
-    "status-bar": { visible: true, size: 24 },
-  },
-  slots: [
-    { zoneId: "left-sidebar", panelId: "creatures" },
-    { zoneId: "main", panelId: "chat" },
-    { zoneId: "right-sidebar", panelId: "activity", size: 50 },
-    { zoneId: "right-sidebar", panelId: "state", size: 50 },
-    { zoneId: "status-bar", panelId: "status-bar" },
-  ],
+  tree: hsplit(18,
+    leaf("creatures"),
+    hsplit(66,
+      leaf("chat"),
+      vsplit(50, leaf("activity"), leaf("state")),
+    ),
+  ),
 };
 
-/** Canvas — artifact-forward. References `canvas` panel added in Phase 7. */
+/** Canvas — artifact-forward. */
 const CANVAS_PRESET = {
   id: "canvas",
   label: "Canvas",
   shortcut: "Ctrl+4",
-  zones: {
-    "left-sidebar": { visible: false },
-    "left-aux": { visible: false },
-    main: { visible: true, size: 65 },
-    "right-aux": { visible: false },
-    "right-sidebar": { visible: true, size: 35 },
-    drawer: { visible: false },
-    "status-bar": { visible: true, size: 24 },
-  },
-  slots: [
-    { zoneId: "main", panelId: "canvas" },
-    { zoneId: "right-sidebar", panelId: "chat", size: 65 },
-    { zoneId: "right-sidebar", panelId: "activity", size: 35 },
-    { zoneId: "status-bar", panelId: "status-bar" },
-  ],
+  tree: hsplit(65,
+    leaf("canvas"),
+    vsplit(65, leaf("chat"), leaf("activity")),
+  ),
 };
 
-/** Debug — Phase 9 fills in the debug panel. */
+/** Debug — chat + state + debug drawer. */
 const DEBUG_PRESET = {
   id: "debug",
   label: "Debug",
   shortcut: "Ctrl+5",
-  zones: {
-    "left-sidebar": { visible: true, size: 18 },
-    "left-aux": { visible: false },
-    main: { visible: true, size: 54 },
-    "right-aux": { visible: false },
-    "right-sidebar": { visible: true, size: 28 },
-    drawer: { visible: true },
-    "status-bar": { visible: true, size: 24 },
-  },
-  slots: [
-    { zoneId: "left-sidebar", panelId: "sessions" },
-    { zoneId: "main", panelId: "chat" },
-    { zoneId: "right-sidebar", panelId: "state" },
-    { zoneId: "drawer", panelId: "debug" },
-    { zoneId: "status-bar", panelId: "status-bar" },
-  ],
+  tree: vsplit(55,
+    hsplit(60, leaf("chat"), leaf("state")),
+    leaf("debug"),
+  ),
 };
 
-/** Settings — escape-hatch. Phase 8 adds the settings panel. */
+/** Settings — escape hatch. */
 const SETTINGS_PRESET = {
   id: "settings",
   label: "Settings",
   shortcut: "Ctrl+6",
-  zones: {
-    "left-sidebar": { visible: false },
-    "left-aux": { visible: false },
-    main: { visible: true, size: 100 },
-    "right-aux": { visible: false },
-    "right-sidebar": { visible: false },
-    drawer: { visible: false },
-    "status-bar": { visible: true, size: 24 },
-  },
-  slots: [
-    { zoneId: "main", panelId: "settings" },
-    { zoneId: "status-bar", panelId: "status-bar" },
-  ],
+  tree: leaf("settings"),
+};
+
+/** Legacy instance (old layout compat). */
+const LEGACY_INSTANCE_PRESET = {
+  id: "legacy-instance",
+  label: "Legacy Instance",
+  tree: hsplit(65, leaf("chat"), leaf("status-dashboard")),
+};
+
+/** Legacy editor (old layout compat). */
+const LEGACY_EDITOR_PRESET = {
+  id: "legacy-editor",
+  label: "Legacy Editor",
+  tree: hsplit(20,
+    leaf("file-tree"),
+    hsplit(60,
+      leaf("monaco-editor"),
+      vsplit(70, leaf("chat"), leaf("editor-status")),
+    ),
+  ),
 };
 
 export const DEFAULT_PRESETS = [
@@ -214,132 +136,26 @@ export const DEFAULT_PRESETS = [
   SETTINGS_PRESET,
 ];
 
+// ─── Registration ────────────────────────────────────────────────
+
 export function registerBuiltinPanels() {
   const layout = useLayoutStore();
 
-  layout.registerPanel({
-    id: "chat",
-    label: "Chat",
-    component: ChatPanel,
-    preferredZones: ["main", "right-sidebar", "right-aux"],
-    orientation: "any",
-    supportsDetach: true,
-  });
+  // ── Panels ──
+  layout.registerPanel({ id: "chat", label: "Chat", component: ChatPanel });
+  layout.registerPanel({ id: "status-dashboard", label: "Status", component: StatusDashboard });
+  layout.registerPanel({ id: "file-tree", label: "File Tree", component: FileTree });
+  layout.registerPanel({ id: "monaco-editor", label: "Editor", component: EditorMain });
+  layout.registerPanel({ id: "editor-status", label: "Editor Status", component: EditorStatus });
+  layout.registerPanel({ id: "files", label: "Files", component: FilesPanel });
+  layout.registerPanel({ id: "activity", label: "Activity", component: ActivityPanel });
+  layout.registerPanel({ id: "state", label: "State", component: StatePanel });
+  layout.registerPanel({ id: "creatures", label: "Creatures", component: CreaturesPanel });
+  layout.registerPanel({ id: "canvas", label: "Canvas", component: CanvasPanel });
+  layout.registerPanel({ id: "settings", label: "Settings", component: SettingsPanel });
+  layout.registerPanel({ id: "debug", label: "Debug", component: DebugPanel });
 
-  layout.registerPanel({
-    id: "status-dashboard",
-    label: "Status",
-    component: StatusDashboard,
-    preferredZones: ["right-sidebar", "right-aux", "main"],
-    orientation: "tall-narrow",
-    supportsDetach: true,
-  });
-
-  layout.registerPanel({
-    id: "file-tree",
-    label: "Files",
-    component: FileTree,
-    preferredZones: ["left-sidebar"],
-    orientation: "tall-narrow",
-    supportsDetach: true,
-  });
-
-  layout.registerPanel({
-    id: "monaco-editor",
-    label: "Editor",
-    component: EditorMain,
-    preferredZones: ["main"],
-    orientation: "any",
-    supportsDetach: true,
-  });
-
-  layout.registerPanel({
-    id: "editor-status",
-    label: "Editor Status",
-    component: EditorStatus,
-    preferredZones: ["right-aux", "drawer"],
-    orientation: "short-wide",
-    supportsDetach: false,
-  });
-
-  // ── Phase 3 rehomed panels ────────────────────────────────────
-
-  layout.registerPanel({
-    id: "files",
-    label: "Files",
-    component: FilesPanel,
-    preferredZones: ["left-sidebar"],
-    orientation: "tall-narrow",
-    supportsDetach: true,
-  });
-
-  layout.registerPanel({
-    id: "activity",
-    label: "Activity",
-    component: ActivityPanel,
-    preferredZones: ["right-sidebar", "right-aux"],
-    orientation: "tall-narrow",
-    supportsDetach: true,
-  });
-
-  layout.registerPanel({
-    id: "state",
-    label: "State",
-    component: StatePanel,
-    preferredZones: ["right-sidebar", "right-aux"],
-    orientation: "tall-narrow",
-    supportsDetach: true,
-  });
-
-  layout.registerPanel({
-    id: "creatures",
-    label: "Creatures",
-    component: CreaturesPanel,
-    preferredZones: ["left-sidebar", "right-sidebar"],
-    orientation: "tall-narrow",
-    supportsDetach: true,
-  });
-
-  layout.registerPanel({
-    id: "canvas",
-    label: "Canvas",
-    component: CanvasPanel,
-    preferredZones: ["main", "right-aux"],
-    orientation: "tall-wide",
-    supportsDetach: true,
-  });
-
-  layout.registerPanel({
-    id: "settings",
-    label: "Settings",
-    component: SettingsPanel,
-    preferredZones: ["main"],
-    orientation: "tall-wide",
-    supportsDetach: true,
-  });
-
-  layout.registerPanel({
-    id: "debug",
-    label: "Debug",
-    component: DebugPanel,
-    preferredZones: ["drawer", "main"],
-    orientation: "short-wide",
-    supportsDetach: true,
-  });
-
-  // ── Chrome ────────────────────────────────────────────────────
-  // StatusBar is used via the layout store, but it's a chrome strip
-  // that doesn't support detach (always visible at workspace bottom).
-  layout.registerPanel({
-    id: "status-bar",
-    label: "Status Bar",
-    component: StatusBar,
-    preferredZones: ["status-bar"],
-    orientation: "thin-strip",
-    supportsDetach: false,
-  });
-
-  // Register builtin presets.
+  // ── Presets ──
   layout.registerBuiltinPreset(LEGACY_INSTANCE_PRESET);
   layout.registerBuiltinPreset(LEGACY_EDITOR_PRESET);
   for (const preset of DEFAULT_PRESETS) {
