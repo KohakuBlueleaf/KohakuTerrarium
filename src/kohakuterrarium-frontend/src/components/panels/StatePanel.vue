@@ -103,7 +103,7 @@
                 :class="memMode === m
                   ? 'bg-iolite/10 text-iolite'
                   : 'text-warm-400 hover:text-warm-600'"
-                @click="memMode = m"
+                @click="memMode = m; if (memSearched) runMemorySearch()"
               >
                 {{ m }}
               </button>
