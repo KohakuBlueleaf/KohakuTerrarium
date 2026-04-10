@@ -1,172 +1,176 @@
 # Frontend layout guide
 
-KohakuTerrarium's web dashboard uses a flexible zone-based layout system
-inspired by Blender / DaVinci Resolve workspaces and Foobar2000's edit
-mode. This guide covers the default presets, keyboard shortcuts, edit
-mode, and pop-out windows.
+KohakuTerrarium's web dashboard uses a configurable binary split tree
+layout. Every part of the screen (except the header and status bar) is
+a recursively splittable area that holds a panel. Users can rearrange
+panels, resize splits, and save custom presets.
 
 ## Core concepts
 
-- **Zone** — a region of the window (left sidebar, main, right sidebar,
-  drawer, status bar, etc.). Zones are fixed; what lives inside them is
-  not.
-- **Panel** — a single-responsibility surface (Chat, Files, Activity,
-  State, Canvas, Debug, Settings, …). Every panel declares its preferred
-  zones and an orientation class (`tall-narrow`, `tall-wide`, `short-wide`,
-  `thin-strip`, `any`).
-- **Preset** — a named full-screen layout: which zones are visible, which
-  panels sit in which zones, what size each zone is. Switching presets is
-  instant; the chat panel stays mounted (Teleport) so your scroll position
-  and draft text are preserved.
-- **Edit mode** — a Foobar2000-style state where panels gain a kebab menu
-  so you can replace, close, or pop out. Layouts can be saved as new
-  presets.
+- **Panel**: a single-responsibility view (Chat, Files, Activity, State,
+  Canvas, Debug, Settings, Terminal, etc.). Panels are registered in
+  `stores/layoutPanels.js` and resolved by id.
+- **Split tree**: a binary tree where each node is either a *leaf*
+  (renders one panel) or a *split* (divides space into two children
+  with a draggable handle). Splits can be horizontal (left | right) or
+  vertical (top / bottom).
+- **Preset**: a named split tree configuration. Switching presets
+  replaces the entire tree instantly. Presets are either builtin
+  (shipped with KT) or user-created.
+- **Header**: top bar with instance info, preset dropdown, edit layout
+  button, Ctrl+K palette trigger, and stop button.
+- **Status bar**: bottom bar with model switcher, session id, job count,
+  runtime.
 
 ## Default presets
 
-All shipped presets are available from the preset strip at the top of the
-workspace shell or via keyboard shortcut. The active preset is highlighted.
+| Shortcut | Preset | Layout |
+|----------|--------|--------|
+| Ctrl+1 | Chat Focus | chat \| status-dashboard (top) + state (bottom) |
+| Ctrl+2 | Workspace | files \| editor+terminal \| chat+activity |
+| Ctrl+3 | Multi-creature | creatures \| chat \| activity+state |
+| Ctrl+4 | Canvas | chat \| canvas+activity |
+| Ctrl+5 | Debug | chat+state (top) / debug (bottom) |
+| Ctrl+6 | Settings | settings (full screen) |
 
-| Shortcut | Preset         | Use for                                            |
-|----------|----------------|----------------------------------------------------|
-| Ctrl+1   | Chat focus     | Default for single-creature instances              |
-| Ctrl+2   | Workspace      | Code work: Files, Editor, Chat side by side        |
-| Ctrl+3   | Multi-creature | Default for terrarium instances                    |
-| Ctrl+4   | Canvas         | Artifact-forward: Canvas in main, Chat on the side |
-| Ctrl+5   | Debug          | Full debug drawer + Chat + State                   |
-| Ctrl+6   | Settings       | Settings fills main as an escape hatch             |
-
-The instance route (`/instances/:id`) picks a sensible default on first
-open (`chat-focus` for creatures, `multi-creature` for terrariums) and
-remembers your last choice per instance in `localStorage`.
-
-## Keyboard shortcuts
-
-| Shortcut       | Action                                                   |
-|----------------|----------------------------------------------------------|
-| Ctrl+1..6      | Switch to the matching preset                            |
-| Ctrl+Shift+L   | Toggle layout edit mode                                  |
-| Ctrl+K         | Open the command palette                                 |
-| Esc            | Close edit mode (prompts if there are unsaved changes)   |
-
-`Ctrl+K` always wins even when an input is focused. The preset-switch
-shortcuts are ignored inside text inputs and textareas.
-
-## Command palette
-
-Open with Ctrl+K. Start typing and the palette fuzzy-matches against
-every registered command. Prefixes route the query:
-
-- `>` — commands (default when no prefix)
-- `@` — mentions / files / blocks (reserved for later phases)
-- `#` — sessions (reserved)
-- `/` — slash commands (`/clear`, `/model`, `/status`, `/compact`)
-
-Built-in commands include:
-
-- `Mode: <preset>` — switch to any preset.
-- `Panel: <panel>` — add a panel to its preferred zone.
-- `Layout: enter edit mode` / `save current as new preset` / `reset`.
-- `Debug: open logs tab` — quick debug jump.
-
-Panels can register their own commands by calling
-`paletteStore.register(...)` at mount time.
+The instance page auto-selects Chat Focus for creatures and
+Multi-creature for terrariums. The last-used preset per instance is
+remembered in localStorage.
 
 ## Edit mode
 
-Press **Ctrl+Shift+L** (or click the pencil button in the preset strip)
-to enter edit mode. The workspace picks up an amber banner at the top
-with `Save / Save as new / Revert / Exit` buttons. Each panel gains a
-kebab menu with:
+Press **Ctrl+Shift+L** or click the edit button in the header to enter
+edit mode. Each panel leaf shows an amber bar with:
 
-- **Replace…** — opens a picker modal listing every registered panel.
-- **Close** — removes the panel from its slot.
-- **Pop out** — opens the panel in its own window.
+- **Replace**: swap the panel with any registered panel via a picker
+  modal
+- **Split H / Split V**: split the current leaf into two, creating a new
+  empty slot
+- **Close**: remove the panel (its sibling takes the parent's space)
+- **"+ Add panel"** button on empty slots
 
-Orientation warnings (`⚠ prefers <zone>`) appear when a panel is placed
-somewhere that doesn't match its declared orientation class. Placement
-is never blocked — the warning is informational.
+The edit mode banner at the top provides:
+- **Save**: persists changes (user presets only; builtins can't be
+  overwritten)
+- **Save as new**: creates a new user preset with a custom name
+- **Revert**: discards all changes and restores the original
+- **Exit**: leaves edit mode (prompts if unsaved changes exist)
 
-**Saving:** built-in presets can't be overwritten. To keep your changes,
-click `Save as new`, give the layout a name and an optional shortcut,
-and your preset becomes the active one. User presets are stored under
-`kt.presets.user` in `localStorage`.
+All edits happen on a deep clone of the preset. The original is never
+modified until explicitly saved.
 
-**Revert** restores the active preset to its pre-edit state. **Exit**
-(or Esc) leaves edit mode; if you have unsaved changes it will ask for
-confirmation first.
+## Keyboard shortcuts
 
-## Canvas preset + artifact detection
+| Shortcut | Action |
+|----------|--------|
+| Ctrl+1..6 | Switch to preset |
+| Ctrl+Shift+L | Toggle edit mode |
+| Ctrl+K | Open command palette |
+| Esc | Exit edit mode |
 
-Canvas automatically collects two kinds of content from assistant
-messages:
+Ctrl+K always fires even when an input is focused. Preset shortcuts are
+blocked inside text inputs/textareas.
 
-1. Explicit markers: `##canvas name=my-file lang=py## … ##canvas##`.
-2. Fenced code blocks of at least 15 lines.
+## Command palette
 
-Each artifact gets a tab in the Canvas panel. Regenerating the same
-source produces a new version (v1, v2, …) under the same tab. The
-Canvas panel renders code / markdown / HTML today; SVG, mermaid, and
-CSV viewers are on the roadmap.
+Open with Ctrl+K. Fuzzy-matches against every registered command:
 
-First-artifact notifications appear in the toast center, but canvas
-does not steal focus automatically — switch to the `canvas` preset
-manually when you want to look at it.
+- `Mode: <preset>`: switch to any preset
+- `Panel: <panel>`: add a panel to its preferred zone
+- `Layout: edit / save as / reset`
+- `Debug: open logs`
 
-## Debug panel
+Prefix routing: `>` commands (default), `@` mentions, `#` sessions,
+`/` slash commands.
 
-Open via Ctrl+5 or the `debug` command. Four tabs:
+## Panels
 
-- **Logs** — live tail of the current API server process's log file
-  over `/ws/logs`. Filter by level + text. Auto-scrolls.
-- **Trace** — client-side waterfall of tool-call timings for the
-  current tab.
-- **Prompt** — on-demand fetch of `/agents/<id>/system-prompt` with
-  Refresh, Copy, and a line-based Diff toggle that compares against
-  the previous fetch.
-- **Events** — firehose of every message in the chat store with a type
-  filter and per-row JSON expand.
+### Chat
+The main conversation interface. Supports message edit+rerun,
+regenerate, tool call accordion, sub-agent nesting.
 
-The only auto-open rule that steals focus is `processing_error`: a
-system-role error in the active tab flips to the `debug` preset and
-pops a toast.
+### Activity (tabbed)
+Three tabs: Session (id, cwd, creatures/channels), Tokens (in/out/cache
++ context bar with compact threshold), Jobs (running tool calls with
+stop button).
+
+### State (tabbed)
+Four tabs: Scratchpad (key-value pairs from the agent's working memory),
+Tool History (all tool calls from the session), Memory (FTS5 search over
+session events), Compaction (history of context compactions).
+
+### Files
+File tree with refresh + a "Touched" view showing files the agent
+read/wrote/errored, grouped by action.
+
+### Editor
+Monaco editor with file tabs, dirty indicators, Ctrl+S save. For
+markdown files (.md/.markdown/.mdx), a toggle switches between Monaco
+(code mode) and Vditor (rich WYSIWYG markdown with toolbar, math, and
+code blocks).
+
+### Canvas
+Auto-detects long code blocks (15+ lines) and `##canvas##` markers from
+assistant messages. Shows syntax-highlighted code with line numbers,
+rendered markdown, or sandboxed HTML. Copy and download buttons in the
+tab strip.
+
+### Terminal
+xterm.js terminal connected to a PTY shell (bash/PowerShell) in the
+agent's working directory. Supports Nerd Font glyphs, resize, and
+light/dark theme.
+
+### Debug (tabbed)
+Four tabs: Logs (live tail of the API server log via WebSocket), Trace
+(waterfall of tool call timings), Prompt (current system prompt with
+diff), Events (firehose of all chat store messages).
+
+### Settings (tabbed)
+Seven tabs: Session, Tokens, Jobs, Extensions (installed packages),
+Triggers (active triggers), Cost (token cost estimate), Environment
+(cwd + redacted env vars).
+
+### Creatures (terrarium only)
+Creature list with status dots + channel list. Click a creature to
+switch the chat tab.
 
 ## Detach to window
 
-Any panel with `supportsDetach: true` can be popped out from the edit-
-mode kebab. The detached window is a minimal single-panel shell that
-talks to the backend independently (new websocket, new pinia instance).
-Press **Reattach** in the popup to close it; the panel can be re-added
-via the command palette.
+In edit mode, panels with `supportsDetach: true` can be popped out via
+the Pop Out kebab action. The detached window is a minimal shell at
+`/detached/<instanceId>--<panelId>` that connects independently to the
+backend.
 
-Not every panel detaches well: the status bar and editor-status are
-pinned to the main window on purpose.
+## Status bar
 
-## Settings
+Always visible at the bottom:
+- Instance name + status dot
+- Model quick switcher (dropdown) + settings gear
+- Session id (click to copy)
+- Running jobs count
+- Runtime elapsed
 
-Open with Ctrl+6 or the `Mode: Settings` command. Seven read-only tabs:
+## Technical details
 
-- **Model** — current model + profile details + embedded model switcher.
-- **Plugins** — list from `GET /agents/<id>/plugins`.
-- **Extensions** — installed packages from `GET /api/registry`.
-- **Triggers** — active triggers from `GET /agents/<id>/triggers`.
-- **Cost** — session token totals, multiplied by a small shipped price
-  table for the common GPT/Claude/o1 families.
-- **Environment** — cwd + redacted env vars from `GET /agents/<id>/env`
-  (server-side filter for credential-like keys).
-- **Auto-open** — placeholder for the auto-trigger configuration UI.
+The split tree is stored as a plain JSON structure:
+```json
+{
+  "type": "split",
+  "direction": "horizontal",
+  "ratio": 70,
+  "children": [
+    { "type": "leaf", "panelId": "chat" },
+    { "type": "split", "direction": "vertical", "ratio": 50,
+      "children": [
+        { "type": "leaf", "panelId": "activity" },
+        { "type": "leaf", "panelId": "state" }
+      ]
+    }
+  ]
+}
+```
 
-## Troubleshooting
-
-- **"no such panel" placeholder** — the active preset references a
-  panel id that isn't registered. This happens temporarily when you
-  switch to a preset for a feature from a later phase. Either pick a
-  different preset or wait for the panel to land.
-- **Chat doesn't render after preset switch** — the Teleport target
-  should move the chat. If the shell detaches the mount unexpectedly,
-  reload once; the WS + messages live in the chat store and survive.
-- **Edit mode won't save** — built-in presets can't be overwritten;
-  use Save as new.
-- **Narrow windows** — below 900 px the shell auto-collapses side
-  zones and keeps just main + status bar. Use the preset strip or
-  the command palette to open other panels one at a time.
+The `LayoutNode.vue` component is recursive: splits render two children
+with a draggable handle, leaves render the panel component via
+`<component :is>`. Panel runtime props flow through Vue's
+provide/inject from the route page.
