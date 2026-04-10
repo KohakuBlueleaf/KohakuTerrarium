@@ -104,7 +104,7 @@ onMounted(() => {
   term = new Terminal({
     cursorBlink: true,
     fontSize: 13,
-    fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+    fontFamily: "CaskaydiaCove NF, CaskaydiaCove Nerd Font, JetBrainsMono NF, FiraCode NF, Hack NF, JetBrains Mono, Fira Code, monospace",
     theme: {
       background: "#1a1a2e",
       foreground: "#e0e0e0",
