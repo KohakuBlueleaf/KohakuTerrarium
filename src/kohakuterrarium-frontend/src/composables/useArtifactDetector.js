@@ -1,14 +1,12 @@
 /**
  * useArtifactDetector — watches the chat store for assistant messages
- * and scans them for canvas artifacts. Runs globally (App.vue) so
- * detection works regardless of which preset is active.
+ * and scans them for canvas artifacts. Runs globally (App.vue).
  *
- * Rescans when:
- *   - New messages arrive (message count changes)
- *   - Processing ends (streaming complete — final scan of the last message)
+ * Scans periodically while processing (every 2s) to catch completed
+ * code blocks mid-stream, plus a final scan when processing ends.
  */
 
-import { watch } from "vue";
+import { onUnmounted, watch } from "vue";
 
 import { useCanvasStore } from "@/stores/canvas";
 import { useChatStore } from "@/stores/chat";
@@ -16,6 +14,7 @@ import { useChatStore } from "@/stores/chat";
 export function useArtifactDetector() {
   const chat = useChatStore();
   const canvas = useCanvasStore();
+  let intervalId = null;
 
   function scanAll() {
     const tab = chat.activeTab;
@@ -26,25 +25,37 @@ export function useArtifactDetector() {
     }
   }
 
-  // Rescan all messages when processing ends (the last streamed
-  // message is now complete with full content).
+  // While processing, scan every 2s to catch completed code blocks mid-stream.
   watch(
     () => chat.processing,
-    (processing, prev) => {
-      if (!processing && prev) scanAll();
+    (processing) => {
+      if (processing && !intervalId) {
+        intervalId = setInterval(scanAll, 2000);
+      } else if (!processing) {
+        if (intervalId) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
+        // Final scan when streaming ends.
+        scanAll();
+      }
     },
   );
 
-  // Also scan when new messages arrive.
+  // Scan when new messages arrive or tab switches.
   watch(
     () => {
       const tab = chat.activeTab;
-      if (!tab) return 0;
-      return chat.messagesByTab?.[tab]?.length || 0;
+      if (!tab) return "";
+      return tab + ":" + (chat.messagesByTab?.[tab]?.length || 0);
     },
     () => scanAll(),
   );
 
-  // Scan when the active tab changes (e.g. switching creatures).
-  watch(() => chat.activeTab, () => scanAll());
+  onUnmounted(() => {
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
+  });
 }
