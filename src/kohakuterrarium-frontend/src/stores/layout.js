@@ -453,6 +453,90 @@ export const useLayoutStore = defineStore("layout", () => {
     }
   }
 
+  // ── tree-based mutations (for the binary split tree layout) ────
+
+  /** Walk the active preset's tree and find the node by reference,
+   *  returning its parent + child index. Returns null if not found. */
+  function _findInTree(tree, target) {
+    if (!tree || tree.type !== "split") return null;
+    for (let i = 0; i < tree.children.length; i++) {
+      if (tree.children[i] === target) return { parent: tree, index: i };
+      const found = _findInTree(tree.children[i], target);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  /** Replace a leaf node's panelId in the active preset tree. */
+  function replaceTreePanel(leafNode, newPanelId) {
+    leafNode.panelId = newPanelId;
+    _mutateActivePreset({ tree: activePreset.value?.tree });
+    editModeDirty.value = true;
+  }
+
+  /** Remove a leaf node from the tree. Its sibling takes the parent's
+   *  place, effectively collapsing the split. */
+  function removeTreeNode(leafNode) {
+    const p = activePreset.value;
+    if (!p?.tree) return;
+    // If the leaf IS the root, clear the tree.
+    if (p.tree === leafNode) {
+      _mutateActivePreset({ tree: { type: "leaf", panelId: "" } });
+      editModeDirty.value = true;
+      return;
+    }
+    const found = _findInTree(p.tree, leafNode);
+    if (!found) return;
+    const { parent, index } = found;
+    const sibling = parent.children[1 - index];
+    // Replace the parent split with the sibling. We need to find the
+    // grandparent to do this.
+    if (p.tree === parent) {
+      // Parent is the root — replace root with sibling.
+      _mutateActivePreset({ tree: sibling });
+    } else {
+      const gp = _findInTree(p.tree, parent);
+      if (gp) {
+        gp.parent.children[gp.index] = sibling;
+        _mutateActivePreset({ tree: p.tree });
+      }
+    }
+    editModeDirty.value = true;
+  }
+
+  /** Split a leaf node into two (the leaf keeps its panel, a new empty
+   *  leaf is added next to it). */
+  function splitTreeNode(leafNode, direction = "horizontal") {
+    const p = activePreset.value;
+    if (!p?.tree) return;
+    const newSplit = {
+      type: "split",
+      direction,
+      ratio: 50,
+      children: [
+        { type: "leaf", panelId: leafNode.panelId },
+        { type: "leaf", panelId: "" },
+      ],
+    };
+    if (p.tree === leafNode) {
+      _mutateActivePreset({ tree: newSplit });
+    } else {
+      const found = _findInTree(p.tree, leafNode);
+      if (found) {
+        found.parent.children[found.index] = newSplit;
+        _mutateActivePreset({ tree: p.tree });
+      }
+    }
+    editModeDirty.value = true;
+  }
+
+  /** Update a split node's ratio (called during drag). */
+  function setTreeRatio(splitNode, newRatio) {
+    splitNode.ratio = Math.max(10, Math.min(90, newRatio));
+    // Don't set editModeDirty for drag — it's noisy. Only mark dirty
+    // on structural changes (replace/remove/split).
+  }
+
   /** Attach a detached-window descriptor (Phase 11 will consume this). */
   function markDetached(panelId, instanceId) {
     const entry = { panelId, instanceId };
@@ -511,5 +595,10 @@ export const useLayoutStore = defineStore("layout", () => {
     replaceSlotPanel,
     removeSlot,
     addSlotToZone,
+    // tree mutations
+    replaceTreePanel,
+    removeTreeNode,
+    splitTreeNode,
+    setTreeRatio,
   };
 });
