@@ -25,6 +25,7 @@ from kohakuterrarium.builtins.tools.grep import GrepTool
 from kohakuterrarium.builtins.tools.info import InfoTool
 from kohakuterrarium.builtins.tools.json_read import JsonReadTool
 from kohakuterrarium.builtins.tools.json_write import JsonWriteTool
+from kohakuterrarium.builtins.tools.multi_edit import MultiEditTool
 from kohakuterrarium.builtins.tools.create_trigger import CreateTriggerTool
 from kohakuterrarium.builtins.tools.list_triggers import ListTriggersTool
 from kohakuterrarium.builtins.tools.read import ReadTool
@@ -65,6 +66,7 @@ __all__ = [
     "InfoTool",
     "JsonReadTool",
     "JsonWriteTool",
+    "MultiEditTool",
     "CreateTriggerTool",
     "ListTriggersTool",
     "StopTaskTool",

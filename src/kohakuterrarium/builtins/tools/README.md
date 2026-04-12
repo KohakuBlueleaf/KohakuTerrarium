@@ -15,6 +15,7 @@ re-exports the public API from `builtins.tool_catalog`.
 | `read.py` | `ReadTool`: read file contents with optional line range |
 | `write.py` | `WriteTool`: create or overwrite files |
 | `edit.py` | `EditTool`: edit files using unified diff format |
+| `multi_edit.py` | `MultiEditTool`: apply multiple search/replace edits to one file atomically |
 | `glob.py` | `GlobTool`: find files by glob pattern |
 | `grep.py` | `GrepTool`: search file contents with regex and type filtering |
 | `tree.py` | `TreeTool`: list directory structure (.gitignore-aware, line-limited) |
