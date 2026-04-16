@@ -202,7 +202,7 @@ const resolvedEmptyTitle = computed(() => props.emptyTitle || t("chat.noMessages
 const resolvedEmptySubtitle = computed(() => props.emptySubtitle || t("chat.getStarted"))
 const canSend = computed(() => !!inputText.value.trim() || pendingAttachments.value.length > 0)
 const shouldShowSendButton = computed(() => canSend.value || (!chat.processing && !chat.hasRunningJobs))
-const sendButtonLabel = computed(() => (chat.processing || chat.hasRunningJobs) && canSend.value ? t("chat.sendMessage") : t("chat.stopGeneration"))
+const sendButtonLabel = computed(() => t("chat.sendMessage"))
 
 function getCreatureStatus(name) {
   const creature = props.instance.creatures.find((c) => c.name === name)

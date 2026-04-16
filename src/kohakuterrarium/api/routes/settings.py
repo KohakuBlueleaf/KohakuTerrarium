@@ -196,7 +196,11 @@ async def create_profile(req: ProfileRequest):
     )
     save_profile(profile)
     if api_key_env and req.api_key:
-        save_api_key(api_key_env, req.api_key)
+        provider_key = next(
+            (provider for provider, env_var in PROVIDER_KEY_MAP.items() if env_var == api_key_env),
+            api_key_env,
+        )
+        save_api_key(provider_key, req.api_key)
     return {"status": "saved", "name": req.name}
 
 

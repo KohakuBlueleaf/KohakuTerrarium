@@ -14,7 +14,13 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from kohakuterrarium.api.deps import get_manager
 from kohakuterrarium.api.events import StreamOutput, get_event_log
-from kohakuterrarium.llm.message import FilePart, ImagePart, TextPart, VideoPart
+from kohakuterrarium.llm.message import (
+    FilePart,
+    ImagePart,
+    TextPart,
+    VideoPart,
+    content_parts_to_dicts,
+)
 from kohakuterrarium.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -58,10 +64,16 @@ def _build_multimodal_content(message: str, attachments: list[dict] | None):
     return parts
 
 
-def _apply_reasoning_effort(agent, reasoning_effort: str):
-    value = (reasoning_effort or "").strip()
-    if not value:
+def _serialize_content(content):
+    if isinstance(content, list):
+        return content_parts_to_dicts(content)
+    return content
+
+
+def _apply_reasoning_effort(agent, reasoning_effort: str | None):
+    if reasoning_effort is None:
         return None
+    value = reasoning_effort.strip()
     previous = getattr(agent.config, "reasoning_effort", "")
     agent.config.reasoning_effort = value
     llm = getattr(agent, "llm", None)
@@ -70,7 +82,12 @@ def _apply_reasoning_effort(agent, reasoning_effort: str):
             llm.reasoning_effort = value
         extra_body = getattr(llm, "extra_body", None)
         if isinstance(extra_body, dict):
-            llm.extra_body = {**extra_body, "reasoning_effort": value}
+            if value:
+                llm.extra_body = {**extra_body, "reasoning_effort": value}
+            else:
+                new_extra_body = dict(extra_body)
+                new_extra_body.pop("reasoning_effort", None)
+                llm.extra_body = new_extra_body
     return previous
 
 
@@ -140,7 +157,7 @@ def _register_channel_callbacks(
                     "source": "channel",
                     "channel": channel_name,
                     "sender": message.sender,
-                    "content": message.content,
+                    "content": _serialize_content(message.content),
                     "metadata": message.metadata,
                     "message_id": message.message_id,
                     "timestamp": ts,
@@ -173,7 +190,7 @@ async def _send_channel_history(ws: WebSocket, runtime) -> None:
                     "source": "channel",
                     "channel": ch.name,
                     "sender": msg.sender,
-                    "content": msg.content,
+                    "content": _serialize_content(msg.content),
                     "metadata": msg.metadata,
                     "message_id": msg.message_id,
                     "timestamp": ts,
@@ -202,7 +219,7 @@ async def _handle_terrarium_input(ws: WebSocket, manager, terrarium_id: str) -> 
             user_evt = {
                 "type": "user_input",
                 "source": target,
-                "content": content,
+                "content": _serialize_content(content),
                 "ts": time.time(),
             }
             log.append(user_evt)
@@ -335,7 +352,7 @@ async def ws_creature(websocket: WebSocket, agent_id: str):
             user_evt = {
                 "type": "user_input",
                 "source": session.agent.config.name,
-                "content": content,
+                "content": _serialize_content(content),
                 "ts": time.time(),
             }
             log.append(user_evt)
