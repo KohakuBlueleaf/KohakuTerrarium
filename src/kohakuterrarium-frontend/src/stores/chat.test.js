@@ -1,6 +1,7 @@
 import { createPinia, setActivePinia } from "pinia"
 import { beforeEach, describe, expect, it } from "vitest"
 
+import { agentAPI } from "@/utils/api"
 import { _replayEvents, useChatStore } from "./chat.js"
 
 beforeEach(() => {
@@ -91,6 +92,141 @@ describe("chat store — interrupted task handling", () => {
     expect(tool.status).toBe("interrupted")
     expect(tool.result).toBe("User manually interrupted this job.")
     expect(chat.runningJobs.job_1).toBeUndefined()
+  })
+
+  it("does not infer interrupted for subagents without explicit interruption metadata", () => {
+    const { messages: replayed, pendingJobs } = _replayEvents([], [
+      { type: "processing_start" },
+      { type: "subagent_call", name: "explore", task: "find auth" },
+      { type: "processing_end" },
+    ])
+
+    const tool = replayed[0].parts[0]
+    expect(tool).toMatchObject({
+      type: "tool",
+      kind: "subagent",
+      name: "explore",
+      status: "done",
+      result: "",
+      jobId: "",
+    })
+    expect(pendingJobs).toEqual({})
+  })
+})
+
+describe("chat store — standalone agent history loading", () => {
+  it("rebuilds messages from event-only agent history responses", async () => {
+    const chat = useChatStore()
+    chat._instanceGeneration = 1
+    chat.messagesByTab = { main: [] }
+
+    const originalGetHistory = agentAPI.getHistory
+    agentAPI.getHistory = async () => ({
+      agent_id: "agent_1",
+      events: [
+        { type: "user_input", content: "hello" },
+        { type: "processing_start" },
+        { type: "text", content: "world" },
+        { type: "processing_end" },
+      ],
+    })
+
+    try {
+      await chat._loadAgentHistory("agent_1", "main", 1)
+    } finally {
+      agentAPI.getHistory = originalGetHistory
+    }
+
+    expect(chat.messagesByTab.main).toHaveLength(2)
+    expect(chat.messagesByTab.main[0]).toMatchObject({ role: "user", content: "hello" })
+    expect(chat.messagesByTab.main[1].role).toBe("assistant")
+    expect(chat.messagesByTab.main[1].parts).toEqual([{ type: "text", content: "world", _streaming: false }])
+  })
+})
+
+describe("chat store — standalone agent empty completion recovery", () => {
+  it("resyncs history when a standalone agent finishes with an empty assistant message", async () => {
+    const chat = useChatStore()
+    chat._instanceId = "agent_1"
+    chat._instanceType = "agent"
+    chat.activeTab = "main"
+    chat.messagesByTab = {
+      main: [
+        {
+          id: "m1",
+          role: "assistant",
+          parts: [],
+          _streaming: true,
+        },
+      ],
+    }
+
+    const calls = []
+    const originalStartRecoveryPolling = chat._startRecoveryPolling
+    chat._startRecoveryPolling = function () {
+      calls.push(chat._instanceId)
+      chat.messagesByTab.main = [
+        { id: "u1", role: "user", content: "这是啥？" },
+        {
+          id: "a1",
+          role: "assistant",
+          parts: [{ type: "text", content: "这是 Chrome 新标签页。", _streaming: false }],
+        },
+      ]
+    }
+
+    try {
+      chat._finishStream("main")
+      await Promise.resolve()
+      await Promise.resolve()
+    } finally {
+      chat._startRecoveryPolling = originalStartRecoveryPolling
+    }
+
+    expect(calls).toEqual(["agent_1"])
+    expect(chat.messagesByTab.main).toHaveLength(2)
+    expect(chat.messagesByTab.main[1]).toMatchObject({
+      role: "assistant",
+      parts: [{ type: "text", content: "这是 Chrome 新标签页。", _streaming: false }],
+    })
+  })
+
+  it("does not resync history when the standalone agent already streamed visible text", async () => {
+    const chat = useChatStore()
+    chat._instanceId = "agent_1"
+    chat._instanceType = "agent"
+    chat.activeTab = "main"
+    chat.messagesByTab = {
+      main: [
+        {
+          id: "m1",
+          role: "assistant",
+          parts: [{ type: "text", content: "partial", _streaming: true }],
+          _streaming: true,
+        },
+      ],
+    }
+
+    const calls = []
+    const originalGetHistory = agentAPI.getHistory
+    agentAPI.getHistory = async (id) => {
+      calls.push(id)
+      return { agent_id: id, events: [] }
+    }
+
+    try {
+      chat._finishStream("main")
+      await Promise.resolve()
+    } finally {
+      agentAPI.getHistory = originalGetHistory
+    }
+
+    expect(calls).toEqual([])
+    expect(chat.messagesByTab.main[0]).toMatchObject({
+      role: "assistant",
+      parts: [{ type: "text", content: "partial", _streaming: false }],
+      _streaming: false,
+    })
   })
 })
 

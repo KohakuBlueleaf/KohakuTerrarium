@@ -1,15 +1,22 @@
 <template>
-  <div v-if="isTerrarium" class="flex items-center gap-2 min-w-0">
-    <el-select :model-value="selectedTarget" size="small" class="status-select target-select" :disabled="!instanceId" @change="onPickTarget">
+  <div class="flex items-center gap-2 min-w-0">
+    <el-select v-if="isTerrarium" :model-value="selectedTarget" size="small" class="status-select target-select" :disabled="!instanceId" @change="onPickTarget">
       <el-option v-for="target in targetOptions" :key="target.value" :label="target.label" :value="target.value" />
     </el-select>
-    <el-select :model-value="currentModel" size="small" class="status-select model-select" :disabled="!canPickModel" :loading="loading" placeholder="Search model" filterable default-first-option :reserve-keyword="false" @visible-change="onVisibleChange" @change="onPick">
-      <el-option v-for="m in availableModels" :key="m.name" :label="modelLabel(m)" :value="m.name" :disabled="m.name === currentModel" />
-    </el-select>
+    <div class="flex items-center gap-2 min-w-0">
+      <el-select :model-value="currentModel" size="small" class="status-select model-select" :disabled="!instanceId || !canPickModel" :loading="loading" placeholder="Select model" popper-class="model-switcher-popper" @visible-change="onVisibleChange" @change="onPick">
+        <template #header>
+          <div class="model-search-header" @click.stop @mousedown.stop>
+            <input ref="modelSearchInput" v-model.trim="modelSearch" type="text" class="model-search-field" placeholder="Search / filter" @click.stop @keydown.stop />
+          </div>
+        </template>
+        <el-option v-for="m in filteredModels" :key="m.name" :label="modelLabel(m)" :value="m.name" :disabled="m.available === false" />
+      </el-select>
+      <el-select v-model="reasoningEffort" size="small" class="status-select reasoning-select" :disabled="!supportsReasoningControls" @change="onChangeReasoningEffort">
+        <el-option v-for="option in reasoningOptions" :key="option.value || 'default'" :label="option.label" :value="option.value" />
+      </el-select>
+    </div>
   </div>
-  <el-select v-else :model-value="currentModel" size="small" class="status-select model-select" :disabled="!instanceId" :loading="loading" placeholder="Search model" filterable default-first-option :reserve-keyword="false" @visible-change="onVisibleChange" @change="onPick">
-    <el-option v-for="m in availableModels" :key="m.name" :label="modelLabel(m)" :value="m.name" :disabled="m.name === currentModel" />
-  </el-select>
 
   <!-- Model config dialog (opened by gear button in StatusBar) -->
   <el-dialog v-model="configDialogVisible" title="Model Configuration" width="500px" :close-on-click-modal="true">
@@ -31,7 +38,7 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from "vue"
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue"
 import { ElMessage } from "element-plus"
 
 import { useChatStore } from "@/stores/chat"
@@ -45,7 +52,17 @@ const instances = useInstancesStore()
 
 const models = ref([])
 const loading = ref(false)
-const availableModels = computed(() => models.value.filter((model) => model.available !== false))
+const modelSearch = ref("")
+const modelSearchInput = ref(null)
+const reasoningEffort = ref("")
+const filteredModels = computed(() => {
+  const q = modelSearch.value.trim().toLowerCase()
+  if (!q) return models.value
+  return models.value.filter((model) => {
+    const haystack = [model.name, model.provider, model.login_provider, model.description].filter(Boolean).join(" ").toLowerCase()
+    return haystack.includes(q)
+  })
+})
 
 // Config dialog state
 const configDialogVisible = ref(false)
@@ -81,6 +98,25 @@ const currentModel = computed(() => {
   }
   return chat.sessionInfo.model || inst?.model || ""
 })
+const currentModelProfile = computed(() => models.value.find((m) => m.name === currentModel.value) || null)
+const reasoningProvider = computed(() => {
+  const name = currentModel.value.toLowerCase()
+  const provider = String(currentModelProfile.value?.provider || currentModelProfile.value?.login_provider || "").toLowerCase()
+  if (name.includes("codex") || provider.includes("codex")) return "codex"
+  if (name.includes("gemini") || provider.includes("gemini") || provider.includes("google")) return "gemini"
+  if (name.includes("claude") || provider.includes("anthropic") || name.startsWith("anthropic/")) return "anthropic"
+  if (name.includes("gpt") || provider.includes("openai")) return "openai"
+  return ""
+})
+const reasoningOptions = computed(() => {
+  const base = [{ label: "Reasoning: default", value: "" }]
+  if (reasoningProvider.value === "codex") return [...base, { label: "Reasoning: minimal", value: "minimal" }, { label: "Reasoning: low", value: "low" }, { label: "Reasoning: medium", value: "medium" }, { label: "Reasoning: high", value: "high" }, { label: "Reasoning: xhigh", value: "xhigh" }]
+  if (reasoningProvider.value === "anthropic") return [...base, { label: "Reasoning: low", value: "low" }, { label: "Reasoning: medium", value: "medium" }, { label: "Reasoning: high", value: "high" }, { label: "Reasoning: max", value: "max" }]
+  if (reasoningProvider.value === "gemini") return [...base, { label: "Reasoning: low", value: "low" }, { label: "Reasoning: high", value: "high" }]
+  if (reasoningProvider.value === "openai") return [...base, { label: "Reasoning: minimal", value: "minimal" }, { label: "Reasoning: low", value: "low" }, { label: "Reasoning: medium", value: "medium" }, { label: "Reasoning: high", value: "high" }, { label: "Reasoning: xhigh", value: "xhigh" }]
+  return base
+})
+const supportsReasoningControls = computed(() => reasoningProvider.value !== "")
 
 async function loadModels() {
   loading.value = true
@@ -94,8 +130,18 @@ async function loadModels() {
   }
 }
 
+function syncReasoningEffort() {
+  reasoningEffort.value = currentModelProfile.value?.reasoning_effort || ""
+}
+
 function onVisibleChange(open) {
-  if (open && models.value.length === 0) loadModels()
+  if (open) {
+    if (models.value.length === 0) loadModels()
+    syncReasoningEffort()
+    nextTick(() => modelSearchInput.value?.focus())
+    return
+  }
+  modelSearch.value = ""
 }
 
 function modelLabel(model) {
@@ -129,10 +175,20 @@ async function onPick(modelName) {
       await agentAPI.switchModel(id, modelName)
       chat.sessionInfo.model = modelName
     }
+    syncReasoningEffort()
     ElMessage.success(`Switched to ${modelName}`)
   } catch (err) {
     ElMessage.error(`Model switch failed: ${err?.message || err}`)
   }
+}
+
+function onChangeReasoningEffort(value) {
+  if (!reasoningOptions.value.some((item) => item.value === value)) {
+    reasoningEffort.value = ""
+    chat.sessionInfo.reasoningEffort = ""
+    return
+  }
+  chat.sessionInfo.reasoningEffort = value || ""
 }
 
 /** Open model config dialog with the current profile's JSON */
@@ -140,7 +196,7 @@ function openModelConfig() {
   configJsonError.value = ""
   if (models.value.length === 0) loadModels()
   const modelName = currentModel.value
-  const fullProfile = availableModels.value.find((m) => m.name === modelName) || models.value.find((m) => m.name === modelName)
+  const fullProfile = models.value.find((m) => m.name === modelName)
   const profile = fullProfile
     ? {
         model: fullProfile.model,
@@ -171,6 +227,8 @@ function saveModelConfig() {
 
 // Listen for gear button event from StatusBar
 let _cleanup = null
+watch(currentModelProfile, () => syncReasoningEffort(), { immediate: true })
+
 onMounted(() => {
   _cleanup = onLayoutEvent(LAYOUT_EVENTS.MODEL_CONFIG_OPEN, () => openModelConfig())
 })
@@ -194,5 +252,29 @@ onUnmounted(() => {
 
 .model-select {
   width: 12rem;
+}
+
+.reasoning-select {
+  width: 8.5rem;
+}
+
+.model-search-header {
+  padding: 0.375rem;
+  border-bottom: 1px solid rgba(120, 109, 98, 0.18);
+}
+
+.model-search-field {
+  width: 100%;
+  height: 28px;
+  padding: 0 0.625rem;
+  border-radius: 8px;
+  border: 1px solid rgba(120, 109, 98, 0.25);
+  background: rgba(120, 109, 98, 0.08);
+  color: inherit;
+  outline: none;
+}
+
+.model-search-field:focus {
+  border-color: rgba(125, 108, 255, 0.55);
 }
 </style>
