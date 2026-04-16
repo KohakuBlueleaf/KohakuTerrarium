@@ -305,6 +305,22 @@ def _is_available(login_provider: str) -> bool:
     return False
 
 
+def _profile_is_available(profile_or_data: dict[str, Any] | LLMProfile) -> bool:
+    """Check if credentials exist for a specific profile or preset."""
+    if isinstance(profile_or_data, LLMProfile):
+        provider = profile_or_data.provider
+        api_key_env = profile_or_data.api_key_env
+    else:
+        provider = profile_or_data.get("provider", "")
+        api_key_env = profile_or_data.get("api_key_env", "")
+
+    if provider == "codex-oauth":
+        return _is_available("codex")
+    if api_key_env:
+        return bool(get_api_key(api_key_env))
+    return _is_available(_login_provider_for(profile_or_data))
+
+
 def list_all() -> list[dict[str, Any]]:
     """List all profiles and presets with availability info."""
     result = []
@@ -318,7 +334,7 @@ def list_all() -> list[dict[str, Any]]:
                 "model": profile.model,
                 "provider": profile.provider,
                 "login_provider": login,
-                "available": _is_available(login),
+                "available": _profile_is_available(profile),
                 "source": "user",
                 "max_context": profile.max_context,
                 "max_output": profile.max_output,
@@ -340,7 +356,7 @@ def list_all() -> list[dict[str, Any]]:
                     "model": data.get("model", ""),
                     "provider": data.get("provider", ""),
                     "login_provider": login,
-                    "available": _is_available(login),
+                    "available": _profile_is_available(data),
                     "source": "preset",
                     "max_context": data.get("max_context", 0),
                     "max_output": data.get("max_output", 0),

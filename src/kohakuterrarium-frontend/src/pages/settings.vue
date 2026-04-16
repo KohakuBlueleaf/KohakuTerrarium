@@ -51,6 +51,7 @@
               </div>
               <div class="text-[11px] text-warm-400 font-mono flex gap-4">
                 <span v-if="profile.base_url">{{ t("settings.models.baseUrlShort") }}: {{ profile.base_url }}</span>
+                <span v-if="profile.api_key_env">{{ t("settings.models.apiKeyEnvShort") }}: {{ profile.api_key_env }}</span>
                 <span>{{ t("settings.models.contextShort") }}: {{ (profile.max_context / 1000).toFixed(0) }}K</span>
                 <span v-if="profile.temperature != null">{{ t("settings.models.temperatureShort") }}: {{ profile.temperature }}</span>
               </div>
@@ -86,6 +87,14 @@
                   <el-input v-model="form.base_url" size="small" placeholder="https://api.openai.com/v1" />
                 </div>
                 <div>
+                  <label class="text-[11px] text-warm-400 mb-1 block">{{ t("settings.models.apiKeyEnv") }}</label>
+                  <el-input v-model.trim="form.api_key_env" size="small" placeholder="MY_CUSTOM_API_KEY" />
+                </div>
+                <div>
+                  <label class="text-[11px] text-warm-400 mb-1 block">{{ t("settings.models.apiKeyOptional") }}</label>
+                  <el-input v-model="form.api_key" size="small" type="password" show-password :placeholder="t('settings.models.apiKeyPlaceholder')" />
+                </div>
+                <div>
                   <label class="text-[11px] text-warm-400 mb-1 block">{{ t("settings.models.maxContext") }}</label>
                   <el-input-number v-model="form.max_context" size="small" :min="1000" :step="1000" />
                 </div>
@@ -94,6 +103,9 @@
                   <el-input-number v-model="form.temperature" size="small" :min="0" :max="2" :step="0.1" :precision="1" />
                 </div>
               </div>
+              <p v-if="editingProfile" class="text-[11px] text-warm-400 mt-3">
+                {{ t("settings.models.apiKeyEditHint") }}
+              </p>
               <div class="flex gap-2 mt-3">
                 <el-button type="primary" size="small" :disabled="!form.name || !form.model" @click="saveProfile">
                   {{ editingProfile ? t("settings.models.update") : t("settings.models.addProfile") }}
@@ -352,6 +364,8 @@ const form = reactive({
   model: "",
   provider: "openai",
   base_url: "",
+  api_key_env: "",
+  api_key: "",
   max_context: 128000,
   temperature: null,
 })
@@ -371,6 +385,8 @@ function editProfile(profile) {
   form.model = profile.model
   form.provider = profile.provider
   form.base_url = profile.base_url || ""
+  form.api_key_env = profile.api_key_env || ""
+  form.api_key = ""
   form.max_context = profile.max_context || 128000
   form.temperature = profile.temperature
 }
@@ -381,12 +397,18 @@ function resetForm() {
   form.model = ""
   form.provider = "openai"
   form.base_url = ""
+  form.api_key_env = ""
+  form.api_key = ""
   form.max_context = 128000
   form.temperature = null
 }
 
 async function saveProfile() {
   if (!form.name || !form.model) return
+  if (form.api_key && !form.api_key_env) {
+    ElMessage.error(t("settings.models.apiKeyEnvRequired"))
+    return
+  }
   try {
     await settingsAPI.saveProfile({ ...form })
     ElMessage.success(t("settings.models.saved", { name: form.name }))

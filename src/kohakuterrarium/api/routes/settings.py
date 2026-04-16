@@ -44,6 +44,7 @@ class ProfileRequest(BaseModel):
     provider: str = "openai"
     base_url: str = ""
     api_key_env: str = ""
+    api_key: str = ""
     max_context: int = 128000
     max_output: int = 16384
     temperature: float | None = None
@@ -180,12 +181,13 @@ async def create_profile(req: ProfileRequest):
     """Create or update a custom model profile."""
     if not req.name or not req.model:
         raise HTTPException(400, "Name and model are required")
+    api_key_env = (req.api_key_env or "").strip()
     profile = LLMProfile(
         name=req.name,
         model=req.model,
         provider=req.provider,
         base_url=req.base_url or None,
-        api_key_env=req.api_key_env or None,
+        api_key_env=api_key_env or None,
         max_context=req.max_context,
         max_output=req.max_output,
         temperature=req.temperature,
@@ -193,6 +195,8 @@ async def create_profile(req: ProfileRequest):
         extra_body=req.extra_body,
     )
     save_profile(profile)
+    if api_key_env and req.api_key:
+        save_api_key(api_key_env, req.api_key)
     return {"status": "saved", "name": req.name}
 
 

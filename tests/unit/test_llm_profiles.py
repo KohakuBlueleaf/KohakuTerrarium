@@ -42,9 +42,9 @@ class TestPresets:
 
     def test_aliases_point_to_valid_presets(self):
         for alias, target in ALIASES.items():
-            assert (
-                target in PRESETS
-            ), f"alias '{alias}' points to missing preset '{target}'"
+            assert target in PRESETS, (
+                f"alias '{alias}' points to missing preset '{target}'"
+            )
 
     def test_get_preset_by_name(self):
         p = get_preset("gpt-5.4")
@@ -222,3 +222,40 @@ class TestListAll:
         defaults = [e for e in entries if e.get("is_default")]
         assert len(defaults) >= 1
         assert defaults[0]["name"] == "gpt-5.4"
+
+    def test_custom_profile_with_api_key_env_is_available(self, tmp_profiles):
+        save_profile(
+            LLMProfile(
+                name="custom",
+                provider="openai",
+                model="m",
+                api_key_env="MY_CUSTOM_API_KEY",
+            )
+        )
+
+        with patch(
+            "kohakuterrarium.llm.profiles.get_api_key",
+            side_effect=lambda name: "secret" if name == "MY_CUSTOM_API_KEY" else "",
+        ):
+            entries = list_all()
+
+        custom = next(e for e in entries if e["name"] == "custom")
+        assert custom["available"] is True
+
+    def test_custom_profile_without_api_key_env_value_is_unavailable(
+        self, tmp_profiles
+    ):
+        save_profile(
+            LLMProfile(
+                name="custom",
+                provider="openai",
+                model="m",
+                api_key_env="MY_CUSTOM_API_KEY",
+            )
+        )
+
+        with patch("kohakuterrarium.llm.profiles.get_api_key", return_value=""):
+            entries = list_all()
+
+        custom = next(e for e in entries if e["name"] == "custom")
+        assert custom["available"] is False
