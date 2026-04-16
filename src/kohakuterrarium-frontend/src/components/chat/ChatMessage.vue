@@ -92,7 +92,7 @@
       <button class="msg-action-btn" title="Copy" aria-label="Copy message" @click="copyMessage">
         <span class="i-carbon-copy text-xs" />
       </button>
-      <button class="msg-action-btn" title="Edit & rerun" aria-label="Edit and rerun message" @click="$emit('request-edit', message)">
+      <button class="msg-action-btn" title="Edit in composer" aria-label="Edit message in composer" @click="$emit('request-edit', message)">
         <span class="i-carbon-edit text-xs" />
       </button>
     </div>
