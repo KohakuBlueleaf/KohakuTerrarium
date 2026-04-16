@@ -131,7 +131,7 @@ async function loadModels() {
 }
 
 function syncReasoningEffort() {
-  reasoningEffort.value = currentModelProfile.value?.reasoning_effort || ""
+  reasoningEffort.value = currentModelProfile.value?.reasoning_effort || "medium"
 }
 
 function onVisibleChange(open) {

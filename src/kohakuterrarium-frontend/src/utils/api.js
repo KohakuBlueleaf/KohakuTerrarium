@@ -89,7 +89,7 @@ export const terrariumAPI = {
       content,
       sender,
       attachments: options.attachments || [],
-      reasoning_effort: options.reasoning_effort || "",
+      reasoning_effort: options.reasoning_effort || "medium",
     })
     return data
   },

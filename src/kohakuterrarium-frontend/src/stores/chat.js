@@ -945,7 +945,7 @@ export const useChatStore = defineStore("chat", {
         try {
           await terrariumAPI.sendToChannel(this._instanceId, chName, text, "human", {
             attachments,
-            reasoning_effort: options.reasoningEffort || "",
+            reasoning_effort: options.reasoningEffort || this.sessionInfo.reasoningEffort || "medium",
           })
         } catch (err) {
           console.error("Channel send failed:", err)
@@ -959,7 +959,7 @@ export const useChatStore = defineStore("chat", {
               target,
               message: text,
               attachments,
-              reasoning_effort: options.reasoningEffort || "",
+              reasoning_effort: options.reasoningEffort || this.sessionInfo.reasoningEffort || "medium",
             }),
           )
           this.processing = true
