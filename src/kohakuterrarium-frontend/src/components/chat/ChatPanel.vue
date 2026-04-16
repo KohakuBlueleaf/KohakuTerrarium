@@ -400,6 +400,21 @@ async function onPaste(event) {
   await appendFiles(files)
 }
 
+function beginEditMessage(message) {
+  if (!message) return
+  const text = typeof message.content === "string"
+    ? message.content
+    : Array.isArray(message.parts)
+      ? message.parts.filter((p) => p.type === "text").map((p) => p.content).join("")
+      : ""
+  inputText.value = text
+  nextTick(() => {
+    if (inputEl.value) {
+      inputEl.value.focus()
+    }
+  })
+}
+
 function send() {
   if (props.readOnly || !canSend.value) return
   chat.send(inputText.value, {
