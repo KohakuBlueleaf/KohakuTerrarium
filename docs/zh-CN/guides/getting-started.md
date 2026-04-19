@@ -63,7 +63,7 @@ kt list
 
 选一种：
 
- **Codex（ChatGPT 订阅，无需 API key）**
+ **Codex（ChatGPT 订阅，无需 API key）** 
 ```bash
 kt login codex
 kt model default gpt-5.4
@@ -71,7 +71,7 @@ kt model default gpt-5.4
 
 会开启浏览器视窗；完成 device-code 流程后，token 会写入 `~/.kohakuterrarium/codex-auth.json`。
 
- **兼容 OpenAI 的提供者（API key）**
+ **兼容 OpenAI 的提供者（API key）** 
 ```bash
 kt config key set openai          # 会提示你输入 key
 kt config llm add                 # 交互式默认建立器

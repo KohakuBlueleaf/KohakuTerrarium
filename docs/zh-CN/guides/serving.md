@@ -1,6 +1,6 @@
 ---
 title: 服务化部署 (Serving)
-summary: `kt serve` 提供 HTTP API + WebSocket + Web dashboard，另外还有 `kt app` 提供原生桌面版。
+summary: " `kt serve` 提供 HTTP API + WebSocket + Web dashboard，另外还有 `kt app` 提供原生桌面版。"
 tags:
  - guides
  - serving

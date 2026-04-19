@@ -9,7 +9,9 @@ tags:
 
 # Terrarium
 
-## 它是什么 **Terrarium (terrarium)** 是一个把多只Creature一起执行的纯连线层。它自己没有 LLM、没有智慧，也不做决策。它只做两件事：
+## 它是什么
+
+**Terrarium (terrarium)** 是一个把多只Creature一起执行的纯连线层。它自己没有 LLM、没有智慧，也不做决策。它只做两件事：
 
 1. 它是一个管理Creature生命周期的 **运行时**。
 2. 它拥有一组Creature之间可用来互相对话的 **共享频道**。

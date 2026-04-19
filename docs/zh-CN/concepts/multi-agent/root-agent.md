@@ -9,7 +9,9 @@ tags:
 
 # Root 代理
 
-## 它是什么 **Root 代理 (root Agent)** 是一只坐落在Terrarium*外部*、在其中代表用户的 Creature。从结构上说，它其实就只是另一个 Creature：同样的配置、同样的模块、同样的生命周期。让它成为「root」的地方在于：
+## 它是什么
+
+**Root 代理 (root Agent)** 是一只坐落在Terrarium*外部*、在其中代表用户的 Creature。从结构上说，它其实就只是另一个 Creature：同样的配置、同样的模块、同样的生命周期。让它成为「root」的地方在于：
 
 1. 它被放在团队之外——用户和 root 对话；root 再和Terrarium对话。
 2. 它会自动获得 **Terrarium管理工具组**（`terrarium_create`、`terrarium_send`、`creature_start`、`creature_stop`、`creature_status`、`terrarium_status`、…）。

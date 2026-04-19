@@ -1,12 +1,12 @@
 ---
-title: 使用指南
+title: 开发指南
 summary: 面向任务的 how-to 文档：编写 Creature、将它们组合起来、部署 agent。
 tags:
  - guides
  - overview
 ---
 
-# 使用指南
+# 开发指南
 
 指南是面向任务的 how-to 文档。每一篇指南都回答一个具体问题 —— “我该如何设置继承？”、“我该如何把记忆加到 Creature 上？”、“这个 Creature 要如何上线？”。
 

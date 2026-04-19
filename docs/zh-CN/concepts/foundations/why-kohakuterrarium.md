@@ -7,7 +7,7 @@ tags:
   - philosophy
 ---
 
-# 为什么 KohakuTerrarium 会存在
+# 为什么 KohakuTerrarium 存在
 
 ## 一个你大概已经观察到的现象
 
@@ -52,7 +52,7 @@ tags:
 
 这些都是你在想试一种新 Agent 设计时，不会想重写的部分。
 
-## KohakuTerrarium 不是什么
+## KohakuTerrarium 不是
 
 - **不是 Agent 产品**。 你不会「执行 KohakuTerrarium」；你会执行一只用它建出来的 Creature。如果你想先试用现成Creature，展示用的是 [`kt-biome`](https://github.com/Kohaku-Lab/kt-biome) 套件。
 - **不是 workflow engine**。 这里没有任何地方假设你的 Agent 会照固定步骤序列前进。

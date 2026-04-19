@@ -1,5 +1,5 @@
 ---
-title: 编写设置
+title: 编写配置文件
 summary: Creature 设置的结构、继承、提示词链，以及日常编写会用到的重要字段。
 tags:
  - guides

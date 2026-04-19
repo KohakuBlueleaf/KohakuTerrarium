@@ -150,7 +150,6 @@ const zhTWSidebar = [
   { text: "開發", items: sidebarStructure.dev },
 ]
 
-
 const zhCNSidebar = [
   { text: "总览", items: sidebarStructure.overview },
   { text: "教程", items: sidebarStructure.tutorials },
@@ -170,6 +169,7 @@ const zhCNSidebar = [
   { text: "参考", items: sidebarStructure.reference },
   { text: "开发", items: sidebarStructure.dev },
 ]
+
 // ---------------------------------------------------------------------------
 // Home-page cards (shared layout, per-locale strings)
 // ---------------------------------------------------------------------------
@@ -252,7 +252,6 @@ const zhTWHomeCards = [
   },
 ]
 
-
 const zhCNHomeCards = [
   {
     title: "什么是 agent？",
@@ -291,6 +290,7 @@ const zhCNHomeCards = [
     href: "https://github.com/Kohaku-Lab/KohakuTerrarium/blob/main/ROADMAP.md",
   },
 ]
+
 // ---------------------------------------------------------------------------
 // Export
 // ---------------------------------------------------------------------------

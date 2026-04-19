@@ -1,5 +1,5 @@
 ---
-title: Terrarium
+title: 生态瓶 （Terrarium）
 summary: 用频道、输出接线、root agent、热插拔、观察模式做横向多代理协作。
 tags:
  - guides
