@@ -23,6 +23,7 @@ PROVIDER_KEY_MAP: dict[str, str] = {
     "anthropic": "ANTHROPIC_API_KEY",
     "gemini": "GEMINI_API_KEY",
     "mimo": "MIMO_API_KEY",
+    "ollama": "OLLAMA_API_KEY",
 }
 
 

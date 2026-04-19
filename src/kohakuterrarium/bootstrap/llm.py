@@ -87,11 +87,14 @@ def _create_from_profile(profile: LLMProfile) -> LLMProvider:
     if not api_key and profile.api_key_env:
         api_key = get_api_key(profile.api_key_env)
     if not api_key:
-        raise ValueError(
-            f"API key not found for profile '{profile.name}'. "
-            f"Use 'kt login {profile.provider or 'openai'}' or set "
-            f"{profile.api_key_env or 'OPENAI_API_KEY'} environment variable."
-        )
+        if profile.provider == "ollama":
+            api_key = "ollama"
+        else:
+            raise ValueError(
+                f"API key not found for profile '{profile.name}'. "
+                f"Use 'kt login {profile.provider or 'openai'}' or set "
+                f"{profile.api_key_env or 'OPENAI_API_KEY'} environment variable."
+            )
 
     provider = OpenAIProvider(
         api_key=api_key,

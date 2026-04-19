@@ -43,6 +43,7 @@ _BUILTIN_PROVIDER_NAMES = {
     "anthropic",
     "gemini",
     "mimo",
+    "ollama",
 }
 
 # Values that historically appeared under a preset's `provider` field to
@@ -106,6 +107,12 @@ def _built_in_providers() -> dict[str, LLMBackend]:
             base_url="https://api.xiaomimimo.com/v1",
             api_key_env="MIMO_API_KEY",
         ),
+        "ollama": LLMBackend(
+            name="ollama",
+            backend_type="openai",
+            base_url="http://localhost:11434/v1",
+            api_key_env="OLLAMA_API_KEY",
+        ),
     }
 
 
@@ -131,6 +138,8 @@ def _legacy_provider_from_data(data: dict[str, Any]) -> str:
         return "anthropic"
     if "openrouter.ai" in base_url:
         return "openrouter"
+    if "localhost:11434" in base_url or "127.0.0.1:11434" in base_url:
+        return "ollama"
     if "generativelanguage.googleapis.com" in base_url:
         return "gemini"
     if "api.openai.com" in base_url:
@@ -143,6 +152,7 @@ def _legacy_provider_from_data(data: dict[str, Any]) -> str:
         "ANTHROPIC_API_KEY",
         "GEMINI_API_KEY",
         "MIMO_API_KEY",
+        "OLLAMA_API_KEY",
     }:
         reverse = {v: k for k, v in PROVIDER_KEY_MAP.items()}
         return reverse[api_key_env]

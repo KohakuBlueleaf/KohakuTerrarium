@@ -539,6 +539,40 @@ PRESETS: dict[str, dict[str, Any]] = {
         "max_context": 262144,
         "extra_body": {"reasoning": {"enabled": True, "effort": "high"}},
     },
+    # Ollama (local models via OpenAI-compat endpoint at http://localhost:11434/v1).
+    # Requires `ollama serve` and `ollama pull <model>`. Tool calls work, but the
+    # OpenAI-compat surface returns a single non-streamed response when tools are
+    # enabled; plain chat streams normally.
+    "qwen3.5-9b-local": {
+        "provider": "ollama",
+        "model": "qwen3.5:latest",
+        "max_context": 131072,
+        "max_output": 8192,
+    },
+    "qwen3.5-27b-local": {
+        "provider": "ollama",
+        "model": "qwen3.5:27b",
+        "max_context": 131072,
+        "max_output": 8192,
+    },
+    "qwen3.6-35b-local": {
+        "provider": "ollama",
+        "model": "qwen3.6:latest",
+        "max_context": 131072,
+        "max_output": 8192,
+    },
+    "gemma4-e4b-local": {
+        "provider": "ollama",
+        "model": "gemma4:latest",
+        "max_context": 131072,
+        "max_output": 8192,
+    },
+    "gemma4-26b-local": {
+        "provider": "ollama",
+        "model": "gemma4:26b",
+        "max_context": 131072,
+        "max_output": 8192,
+    },
 }
 
 # Aliases: short names -> canonical preset names
@@ -587,6 +621,10 @@ ALIASES: dict[str, str] = {
     "magistral": "magistral-medium",
     "devstral": "devstral-2",
     "ministral": "ministral-3-14b",
+    # Ollama (local) — qwen + gemma series only
+    "ollama": "qwen3.6-35b-local",
+    "qwen-local": "qwen3.6-35b-local",
+    "gemma-local": "gemma4-e4b-local",
 }
 
 

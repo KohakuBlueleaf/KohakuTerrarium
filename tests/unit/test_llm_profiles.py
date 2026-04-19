@@ -12,6 +12,7 @@ from kohakuterrarium.llm.profiles import (
     get_default_model,
     get_preset,
     list_all,
+    load_backends,
     load_profiles,
     resolve_controller_llm,
     save_profile,
@@ -222,3 +223,52 @@ class TestListAll:
         defaults = [e for e in entries if e.get("is_default")]
         assert len(defaults) >= 1
         assert defaults[0]["name"] == "gpt-5.4"
+
+
+# ── Ollama ────────────────────────────────────────────────────
+
+
+class TestOllama:
+    def test_backend_registered(self, tmp_profiles):
+        backends = load_backends()
+        assert "ollama" in backends
+        ollama = backends["ollama"]
+        assert ollama.backend_type == "openai"
+        assert "11434" in ollama.base_url
+
+    def test_presets_resolve_to_ollama_backend(self, tmp_profiles):
+        for name in (
+            "qwen3.5-9b-local",
+            "qwen3.5-27b-local",
+            "qwen3.6-35b-local",
+            "gemma4-e4b-local",
+            "gemma4-26b-local",
+        ):
+            profile = get_preset(name)
+            assert profile is not None, f"preset {name!r} not found"
+            assert profile.provider == "ollama"
+            assert profile.backend_type == "openai"
+            assert "11434" in profile.base_url
+
+    def test_aliases_resolve(self, tmp_profiles):
+        for alias in ("ollama", "qwen-local", "gemma-local"):
+            profile = get_preset(alias)
+            assert profile is not None, f"alias {alias!r} not resolved"
+            assert profile.provider == "ollama"
+
+    def test_localhost_base_url_inferred_as_ollama(self, tmp_profiles):
+        """Legacy presets with localhost:11434 should reverse-map to ollama."""
+        from kohakuterrarium.llm.profiles import _legacy_provider_from_data
+
+        assert (
+            _legacy_provider_from_data(
+                {"base_url": "http://localhost:11434/v1", "model": "x"}
+            )
+            == "ollama"
+        )
+        assert (
+            _legacy_provider_from_data(
+                {"base_url": "http://127.0.0.1:11434/v1", "model": "x"}
+            )
+            == "ollama"
+        )

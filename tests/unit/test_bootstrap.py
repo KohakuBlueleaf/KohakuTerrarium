@@ -234,6 +234,32 @@ class TestBootstrapLLM:
             with pytest.raises(ValueError, match="API key not found"):
                 create_llm_provider(config)
 
+    @patch("kohakuterrarium.bootstrap.llm.OpenAIProvider")
+    def test_ollama_profile_uses_dummy_key(self, mock_openai_cls):
+        """Ollama does not require a real API key — bootstrap should inject a dummy."""
+        import os
+
+        from kohakuterrarium.bootstrap.llm import _create_from_profile
+        from kohakuterrarium.llm.profiles import get_preset
+
+        mock_instance = MagicMock()
+        mock_openai_cls.return_value = mock_instance
+
+        os.environ.pop("OLLAMA_API_KEY", None)
+        profile = get_preset("qwen3.6-35b-local")
+        assert profile is not None
+        assert profile.provider == "ollama"
+
+        with patch("kohakuterrarium.bootstrap.llm.get_api_key", return_value=""):
+            result = _create_from_profile(profile)
+
+        mock_openai_cls.assert_called_once()
+        kwargs = mock_openai_cls.call_args.kwargs
+        assert kwargs["api_key"] == "ollama"
+        assert "11434" in kwargs["base_url"]
+        assert kwargs["model"] == "qwen3.6:latest"
+        assert result is mock_instance
+
 
 # ---------------------------------------------------------------------------
 # bootstrap/tools.py

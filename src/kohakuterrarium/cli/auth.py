@@ -2,6 +2,8 @@
 
 import asyncio
 
+import httpx
+
 from kohakuterrarium.llm.codex_auth import CodexTokens, oauth_login
 from kohakuterrarium.llm.profiles import get_api_key, load_backends, save_api_key
 
@@ -15,6 +17,8 @@ def login_cli(provider: str) -> int:
         return 1
     if backend.backend_type == "codex":
         return _login_codex()
+    if provider == "ollama":
+        return _login_ollama(backend.base_url)
     return _login_api_key(provider, backend.api_key_env)
 
 
@@ -47,6 +51,50 @@ def _login_api_key(provider: str, env_var: str) -> int:
     print("You can now use presets bound to this provider:")
     print("  kt model list")
     print("  kt run @kt-biome/creatures/swe --llm <model>")
+    return 0
+
+
+def _login_ollama(base_url: str) -> int:
+    """Verify Ollama daemon connectivity and list locally-pulled models.
+
+    Ollama does not require authentication; this command only sanity-checks
+    that the daemon is reachable and prints available models so the user knows
+    what to pass as ``--llm``.
+    """
+    tags_url = base_url.rstrip("/").removesuffix("/v1") + "/api/tags"
+    print(f"Checking Ollama at {base_url} ...")
+    try:
+        response = httpx.get(tags_url, timeout=3.0)
+        response.raise_for_status()
+    except httpx.ConnectError:
+        print("Cannot reach Ollama.")
+        print("  1. Install:         https://ollama.com/download")
+        print("  2. Start daemon:    ollama serve")
+        print("  3. Pull a model:    ollama pull gemma4:latest")
+        return 1
+    except httpx.HTTPError as exc:
+        print(f"Ollama responded with an error: {exc}")
+        return 1
+
+    data = response.json()
+    models = data.get("models", [])
+    if not models:
+        print("Ollama is running, but no models are pulled.")
+        print("  Run: ollama pull gemma4:latest")
+        return 0
+
+    print(f"Ollama is reachable. {len(models)} local model(s):")
+    for entry in models:
+        name = entry.get("name", "?")
+        size_gb = entry.get("size", 0) / (1024**3)
+        print(f"  {name:<40} {size_gb:.1f} GB")
+    print()
+    print(
+        "Built-in presets: qwen3.6-35b-local, qwen3.5-27b-local, "
+        "qwen3.5-9b-local, gemma4-e4b-local, gemma4-26b-local"
+    )
+    print("Aliases: ollama, qwen-local, gemma-local")
+    print("Run:  kt model list")
     return 0
 
 
