@@ -206,7 +206,7 @@ import { inject } from "vue"
 import StatusDot from "@/components/common/StatusDot.vue"
 import ChatMessage from "@/components/chat/ChatMessage.vue"
 import { useChatRenderWindow, CHAT_RENDER_EXPAND_MESSAGE_LIMIT, CHAT_RENDER_EXPAND_UNIT_BUDGET } from "@/components/chat/chatRenderWindow"
-import { createChatHistoryExpander, captureViewportAnchor, restoreViewportAnchor } from "@/components/chat/chatHistoryExpand"
+import { CHAT_AUTO_EXPAND_TOP_PX, createChatHistoryExpander, captureViewportAnchor, restoreViewportAnchor } from "@/components/chat/chatHistoryExpand"
 import { createChatScrollScheduler } from "@/components/chat/chatScrollScheduler"
 import SlashCommandMenu from "@/components/chat/SlashCommandMenu.vue"
 import ModelSwitcher from "@/components/chrome/ModelSwitcher.vue"
@@ -279,10 +279,13 @@ async function loadOlderLive() {
   if (!tab || loadingOlder.value) return
   loadingOlder.value = true
   // A prepended page rebuilds the transcript; keep the viewport anchored on
-  // the rows the reader was looking at (same contract as expandHistory).
+  // the rows the reader was looking at (same contract as expandHistory), and
+  // re-anchor the render window at the oldest loaded row so the freshly
+  // fetched page is actually inside the rendered range.
   const anchor = captureViewportAnchor(() => messagesEl.value)
   try {
     await chat.loadOlderLiveHistory(tab)
+    if (viewMessages.value.length) enterHistoryAt(0)
     await nextTick()
     restoreViewportAnchor(() => messagesEl.value, anchor)
   } catch (err) {
@@ -644,11 +647,11 @@ function onMessagesScroll() {
     } else if (el) {
       historyExpander.maybeExpandAtTop(el.scrollTop)
     }
-    // The render window expands over already-loaded messages only. Once it
-    // reaches the first loaded row, further up-scroll must come from the
-    // server — mirror the window auto-expansion with a persisted-page fetch
-    // so scrolling up keeps loading (the button remains as a manual entry).
-    if (el && !isNearBottom.value && windowStart.value === 0 && canLoadOlderLive.value) {
+    // The render window expands over already-loaded messages only; once
+    // the reader is near the very top of the loaded log, further up-scroll
+    // must come from the server — mirror the window auto-expansion with a
+    // persisted-page fetch (the button remains as a manual entry).
+    if (el && !isNearBottom.value && el.scrollTop <= CHAT_AUTO_EXPAND_TOP_PX && canLoadOlderLive.value) {
       loadOlderLive()
     }
     saveScrollPosition()
