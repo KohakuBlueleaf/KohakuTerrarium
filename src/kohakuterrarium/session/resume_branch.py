@@ -51,37 +51,6 @@ def snapshot_has_turn_metadata(snapshot: list[dict]) -> bool:
     )
 
 
-def fresh_snapshot_watermark(store: Any, agent_name: str, snapshot: Any) -> int | None:
-    """Return the snapshot watermark when it provably covers every event.
-
-    Uses the O(1) persisted event counter (append-time monotonic; missing
-    slots fall back to a full value scan in ``store_counters``, so it never
-    under-reports the table). "Fresh" means: the snapshot exists, its
-    watermark is an int ``>= max_event_id``, and it carries valid turn
-    metadata — the exact condition under which the conversation loader may
-    return the snapshot verbatim without replaying anything. Duck-typed
-    stores without the counter return ``None`` so callers degrade to the
-    ordinary event-table scan.
-    """
-    try:
-        cached_up_to = store.state.get(f"{agent_name}:snapshot_event_id")
-    except (KeyError, TypeError):
-        return None
-    try:
-        max_seen = store.max_event_id(agent_name)
-    except AttributeError:
-        return None
-    if (
-        snapshot is not None
-        and isinstance(cached_up_to, int)
-        and isinstance(max_seen, int)
-        and snapshot_has_turn_metadata(snapshot)
-        and cached_up_to >= max_seen
-    ):
-        return cached_up_to
-    return None
-
-
 def backfill_turn_metadata(snapshot: list[dict], events: list[dict]) -> list[dict]:
     """Backfill user-turn metadata onto a legacy metadata-less snapshot.
 

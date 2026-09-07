@@ -31,7 +31,6 @@ from kohakuterrarium.session.migrations import (
 from kohakuterrarium.session.readonly import read_session_meta
 from kohakuterrarium.session.resume_branch import (
     backfill_turn_metadata,
-    fresh_snapshot_watermark,
     replayed_messages_for,
     snapshot_has_turn_metadata,
     snapshot_mismatches_branch,
@@ -85,15 +84,20 @@ def _load_conversation_with_replay_fallback(
     Post-snapshot events are appended when branch ancestry is unchanged; new
     branch forks require a full replay to preserve coherent selection.
     ``events`` (when given) is the caller's single raw read of the event
-    log, shared across the resume helpers so one scan serves them all.
+    log, shared across the resume helpers so one scan serves them all;
+    without it the store is read here.
+
+    Deliberately NO counter-based freshness shortcut: the persisted event
+    counter is NOT an upper bound of the event table. ``append_event``
+    flushes the events cache BEFORE ``persist_event_counter`` runs, and
+    that persist swallows failures (session/store.py), so the stored
+    counter can lag the table by any amount (measured on a production
+    331MB session copy: counter=75699 vs true max=75700). A snapshot
+    watermarked at the lagging counter would then pass a
+    ``cached_up_to >= counter`` check while newer events exist, silently
+    dropping the tail replay.
     """
     snapshot = store.load_conversation(agent_name)
-    if (
-        events is None
-        and fresh_snapshot_watermark(store, agent_name, snapshot) is not None
-    ):
-        # O(1) counter check: the event log holds nothing past the snapshot.
-        return snapshot
     if events is None:
         events = store.get_events(agent_name)
     if not events:

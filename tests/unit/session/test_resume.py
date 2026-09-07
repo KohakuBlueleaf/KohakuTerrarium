@@ -63,20 +63,27 @@ def _write_agent_config(config_dir) -> None:
 
 
 class _CountingStore:
-    """Delegate-everything proxy that counts ``get_events`` calls.
+    """Proxy that counts EVERY ``get_events`` call on the wrapped store.
 
-    The resume scan budget metric: conversation replay, branch restore,
+    The resume scan-budget metric: conversation replay, branch restore,
     and pending resume events must share a single full read of the event
-    table, and the fresh-snapshot fast path must need none.
+    table. The count is installed on the INNER store's ``get_events`` so
+    reads hidden behind ``__getattr__`` delegation (e.g. a
+    ``get_resumable_events`` re-read reaching the real store) are counted
+    too — a regression back to a second full scan turns the budget
+    assertions red instead of silently passing.
     """
 
     def __init__(self, store):
         self._store = store
         self.get_events_calls = 0
+        inner = store.get_events
 
-    def get_events(self, agent, since_event_id=None):
-        self.get_events_calls += 1
-        return self._store.get_events(agent, since_event_id=since_event_id)
+        def _counted_get_events(agent, since_event_id=None):
+            self.get_events_calls += 1
+            return inner(agent, since_event_id=since_event_id)
+
+        store.get_events = _counted_get_events
 
     def __getattr__(self, name):
         return getattr(self._store, name)
@@ -765,43 +772,67 @@ class TestLoadConversationFallback:
         finally:
             store.close()
 
-    def test_fresh_snapshot_fast_path_skips_event_scan(self, tmp_path):
-        # A snapshot covering every persisted event (verified through the
-        # O(1) persisted counter, never under-reporting the table) must be
-        # returned WITHOUT scanning the event table — the scan just to
-        # compute last_event_id is what made large-session resume crawl.
-        store = SessionStore(str(tmp_path / "x.kohakutr"))
-        try:
-            _, eid = store.append_event(
-                "alice",
-                "user_message",
-                {"content": "x"},
-                turn_index=1,
-                branch_id=1,
-            )
-            store.save_conversation(
-                "alice",
-                [
-                    {
-                        "role": "user",
-                        "content": "snap",
-                        "metadata": {"turn_index": 1, "branch_id": 1},
-                    }
-                ],
-            )
-            store.state["alice:snapshot_event_id"] = eid
-            store.flush()
-            counting = _CountingStore(store)
-            out = _load_conversation_with_replay_fallback(counting, "alice")
-            assert out[0]["content"] == "snap"
-            assert out[0]["metadata"]["turn_index"] == 1
-            assert counting.get_events_calls == 0
-        finally:
-            store.close()
+    def test_lagging_persisted_counter_cannot_skip_tail(self, tmp_path):
+        # P1 regression (reviewer-confirmed on production data): the
+        # persisted counter can LAG the event table — append_event flushes
+        # the events cache BEFORE persist_event_counter runs, and that
+        # persist swallows failures (session/store.py). A production file
+        # measured counter=75699 vs true max=75700. When the snapshot
+        # watermark sits at the lagging counter, a counter-based
+        # freshness check would return the snapshot and silently drop the
+        # tail; the helper must ignore the counter and scan.
+        from kohakuvault import KVault
 
-    def test_fast_path_still_replays_when_watermark_stale(self, tmp_path):
-        # Guard against the fast path over-triggering: when the watermark
-        # is behind the persisted counter, the tail MUST still be appended.
+        path = tmp_path / "lag.kohakutr"
+        store = SessionStore(str(path))
+        _, eid = store.append_event(
+            "alice",
+            "user_message",
+            {"content": "kept"},
+            turn_index=1,
+            branch_id=1,
+        )
+        store.save_conversation(
+            "alice",
+            [
+                {
+                    "role": "user",
+                    "content": "snap",
+                    "metadata": {"turn_index": 1, "branch_id": 1},
+                }
+            ],
+        )
+        store.state["alice:snapshot_event_id"] = eid
+        store.append_event("alice", "user_message", {"content": "dropped"})
+        store.close()
+
+        # Simulate the crash window: the counter persisted BEHIND the
+        # table's true max.
+        state = KVault(str(path), table="state")
+        try:
+            state["counters:max_event_id"] = eid
+        finally:
+            state.close()
+
+        reopened = SessionStore(str(path))
+        try:
+            assert reopened.max_event_id("alice") == eid  # lagging counter
+            true_max = max(evt["event_id"] for evt in reopened.get_events("alice"))
+            assert true_max == eid + 1  # table holds a newer event
+            counting = _CountingStore(reopened)
+            out = _load_conversation_with_replay_fallback(counting, "alice")
+            contents = [m["content"] for m in out if m["role"] == "user"]
+            assert contents == [
+                "snap",
+                "dropped",
+            ], "a tail past the LAGGING counter watermark must still replay"
+            assert counting.get_events_calls == 1
+        finally:
+            reopened.close(update_status=False)
+
+    def test_stale_watermark_scans_and_replays_tail(self, tmp_path):
+        # When the watermark is behind the event table, the tail MUST be
+        # appended (the snapshot alone would lose post-snapshot turns).
         store = SessionStore(str(tmp_path / "x.kohakutr"))
         try:
             store.append_event("alice", "user_message", {"content": "fresh"})
@@ -873,8 +904,9 @@ class TestLoadConversationFallback:
     def test_legacy_store_without_counter_slot_keeps_tail(self, tmp_path):
         # Old session files carry no counters:max_event_id slot. The reopen
         # fallback must full-scan the values (returning the true max, never
-        # a silent 0), so the fast path cannot misfire on legacy files: the
-        # stale watermark still triggers the tail replay.
+        # a silent 0) — max_event_id stamps snapshot watermarks
+        # (session/output.py), and this file shape must keep replaying the
+        # stale-watermark tail regardless.
         from kohakuvault import KVault
 
         path = tmp_path / "legacy.kohakutr"
@@ -904,7 +936,6 @@ class TestLoadConversationFallback:
             out = _load_conversation_with_replay_fallback(counting, "alice")
             contents = [m["content"] for m in out if m["role"] == "user"]
             assert contents == ["snap", "old"]
-            # Legacy file: counter absent → no fast path → exactly one read.
             assert counting.get_events_calls == 1
         finally:
             reopened.close(update_status=False)
@@ -1931,6 +1962,27 @@ class TestInjectSavedState:
             assert "b1" in contents
             assert "a2" not in contents
             assert counting.get_events_calls == 1
+        finally:
+            store.close()
+
+    def test_counting_proxy_sees_reads_hidden_behind_public_api(self, tmp_path):
+        # Negative case guarding the scan-budget metric itself: a read
+        # made behind __getattr__ delegation (get_resumable_events reaching
+        # the inner store's get_events) must be counted. If it were not,
+        # reverting inject_saved_state to a second full scan via the store
+        # API would pass the ==1 assertions while doing 2 scans.
+        store = SessionStore(str(tmp_path / "x.kohakutr"))
+        try:
+            store.append_event("alice", "user_message", {"content": "q"})
+            store.flush()
+            counting = _CountingStore(store)
+            assert counting.get_events_calls == 0
+            counting.get_events("alice")
+            assert counting.get_events_calls == 1
+            counting.get_resumable_events("alice")
+            assert (
+                counting.get_events_calls == 2
+            ), "a get_resumable_events re-read must be visible to the count"
         finally:
             store.close()
 
