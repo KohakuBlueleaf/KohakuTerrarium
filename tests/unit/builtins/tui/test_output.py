@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from textual.widgets import Label
 from textual.widgets._markdown import MarkdownFence
@@ -6,6 +8,7 @@ from kohakuterrarium.builtins.tui.output import TUIOutput
 from kohakuterrarium.builtins.tui.session import TUISession
 from kohakuterrarium.builtins.tui.widgets import UserMessage
 from kohakuterrarium.builtins.tui.widgets.blocks import ToolBlock
+from kohakuterrarium.modules.output.event import OutputEvent
 
 
 class FakeTUI:
@@ -191,6 +194,41 @@ async def test_resume_buffers_events_until_tui_session_wired():
 
         user = session._app.query_one(UserMessage)
         assert "early history" in user.render().plain
+
+
+async def test_emit_serializes_live_output_behind_a_buffered_resume_replay():
+    session = TUISession()
+    await session.start()
+    assert session._app is not None
+    output = TUIOutput()
+    order: list[str] = []
+
+    async with session._app.run_test(size=(60, 20)):
+
+        async def slow_replay(events):
+            order.append("resume-start")
+            await asyncio.sleep(0.05)
+            order.append("resume-end")
+
+        output.on_resume = slow_replay  # type: ignore[method-assign]
+        original_write_stream = output.write_stream
+
+        async def recording_write_stream(chunk: str) -> None:
+            order.append("text")
+            await original_write_stream(chunk)
+
+        output.write_stream = recording_write_stream  # type: ignore[method-assign]
+        output._buffered_resume_events = [
+            {"type": "user_input", "content": "early history"}
+        ]
+        output._tui = session  # wiring flush schedules the replay as a task
+
+        await output.emit(OutputEvent(type="text", content="live"))
+        await asyncio.sleep(0.1)
+
+        # Live output must wait for the in-flight replay; rendering it while
+        # the history is still mounting would order the transcript wrong.
+        assert order == ["resume-start", "resume-end", "text"]
 
 
 async def test_resume_survives_slow_mount_without_raising(

@@ -48,6 +48,9 @@ class TUIOutput(BaseOutputModule):
         # agent clears its pending copy right after emitting, so losing this
         # buffer loses the history permanently.
         self._buffered_resume_events: list[dict] = []
+        # In-flight replay of the buffer, scheduled by the wiring flush;
+        # live rendering awaits it so history mounts before newer output.
+        self._pending_resume_task: asyncio.Task | None = None
         self._turn_started = False
         self._default_target: str = ""
         self._interactive_screens: dict[str, Any] = {}
@@ -94,7 +97,29 @@ class TUIOutput(BaseOutputModule):
             # later bind or module start replays the history.
             self._buffered_resume_events = buffered
             return
-        asyncio.ensure_future(self.on_resume(buffered))
+        self._pending_resume_task = asyncio.ensure_future(self.on_resume(buffered))
+
+    async def _await_resume_replay(self) -> None:
+        """Serialize rendering behind an in-flight buffered resume replay.
+
+        The wiring flush cannot await (a property setter is sync), so the
+        replay runs as a task. Live events must not interleave with it —
+        widgets mounted after newer output would render the transcript out
+        of order — so every rendering entry point except ``resume_batch``
+        itself drains the pending task first.
+        """
+        task = self._pending_resume_task
+        if task is None:
+            return
+        try:
+            await task
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning("Buffered resume replay failed", exc_info=True)
+        finally:
+            if self._pending_resume_task is task:
+                self._pending_resume_task = None
 
     @property
     def _target(self) -> str:
@@ -165,6 +190,10 @@ class TUIOutput(BaseOutputModule):
 
     async def emit(self, event: OutputEvent) -> None:
         """Render an output event or collect its interactive reply."""
+        # ``resume_batch`` IS the replay path; everything else must wait for
+        # an in-flight buffered replay so history mounts before newer output.
+        if event.type != "resume_batch":
+            await self._await_resume_replay()
         match event.type:
             case "text":
                 content = event.content
