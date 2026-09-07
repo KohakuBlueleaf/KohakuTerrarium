@@ -5794,6 +5794,57 @@ describe("chat store — paged history (load earlier)", () => {
     getHistory.mockRestore()
   })
 
+  it("folds a duplicate-sink pair split across a page boundary", async () => {
+    const chat = useChatStore()
+    chat._instanceId = "session:s1"
+    chat.messagesByTab = { alice: [] }
+    // Duplicate-sink attachment persists equivalent neighbors with distinct
+    // ids. Here the pair straddles the boundary: id 4 ends the newest page,
+    // id 3 (identical except id/ts) starts the older page's newest rows.
+    const dup = (id) => ({ type: "user_input", event_id: id, ts: id, content: "dup" })
+    let latest = true
+    const getHistory = await spySessionHistory(async (_s, _t, params) => {
+      if (latest) {
+        latest = false
+        return {
+          target: "alice",
+          messages: [],
+          events: [dup(4)],
+          has_more: true,
+          oldest_event_id: 4,
+          total: 4,
+        }
+      }
+      expect(params).toEqual({ limit: 400, before: 4 })
+      return {
+        target: "alice",
+        messages: [],
+        events: [
+          { type: "user_input", event_id: 1, content: "m1" },
+          { type: "user_input", event_id: 2, content: "m2" },
+          dup(3),
+        ],
+        has_more: false,
+        oldest_event_id: 1,
+        total: 4,
+      }
+    })
+
+    await chat.loadHistoryPage("s1", "alice")
+    await chat.loadOlderHistory("s1", "alice")
+
+    // The full-log dedupe keeps the first (oldest) sibling, so the newer
+    // copy from the accumulated page must be folded out of the prepend.
+    expect(chat._historyPagedEventsByTab.alice.map((e) => e.event_id)).toEqual([1, 2, 3])
+    expect(chat.messagesByTab.alice.map((m) => m.content)).toEqual(["m1", "m2", "dup"])
+    expect(chat.historyPagingByTab.alice).toEqual({
+      hasMore: false,
+      oldestEventId: 1,
+      total: 4,
+    })
+    getHistory.mockRestore()
+  })
+
   it("renders the conversation snapshot for a target with no events", async () => {
     const chat = useChatStore()
     chat._instanceId = "session:s1"

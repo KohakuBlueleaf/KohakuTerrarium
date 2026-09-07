@@ -615,6 +615,19 @@ function _dedupeAdjacentDuplicateEvents(events) {
   return out
 }
 
+/**
+ * Signature mirroring the backend's adjacent-duplicate identity (every
+ * field except ``event_id`` / ``ts``). A duplicate-sink pair persisted
+ * with distinct ids can straddle a page boundary; the full-log dedupe
+ * keeps the first (oldest) row, so a prepend folds the newer copy out.
+ */
+function _pageBoundarySignature(evt) {
+  const clone = { ...(evt || {}) }
+  delete clone.event_id
+  delete clone.ts
+  return _stableStringify(clone)
+}
+
 export function _prepareReplayEvents(events, branchView = null) {
   const dedupedEvents = _dedupeAdjacentDuplicateEvents(events)
   return {
@@ -4935,9 +4948,20 @@ const _chatStoreOptions = {
       } else {
         // Older page: prepend, skipping rows the accumulated log already
         // holds (a raced double-append must not duplicate history).
-        const accumulated = this._historyPagedEventsByTab[tab] || []
+        let accumulated = this._historyPagedEventsByTab[tab] || []
         const known = new Set(accumulated.map((evt) => evt?.event_id).filter((id) => id != null))
         const fresh = events.filter((evt) => evt?.event_id == null || !known.has(evt.event_id))
+        // A duplicate-sink pair split across the page boundary renders
+        // twice: the newer sibling ends the accumulated log while the
+        // older one starts the fresh page. The full-log dedupe keeps the
+        // first (oldest) occurrence, so fold the newer copy out.
+        if (
+          fresh.length &&
+          accumulated.length &&
+          _pageBoundarySignature(fresh[fresh.length - 1]) === _pageBoundarySignature(accumulated[0])
+        ) {
+          accumulated = accumulated.slice(1)
+        }
         this._historyPagedEventsByTab[tab] = [...fresh, ...accumulated]
       }
       // Read-only saved history: never populate ``runningJobs`` — a
