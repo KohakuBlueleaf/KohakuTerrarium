@@ -278,8 +278,13 @@ async function loadOlderLive() {
   const tab = viewActiveTab.value
   if (!tab || loadingOlder.value) return
   loadingOlder.value = true
+  // A prepended page rebuilds the transcript; keep the viewport anchored on
+  // the rows the reader was looking at (same contract as expandHistory).
+  const anchor = captureViewportAnchor(() => messagesEl.value)
   try {
     await chat.loadOlderLiveHistory(tab)
+    await nextTick()
+    restoreViewportAnchor(() => messagesEl.value, anchor)
   } catch (err) {
     console.warn("Failed to load older history:", err)
   } finally {
@@ -638,6 +643,13 @@ function onMessagesScroll() {
       scrollScheduler.resume()
     } else if (el) {
       historyExpander.maybeExpandAtTop(el.scrollTop)
+    }
+    // The render window expands over already-loaded messages only. Once it
+    // reaches the first loaded row, further up-scroll must come from the
+    // server — mirror the window auto-expansion with a persisted-page fetch
+    // so scrolling up keeps loading (the button remains as a manual entry).
+    if (el && !isNearBottom.value && windowStart.value === 0 && canLoadOlderLive.value) {
+      loadOlderLive()
     }
     saveScrollPosition()
   })
