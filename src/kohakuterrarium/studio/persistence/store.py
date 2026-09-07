@@ -13,6 +13,10 @@ from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
+from kohakuterrarium.session.history_paging import (
+    paged_agent_events,
+    paged_channel_events,
+)
 from kohakuterrarium.session.store import SessionStore
 from kohakuterrarium.session.store_lock import acquire_writer_lock, release_writer_lock
 from kohakuterrarium.studio.persistence.delete_family import (
@@ -222,29 +226,59 @@ def session_history_payload(
     target: str,
     *,
     live_job_ids: set[str] | None = None,
+    limit: int = 0,
+    before: int | None = None,
 ) -> dict[str, Any]:
     """Return history for an agent, root, or channel target.
 
     ``live_job_ids`` identifies work still running in a live session so it is
     not synthesized as interrupted. Saved-session callers omit it because any
     unfinished persisted job is no longer active.
+
+    ``limit`` bounds the payload: with ``limit > 0`` only the most recent
+    page (at most ``limit`` events or ``DEFAULT_HISTORY_PAGE_BYTES`` of
+    event JSON, whichever fills first) is read from the store. ``before``
+    is an exclusive pagination cursor — an ``event_id`` for agent targets,
+    the per-channel message sequence for ``ch:`` targets — so the page
+    contains only events strictly older than it. The default ``limit=0``
+    keeps the full unbounded payload for programmatic callers; the HTTP
+    route supplies its own bounded default. Pages after the newest one
+    omit the conversation snapshot: it describes the whole conversation
+    and belongs to the newest window, so re-sending it per page would
+    duplicate megabytes.
+
+    Every response carries ``has_more``, ``oldest_event_id``, and ``total``
+    so clients can page backwards without gaps or overlap. ``total`` counts
+    stored events for the target; the rendered count can differ slightly
+    after adjacent-duplicate collapse and normalization.
     """
+    if limit and limit > 0:
+        if target.startswith("ch:"):
+            return paged_channel_events(store, target[3:], limit=limit, before=before)
+        return paged_agent_events(
+            store, target, limit=limit, before=before, live_job_ids=live_job_ids
+        )
+
     if target.startswith("ch:"):
         channel = target[3:]
         messages = store.get_channel_messages(channel)
+        events = [
+            {
+                "type": "channel_message",
+                "channel": channel,
+                "sender": m.get("sender", ""),
+                "content": m.get("content", ""),
+                "ts": m.get("ts", 0),
+            }
+            for m in messages
+        ]
         return {
             "target": target,
             "messages": [],
-            "events": [
-                {
-                    "type": "channel_message",
-                    "channel": channel,
-                    "sender": m.get("sender", ""),
-                    "content": m.get("content", ""),
-                    "ts": m.get("ts", 0),
-                }
-                for m in messages
-            ],
+            "events": events,
+            "has_more": False,
+            "oldest_event_id": None,
+            "total": len(events),
         }
 
     resumable = getattr(store, "get_resumable_events", None)
@@ -252,11 +286,24 @@ def session_history_payload(
         events = resumable(target, live_job_ids=live_job_ids)
     else:
         events = store.get_events(target)
+    events = list(events)
     return {
         "target": target,
         "messages": store.load_conversation(target) or [],
         "events": events,
+        "has_more": False,
+        "oldest_event_id": _event_id_of(events[0]) if events else None,
+        "total": len(events),
     }
+
+
+def _event_id_of(evt: Any) -> int | None:
+    """Extract the session-global ``event_id`` from a raw event value."""
+    if isinstance(evt, dict):
+        eid = evt.get("event_id")
+        if isinstance(eid, int):
+            return eid
+    return None
 
 
 def _unlink_with_retry(path: Path, attempts: int = 5, base_delay: float = 0.05) -> None:

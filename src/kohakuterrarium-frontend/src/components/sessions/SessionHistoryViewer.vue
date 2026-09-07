@@ -48,8 +48,14 @@
             <div class="text-secondary text-xs mb-4">{{ error }}</div>
             <button class="btn-secondary" @click="loadSession">Retry</button>
           </div>
-          <div v-else class="h-full min-h-0 overflow-hidden">
-            <ChatPanel :instance="viewerInstance" :read-only="true" empty-title="No saved messages" empty-subtitle="This target has no persisted history yet" />
+          <div v-else class="h-full min-h-0 flex flex-col gap-2 overflow-hidden">
+            <div v-if="canLoadOlder" class="shrink-0 flex justify-center">
+              <button class="btn-secondary text-xs" :disabled="loadingOlder" @click="loadOlder">
+                <span class="i-carbon-chevron-up mr-1" />
+                {{ loadingOlder ? "Loading..." : "Load earlier messages" }}
+              </button>
+            </div>
+            <ChatPanel class="flex-1 min-h-0" :instance="viewerInstance" :read-only="true" empty-title="No saved messages" empty-subtitle="This target has no persisted history yet" />
           </div>
         </div>
       </div>
@@ -60,7 +66,7 @@
 <script setup>
 import ChatPanel from "@/components/chat/ChatPanel.vue"
 import { useDensity } from "@/composables/useDensity"
-import { useChatStore, _convertHistory, _replayEvents } from "@/stores/chat"
+import { useChatStore } from "@/stores/chat"
 import { useSessionDetailStore } from "@/stores/sessionDetail"
 import { sessionAPI } from "@/utils/api"
 import { extractReasoning } from "@/utils/chatReasoning"
@@ -131,6 +137,11 @@ const historyTargets = ref([])
 const reasoningEntriesByTab = reactive({})
 const showReasoning = ref(false)
 const activeReasoningEntries = computed(() => reasoningEntriesByTab[chat.activeTab] || [])
+const loadingOlder = ref(false)
+// Pagination state lives on the chat store (``historyPagingByTab``) and
+// is maintained by ``loadHistoryPage`` / ``loadOlderHistory``.
+const activePaging = computed(() => (chat.activeTab ? chat.historyPagingByTab[chat.activeTab] : null))
+const canLoadOlder = computed(() => !!activePaging.value?.hasMore)
 
 const viewerInstance = computed(() => {
   const meta = viewerMeta.value || {}
@@ -180,8 +191,14 @@ function ensureTabs(tabs) {
 
 async function loadTarget(tab) {
   if (!tab) return
+  // Newest page through the chat store's paged loader: it applies the
+  // event replay into ``messagesByTab`` and records pagination state
+  // for the "Load earlier messages" entry. The raw payload still drives
+  // the reasoning pane (older pages omit the snapshot server-side, and
+  // the snapshot covers the whole conversation, so once is enough).
+  const data = await chat.loadHistoryPage(sessionName.value, tab)
+  if (!data) return
   const entries = []
-  const data = await sessionAPI.getHistory(sessionName.value, tab)
   for (const [messageIndex, message] of (data.messages || []).entries()) {
     // New sessions render segments inline through ChatMessage; the
     // fallback panel only serves old snapshots without ordered segments.
@@ -191,14 +208,18 @@ async function loadTarget(tab) {
     }
   }
   reasoningEntriesByTab[tab] = entries
-  if (data.events?.length) {
-    // Read-only saved history: never populate ``runningJobs`` — a frozen
-    // session has no live work, and its unfinished jobs already replay as
-    // ``interrupted`` via the backend's synthetic terminals (UXI-04).
-    const { messages } = _replayEvents(data.messages || [], data.events)
-    chat.messagesByTab[tab] = messages
-  } else {
-    chat.messagesByTab[tab] = _convertHistory(data.messages || [])
+}
+
+async function loadOlder() {
+  const tab = chat.activeTab
+  if (!tab || loadingOlder.value) return
+  loadingOlder.value = true
+  try {
+    await chat.loadOlderHistory(sessionName.value, tab)
+  } catch (err) {
+    error.value = err?.response?.data?.detail || err?.message || String(err)
+  } finally {
+    loadingOlder.value = false
   }
 }
 

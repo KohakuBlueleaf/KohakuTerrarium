@@ -337,14 +337,27 @@ export const terrariumAPI = {
   },
 
   /**
-   * Get full history for a creature/root in a terrarium.
-   * Returns { messages: [...], events: [...] }
+   * Get a paged history payload for a creature/root in a terrarium.
+   * Returns { messages, events, has_more, oldest_event_id, total,
+   * max_event_id, is_processing }.
+   *
+   * The server bounds the newest page by default (400 events / ~4MB);
+   * ``options`` may carry ``{limit, before, sinceEventId}``:
+   * ``limit=0`` requests the FULL log (branch/rewind resyncs),
+   * ``before`` is the exclusive event_id cursor for the next-older
+   * page (per-channel sequence for ``ch:`` tabs), and ``sinceEventId``
+   * trims the page to an incremental append. A bare number is accepted
+   * as the legacy ``sinceEventId`` positional form.
    */
-  async getHistory(id, target, sinceEventId = null) {
-    const params = sinceEventId != null ? { params: { since_event_id: sinceEventId } } : {}
+  async getHistory(id, target, options = null) {
+    const opts = typeof options === "number" ? { sinceEventId: options } : options || {}
+    const params = {}
+    if (opts.sinceEventId != null) params.since_event_id = opts.sinceEventId
+    if (opts.limit != null) params.limit = opts.limit
+    if (opts.before != null) params.before = opts.before
     const { data } = await api.get(
       `/sessions/${id}/creatures/${encodeTarget(target)}/history`,
-      params,
+      Object.keys(params).length ? { params } : {},
     )
     return data
   },
@@ -896,8 +909,20 @@ export const sessionAPI = {
     return data
   },
 
-  async getHistory(sessionName, target) {
-    const { data } = await api.get(`/sessions/${sessionName}/history/${encodeTarget(target)}`)
+  /**
+   * Get history for one target. By default the server returns a bounded
+   * most-recent page (400 events / ~4MB) plus ``has_more`` /
+   * ``oldest_event_id`` / ``total``. Pass ``{ before: oldest_event_id }``
+   * for the next-older page, or ``{ limit: 0 }`` for the full payload.
+   * @param {string} sessionName
+   * @param {string} target
+   * @param {{limit?: number, before?: number}} [params]
+   */
+  async getHistory(sessionName, target, params = null) {
+    const { data } = await api.get(
+      `/sessions/${sessionName}/history/${encodeTarget(target)}`,
+      params ? { params } : {},
+    )
     return data
   },
 

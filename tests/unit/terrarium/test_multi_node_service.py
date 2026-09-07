@@ -138,7 +138,7 @@ class _FakeService:
     async def promote_job(self, cid, jid):
         return False
 
-    async def chat_history(self, cid):
+    async def chat_history(self, cid, **kw):
         return {"messages": []}
 
     async def chat_branches(self, cid):

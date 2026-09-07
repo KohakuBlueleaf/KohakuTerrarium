@@ -572,9 +572,12 @@ class MultiNodeTerrariumService(
     # Per-creature chat / state / mutation / wiring — all route by home.
     # ------------------------------------------------------------------
 
-    async def chat_history(self, creature_id: str) -> dict[str, Any]:
+    async def chat_history(
+        self, creature_id: str, *, limit: int = 0, before: int | None = None
+    ) -> dict[str, Any]:
         return await self._route_per_creature(
-            creature_id, lambda svc: svc.chat_history(creature_id)
+            creature_id,
+            lambda svc: svc.chat_history(creature_id, limit=limit, before=before),
         )
 
     async def chat_branches(self, creature_id: str) -> list[dict[str, Any]]:

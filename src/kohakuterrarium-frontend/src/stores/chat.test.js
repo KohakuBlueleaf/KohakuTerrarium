@@ -5717,147 +5717,623 @@ describe("chat store — drive-turn transcript marker", () => {
   })
 })
 
-describe("chat store — attention edge summaries", () => {
-  it("summarizes a completed live response from the streamed text parts", () => {
+describe("chat store — paged history (load earlier)", () => {
+  const PAGE_EVENTS = (ids) =>
+    ids.map((id) => ({ type: "user_input", event_id: id, content: `m${id}` }))
+
+  async function spySessionHistory(mock) {
+    const importActual = await vi.importActual("@/utils/api")
+    return vi.spyOn(importActual.sessionAPI, "getHistory").mockImplementation(mock)
+  }
+
+  it("loads the most recent page and records pagination state", async () => {
     const chat = useChatStore()
-    chat._instanceId = "agent_1"
-    chat._instanceGraphId = "agent_1"
-    chat.activeTab = "main"
-    chat.tabs = ["main"]
-    chat.messagesByTab = { main: [] }
+    chat._instanceId = "session:s1"
+    chat.messagesByTab = { alice: [] }
+    const getHistory = await spySessionHistory(async () => ({
+      target: "alice",
+      messages: [],
+      events: PAGE_EVENTS([389, 390, 450]),
+      has_more: true,
+      oldest_event_id: 389,
+      total: 450,
+    }))
 
-    const edges = []
-    const unsubscribe = subscribeAttentionEdges((edge) => edges.push(edge))
-    chat._onMessage({ type: "processing_start", source: "main" })
-    chat._onMessage({ type: "text", source: "main", content: "Deploy finished. " })
-    chat._onMessage({ type: "text", source: "main", content: "All checks passed." })
-    chat._onMessage({ type: "processing_end", source: "main" })
-    unsubscribe()
+    const data = await chat.loadHistoryPage("s1", "alice")
 
-    expect(edges).toHaveLength(1)
-    expect(edges[0]).toMatchObject({
-      kind: "completed",
-      summary: "Deploy finished. All checks passed.",
+    expect(getHistory).toHaveBeenCalledWith("s1", "alice", { limit: 400 })
+    expect(data).not.toBeNull()
+    expect(chat.historyPagingByTab.alice).toEqual({
+      hasMore: true,
+      oldestEventId: 389,
+      total: 450,
     })
+    expect(chat.messagesByTab.alice.map((m) => m.content)).toEqual(["m389", "m390", "m450"])
+    getHistory.mockRestore()
   })
 
-  it("summarizes the completed turn even when its chunks stream on a non-viewed branch", () => {
+  it("prepends an older page without clobbering or duplicating rows", async () => {
     const chat = useChatStore()
-    chat._instanceId = "agent_1"
-    chat._instanceGraphId = "agent_1"
-    chat.activeTab = "main"
-    chat.tabs = ["main"]
-    chat.messagesByTab = { main: [] }
-    // The user is viewing branch 1 while the regen streams on branch 2:
-    // the branch-isolation gate drops the chunks from the displayed list.
-    chat.branchViewByTab = { main: { 1: 1 } }
+    chat._instanceId = "session:s1"
+    chat.messagesByTab = { alice: [] }
+    let latest = true
+    const getHistory = await spySessionHistory(async (_s, _t, params) => {
+      if (latest) {
+        latest = false
+        return {
+          target: "alice",
+          messages: [],
+          events: PAGE_EVENTS([3, 4]),
+          has_more: true,
+          oldest_event_id: 3,
+          total: 4,
+        }
+      }
+      expect(params).toEqual({ limit: 400, before: 3 })
+      return {
+        target: "alice",
+        messages: [],
+        events: PAGE_EVENTS([1, 2, 3]),
+        has_more: false,
+        oldest_event_id: 1,
+        total: 4,
+      }
+    })
 
-    const edges = []
-    const unsubscribe = subscribeAttentionEdges((edge) => edges.push(edge))
-    chat._onMessage({
-      type: "processing_start",
-      source: "main",
-      turn_index: 1,
-      branch_id: 2,
-    })
-    chat._onMessage({
-      type: "text",
-      source: "main",
-      content: "Regenerated answer.",
-      turn_index: 1,
-      branch_id: 2,
-    })
-    chat._onMessage({
-      type: "processing_end",
-      source: "main",
-      turn_index: 1,
-      branch_id: 2,
-    })
-    unsubscribe()
+    await chat.loadHistoryPage("s1", "alice")
+    const applied = await chat.loadOlderHistory("s1", "alice")
 
-    // Display isolation is intact…
-    expect(chat.messagesByTab.main.some((m) => m.role === "assistant")).toBe(false)
-    // …but the notification still previews the response that just completed.
-    expect(edges).toHaveLength(1)
-    expect(edges[0]).toMatchObject({ kind: "completed", summary: "Regenerated answer." })
+    expect(applied).toBe(true)
+    // Event 3 was already on the newest page — the prepend must skip it.
+    expect(chat.messagesByTab.alice.map((m) => m.content)).toEqual(["m1", "m2", "m3", "m4"])
+    expect(chat.historyPagingByTab.alice).toEqual({
+      hasMore: false,
+      oldestEventId: 1,
+      total: 4,
+    })
+    getHistory.mockRestore()
   })
 
-  it("does not surface a stale preview when a later turn completes without text", () => {
+  it("folds a duplicate-sink pair split across a page boundary", async () => {
     const chat = useChatStore()
-    chat._instanceId = "agent_1"
-    chat._instanceGraphId = "agent_1"
-    chat.activeTab = "main"
-    chat.tabs = ["main"]
-    chat.messagesByTab = { main: [] }
+    chat._instanceId = "session:s1"
+    chat.messagesByTab = { alice: [] }
+    // Duplicate-sink attachment persists equivalent neighbors with distinct
+    // ids. Here the pair straddles the boundary: id 4 ends the newest page,
+    // id 3 (identical except id/ts) starts the older page's newest rows.
+    const dup = (id) => ({ type: "user_input", event_id: id, ts: id, content: "dup" })
+    let latest = true
+    const getHistory = await spySessionHistory(async (_s, _t, params) => {
+      if (latest) {
+        latest = false
+        return {
+          target: "alice",
+          messages: [],
+          events: [dup(4)],
+          has_more: true,
+          oldest_event_id: 4,
+          total: 4,
+        }
+      }
+      expect(params).toEqual({ limit: 400, before: 4 })
+      return {
+        target: "alice",
+        messages: [],
+        events: [
+          { type: "user_input", event_id: 1, content: "m1" },
+          { type: "user_input", event_id: 2, content: "m2" },
+          dup(3),
+        ],
+        has_more: false,
+        oldest_event_id: 1,
+        total: 4,
+      }
+    })
 
-    const edges = []
-    const unsubscribe = subscribeAttentionEdges((edge) => edges.push(edge))
-    chat._onMessage({ type: "processing_start", source: "main" })
-    chat._onMessage({ type: "text", source: "main", content: "First turn answer." })
-    chat._onMessage({ type: "processing_end", source: "main" })
-    chat._onMessage({ type: "processing_start", source: "main" })
-    chat._onMessage({ type: "processing_end", source: "main" })
-    unsubscribe()
+    await chat.loadHistoryPage("s1", "alice")
+    await chat.loadOlderHistory("s1", "alice")
 
-    expect(edges).toHaveLength(2)
-    expect(edges[0]).toMatchObject({ kind: "completed", summary: "First turn answer." })
-    expect(edges[1]).toMatchObject({ kind: "completed" })
-    expect(edges[1].summary).toBeUndefined()
+    // The full-log dedupe keeps the first (oldest) sibling, so the newer
+    // copy from the accumulated page must be folded out of the prepend.
+    expect(chat._historyPagedEventsByTab.alice.map((e) => e.event_id)).toEqual([1, 2, 3])
+    expect(chat.messagesByTab.alice.map((m) => m.content)).toEqual(["m1", "m2", "dup"])
+    expect(chat.historyPagingByTab.alice).toEqual({
+      hasMore: false,
+      oldestEventId: 1,
+      total: 4,
+    })
+    getHistory.mockRestore()
   })
 
-  it("summarizes an interactive prompt from its frame payload", () => {
+  it("renders the conversation snapshot for a target with no events", async () => {
     const chat = useChatStore()
-    chat._instanceId = "agent_1"
-    chat._instanceGraphId = "agent_1"
-    chat.activeTab = "main"
-    chat.tabs = ["main"]
-    chat.messagesByTab = { main: [] }
+    chat._instanceId = "session:s1"
+    chat.messagesByTab = { alice: [] }
+    const getHistory = await spySessionHistory(async () => ({
+      target: "alice",
+      // Legacy empty-history shape: no events, snapshot only.
+      messages: [{ role: "user", content: "snapshot text" }],
+      events: [],
+      has_more: false,
+      oldest_event_id: null,
+      total: 0,
+    }))
 
-    const edges = []
-    const unsubscribe = subscribeAttentionEdges((edge) => edges.push(edge))
-    chat._onMessage({
-      type: "ask_text",
-      source: "main",
-      event_id: "prompt-1",
-      interactive: true,
-      surface: "chat",
-      payload: { prompt: "Deploy the staging build?" },
-    })
-    unsubscribe()
+    const data = await chat.loadHistoryPage("s1", "alice")
 
-    expect(edges).toHaveLength(1)
-    expect(edges[0]).toMatchObject({
-      kind: "waiting-input",
-      eventId: "prompt-1",
-      summary: "Deploy the staging build?",
+    // Events win when present (replay semantic); without any, the
+    // conversation snapshot is the fallback render — same as the
+    // previous non-paged viewer path.
+    expect(data).not.toBeNull()
+    expect(chat.messagesByTab.alice.map((m) => m.content)).toEqual(["snapshot text"])
+    await expect(chat.loadOlderHistory("s1", "alice")).resolves.toBe(false)
+    getHistory.mockRestore()
+  })
+
+  it("drops a page load superseded by a newer history request", async () => {
+    const chat = useChatStore()
+    chat._instanceId = "session:s1"
+    chat.messagesByTab = { alice: [] }
+    let resolveFirst
+    const first = new Promise((resolve) => {
+      resolveFirst = resolve
     })
+    let call = 0
+    const getHistory = await spySessionHistory(() => {
+      call += 1
+      return call === 1
+        ? first
+        : Promise.resolve({
+            target: "alice",
+            messages: [],
+            events: PAGE_EVENTS([9]),
+            has_more: false,
+            oldest_event_id: 9,
+            total: 1,
+          })
+    })
+
+    const stale = chat.loadHistoryPage("s1", "alice")
+    const fresh = chat.loadHistoryPage("s1", "alice")
+    resolveFirst({
+      target: "alice",
+      messages: [],
+      events: PAGE_EVENTS([1]),
+      has_more: true,
+      oldest_event_id: 1,
+      total: 9,
+    })
+
+    // The request that STARTED LATER is authoritative; the stale one is
+    // discarded without touching messages or pagination state.
+    await expect(stale).resolves.toBeNull()
+    await expect(fresh).resolves.not.toBeNull()
+    expect(chat.messagesByTab.alice.map((m) => m.content)).toEqual(["m9"])
+    expect(chat.historyPagingByTab.alice.hasMore).toBe(false)
+    getHistory.mockRestore()
+  })
+
+  it("does not page past the oldest recorded cursor", async () => {
+    const chat = useChatStore()
+    chat._instanceId = "session:s1"
+    const getHistory = await spySessionHistory(async () => {
+      throw new Error("must not fetch")
+    })
+
+    await expect(chat.loadOlderHistory("s1", "alice")).resolves.toBe(false)
+    chat.historyPagingByTab.alice = { hasMore: true, oldestEventId: null, total: 0 }
+    await expect(chat.loadOlderHistory("s1", "alice")).resolves.toBe(false)
+    expect(getHistory).not.toHaveBeenCalled()
+    getHistory.mockRestore()
   })
 })
 
-describe("chat store — attention accumulator bounds", () => {
-  it("bounds the retained stream copy while preserving the summary", () => {
+describe("chat store — live history paging modes", () => {
+  async function spyLiveHistory(impl) {
+    const importActual = await vi.importActual("@/utils/api")
+    return vi.spyOn(importActual.terrariumAPI, "getHistory").mockImplementation(impl)
+  }
+
+  function seedWarm(
+    chat,
+    cacheEvents,
+    watermark,
+    paging = { hasMore: false, oldestEventId: null, total: null },
+  ) {
+    chat._setEvents("main", cacheEvents)
+    chat._appliedMaxEventIdByTab.main = watermark
+    chat.historyPagingByTab.main = paging
+  }
+
+  it("initialLoad fetches the server-bounded page and records paging state", async () => {
     const chat = useChatStore()
     chat._instanceId = "agent_1"
-    chat._instanceGraphId = "agent_1"
+    chat._instanceGraphId = "g1"
     chat.activeTab = "main"
     chat.tabs = ["main"]
     chat.messagesByTab = { main: [] }
+    const spy = await spyLiveHistory(async (id, tab, opts) => {
+      // No cursor options: the server's bounded newest page applies.
+      expect(opts ?? null).toBeNull()
+      return {
+        events: [
+          { type: "user_input", event_id: 3, content: "m3" },
+          { type: "user_input", event_id: 4, content: "m4" },
+          { type: "user_input", event_id: 5, content: "m5" },
+        ],
+        messages: [],
+        has_more: true,
+        oldest_event_id: 3,
+        total: 5,
+        max_event_id: 5,
+        is_processing: false,
+      }
+    })
+    await expect(chat._loadHistory("main")).resolves.toBe(true)
+    expect(chat.historyPagingByTab.main).toEqual({ hasMore: true, oldestEventId: 3, total: 5 })
+    // The FULL-log max (not the page max) seeds the incremental cursor.
+    expect(chat._appliedMaxEventIdByTab.main).toBe(5)
+    expect(chat.messagesByTab.main.map((m) => m.content)).toEqual(["m3", "m4", "m5"])
+    spy.mockRestore()
+  })
 
-    const edges = []
-    const unsubscribe = subscribeAttentionEdges((edge) => edges.push(edge))
-    chat._onMessage({ type: "processing_start", source: "main" })
-    const bigWord = "x".repeat(50)
-    for (let i = 0; i < 100; i++) {
-      chat._onMessage({ type: "text", source: "main", content: `${bigWord} ` })
-    }
-    // The retained accumulator never grows past the ceiling despite ~5000
-    // streamed characters.
-    expect(chat._attentionStreamTextByTab.main.length).toBeLessThanOrEqual(400)
-    chat._onMessage({ type: "processing_end", source: "main" })
-    unsubscribe()
+  it("a warm-cache resync fetches since the cursor and appends", async () => {
+    const chat = useChatStore()
+    chat._instanceId = "agent_1"
+    chat._instanceGraphId = "g1"
+    chat.activeTab = "main"
+    chat.tabs = ["main"]
+    chat.messagesByTab = { main: [] }
+    chat.branchViewByTab = {}
+    seedWarm(
+      chat,
+      [
+        { type: "user_input", event_id: 4, content: "m4" },
+        { type: "user_input", event_id: 5, content: "m5" },
+      ],
+      5,
+      { hasMore: true, oldestEventId: 4, total: 5 },
+    )
+    const spy = await spyLiveHistory(async (id, tab, opts) => {
+      expect(opts).toEqual({ sinceEventId: 5 })
+      return {
+        // Server-side trimmed page: only events after the cursor.
+        events: [{ type: "user_input", event_id: 6, content: "m6" }],
+        has_more: true,
+        oldest_event_id: 4,
+        total: 6,
+        max_event_id: 6,
+        is_processing: false,
+      }
+    })
+    await expect(chat._resyncHistory("main")).resolves.toBe(true)
+    expect(chat.eventsByTab.main.map((e) => e.event_id)).toEqual([4, 5, 6])
+    expect(chat.messagesByTab.main.map((m) => m.content)).toEqual(["m4", "m5", "m6"])
+    expect(chat._appliedMaxEventIdByTab.main).toBe(6)
+    // The older boundary is unchanged — an incremental page must not
+    // clobber the load-older cursor.
+    expect(chat.historyPagingByTab.main).toEqual({ hasMore: true, oldestEventId: 4, total: 5 })
+    spy.mockRestore()
+  })
 
-    expect(edges).toHaveLength(1)
-    expect(edges[0].summary).toHaveLength(200)
-    expect(edges[0].summary.endsWith("…")).toBe(true)
+  it("walks before-pages when more than one page landed since the cursor", async () => {
+    const chat = useChatStore()
+    chat._instanceId = "agent_1"
+    chat._instanceGraphId = "g1"
+    chat.activeTab = "main"
+    chat.tabs = ["main"]
+    chat.messagesByTab = { main: [] }
+    chat.branchViewByTab = {}
+    seedWarm(chat, [{ type: "user_input", event_id: 10, content: "m10" }], 10)
+    const calls = []
+    const spy = await spyLiveHistory(async (id, tab, opts) => {
+      calls.push(opts)
+      if (opts?.sinceEventId != null) {
+        // The trimmed head was lost: page lies entirely past the cursor.
+        return {
+          events: [{ type: "user_input", event_id: 12, content: "m12" }],
+          has_more: true,
+          oldest_event_id: 12,
+          max_event_id: 12,
+        }
+      }
+      // Older page straddles the cursor; its ≤10 rows must be dropped.
+      return {
+        events: [
+          { type: "user_input", event_id: 11, content: "m11" },
+          { type: "user_input", event_id: 10, content: "m10" },
+        ],
+        has_more: true,
+        oldest_event_id: 10,
+      }
+    })
+    await expect(chat._resyncHistory("main")).resolves.toBe(true)
+    expect(calls).toEqual([{ sinceEventId: 10 }, { limit: 400, before: 12 }])
+    expect(chat.eventsByTab.main.map((e) => e.event_id)).toEqual([10, 11, 12])
+    spy.mockRestore()
+  })
+
+  it("escalates to one full fetch when the before-walk cannot cover the cursor", async () => {
+    const chat = useChatStore()
+    chat._instanceId = "agent_1"
+    chat._instanceGraphId = "g1"
+    chat.activeTab = "main"
+    chat.tabs = ["main"]
+    chat.messagesByTab = { main: [] }
+    chat.branchViewByTab = {}
+    seedWarm(chat, [{ type: "user_input", event_id: 10, content: "m10" }], 10)
+    let beforeCalls = 0
+    let escalated = false
+    const spy = await spyLiveHistory(async (id, tab, opts) => {
+      if (opts?.sinceEventId != null) {
+        return {
+          events: [{ type: "user_input", event_id: 500, content: "far" }],
+          has_more: true,
+          oldest_event_id: 500,
+          max_event_id: 500,
+        }
+      }
+      if (opts?.limit === 0) {
+        escalated = true
+        return {
+          events: [
+            { type: "user_input", event_id: 10, content: "m10" },
+            { type: "user_input", event_id: 500, content: "far" },
+          ],
+          messages: [],
+          has_more: false,
+          oldest_event_id: 10,
+          total: 2,
+          max_event_id: 500,
+        }
+      }
+      beforeCalls += 1
+      // Every page stays entirely past the cursor → walk never covers.
+      return {
+        events: [{ type: "user_input", event_id: 500, content: "far" }],
+        has_more: true,
+        oldest_event_id: 400,
+      }
+    })
+    await expect(chat._resyncHistory("main")).resolves.toBe(true)
+    expect(beforeCalls).toBe(49) // MAX_INCREMENTAL_PAGES - 1 walk pages
+    expect(escalated).toBe(true)
+    expect(chat.eventsByTab.main.map((e) => e.event_id)).toEqual([10, 500])
+    expect(chat.historyPagingByTab.main).toEqual({ hasMore: false, oldestEventId: 10, total: 2 })
+    spy.mockRestore()
+  })
+
+  it("a response ignoring the cursor degrades to snapshot replace", async () => {
+    const chat = useChatStore()
+    chat._instanceId = "agent_1"
+    chat._instanceGraphId = "g1"
+    chat.activeTab = "main"
+    chat.tabs = ["main"]
+    chat.messagesByTab = { main: [] }
+    chat.branchViewByTab = {}
+    seedWarm(
+      chat,
+      [
+        { type: "user_input", event_id: 4, content: "m4" },
+        { type: "user_input", event_id: 5, content: "m5" },
+      ],
+      5,
+    )
+    const spy = await spyLiveHistory(async (id, tab, opts) => {
+      expect(opts).toEqual({ sinceEventId: 5 })
+      // A transport that ignored since_event_id: full log back.
+      return {
+        events: [
+          { type: "user_input", event_id: 4, content: "m4" },
+          { type: "user_input", event_id: 5, content: "m5" },
+          { type: "user_input", event_id: 6, content: "m6" },
+        ],
+        messages: [],
+        is_processing: false,
+      }
+    })
+    await expect(chat._resyncHistory("main")).resolves.toBe(true)
+    // Replace (not append): still three distinct turns, no duplicates.
+    expect(chat.eventsByTab.main.map((e) => e.event_id)).toEqual([4, 5, 6])
+    expect(chat.messagesByTab.main.map((m) => m.content)).toEqual(["m4", "m5", "m6"])
+    spy.mockRestore()
+  })
+
+  it("rewind resyncs the full log so the truncated snapshot applies", async () => {
+    const chat = useChatStore()
+    chat._instanceId = "agent_1"
+    chat._instanceGraphId = "g1"
+    chat.activeTab = "main"
+    chat.tabs = ["main"]
+    chat.messagesByTab = { main: [] }
+    chat.branchViewByTab = {}
+    seedWarm(
+      chat,
+      [
+        { type: "user_input", event_id: 9, content: "m9" },
+        { type: "user_input", event_id: 10, content: "m10" },
+      ],
+      10,
+    )
+    const importActual = await vi.importActual("@/utils/api")
+    const rewindSpy = vi.spyOn(importActual.agentAPI, "rewindTo").mockResolvedValue({})
+    const spy = await spyLiveHistory(async (id, tab, opts) => {
+      expect(opts).toEqual({ limit: 0 })
+      // Truncation: the full log's max now sits BELOW the old watermark.
+      return {
+        events: [
+          { type: "user_input", event_id: 1, content: "m1" },
+          { type: "user_input", event_id: 2, content: "m2" },
+        ],
+        messages: [],
+        has_more: false,
+        oldest_event_id: 1,
+        total: 2,
+        max_event_id: 2,
+        is_processing: false,
+      }
+    })
+    await chat.rewindTo(1)
+    expect(rewindSpy).toHaveBeenCalledWith("g1", "main", 1)
+    expect(chat.eventsByTab.main.map((e) => e.event_id)).toEqual([1, 2])
+    expect(chat._appliedMaxEventIdByTab.main).toBe(2)
+    rewindSpy.mockRestore()
+    spy.mockRestore()
+  })
+
+  it("load-older prepends the before-page, deduping the overlap", async () => {
+    const chat = useChatStore()
+    chat._instanceId = "agent_1"
+    chat._instanceGraphId = "g1"
+    chat.activeTab = "main"
+    chat.tabs = ["main"]
+    chat.messagesByTab = { main: [] }
+    chat.branchViewByTab = {}
+    seedWarm(
+      chat,
+      [
+        { type: "user_input", event_id: 6, content: "m6" },
+        { type: "user_input", event_id: 7, content: "m7" },
+      ],
+      7,
+      { hasMore: true, oldestEventId: 6, total: 20 },
+    )
+    const spy = await spyLiveHistory(async (id, tab, opts) => {
+      expect(opts).toEqual({ limit: 400, before: 6 })
+      return {
+        events: [
+          { type: "user_input", event_id: 4, content: "m4" },
+          { type: "user_input", event_id: 5, content: "m5" },
+          // Overlapping row the client already has — must not duplicate.
+          { type: "user_input", event_id: 6, content: "m6" },
+        ],
+        has_more: true,
+        oldest_event_id: 4,
+        total: 20,
+      }
+    })
+    await expect(chat.loadOlderLiveHistory("main")).resolves.toBe(true)
+    expect(chat.eventsByTab.main.map((e) => e.event_id)).toEqual([4, 5, 6, 7])
+    expect(chat.messagesByTab.main.map((m) => m.content)).toEqual(["m4", "m5", "m6", "m7"])
+    expect(chat.historyPagingByTab.main).toEqual({ hasMore: true, oldestEventId: 4, total: 20 })
+    spy.mockRestore()
+  })
+
+  it("load-older refuses to apply when superseded by a newer request", async () => {
+    const chat = useChatStore()
+    chat._instanceId = "agent_1"
+    chat._instanceGraphId = "g1"
+    chat.activeTab = "main"
+    chat.tabs = ["main"]
+    chat.messagesByTab = { main: [] }
+    chat.branchViewByTab = {}
+    seedWarm(chat, [{ type: "user_input", event_id: 10, content: "m10" }], 10, {
+      hasMore: true,
+      oldestEventId: 10,
+      total: 20,
+    })
+    let resolveOlder
+    const spy = await spyLiveHistory((id, tab, opts) => {
+      if (opts?.before != null) {
+        return new Promise((resolve) => (resolveOlder = resolve))
+      }
+      return Promise.resolve({
+        events: [{ type: "user_input", event_id: 11, content: "m11" }],
+        max_event_id: 11,
+        has_more: true,
+        oldest_event_id: 10,
+      })
+    })
+
+    const older = chat.loadOlderLiveHistory("main")
+    // Let the deferred dynamic import settle so the walk starts first.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await expect(chat._resyncHistory("main")).resolves.toBe(true)
+    resolveOlder({
+      events: [{ type: "user_input", event_id: 9, content: "m9-stale" }],
+      has_more: true,
+      oldest_event_id: 9,
+    })
+    await expect(older).resolves.toBe(false)
+    const ids = chat.eventsByTab.main.map((e) => e.event_id)
+    expect(ids).toEqual([10, 11])
+    spy.mockRestore()
+  })
+
+  it("folds an adjacent duplicate pair split by the live page boundary", async () => {
+    const chat = useChatStore()
+    chat._instanceId = "agent_1"
+    chat._instanceGraphId = "g1"
+    chat.activeTab = "main"
+    chat.tabs = ["main"]
+    chat.messagesByTab = { main: [] }
+    chat.branchViewByTab = {}
+    // Newest page begins with the duplicate twin (event_id 10).
+    seedWarm(
+      chat,
+      [
+        { type: "text", event_id: 10, content: "DUP" },
+        { type: "processing_end", event_id: 11 },
+      ],
+      11,
+      { hasMore: true, oldestEventId: 10, total: 11 },
+    )
+    const spy = await spyLiveHistory(async () => ({
+      // Older page ENDS with the same twin (distinct event_id).
+      events: [
+        { type: "processing_start", event_id: 7 },
+        { type: "text", event_id: 8, content: "A" },
+        { type: "text", event_id: 9, content: "DUP" },
+      ],
+      has_more: false,
+      oldest_event_id: 7,
+      total: 11,
+    }))
+    await expect(chat.loadOlderLiveHistory("main")).resolves.toBe(true)
+    const assistant = chat.messagesByTab.main.find((m) => m.role === "assistant")
+    // The page-level dedupe collapsed each page internally; the merged
+    // replay must render the boundary twin exactly once. A/DUP stream
+    // into one text part, so an unfolded twin would read "ADUPDUP".
+    expect(assistant.parts[0].content).toBe("ADUP")
+    spy.mockRestore()
+  })
+
+  it("saved-page prepend folds the boundary twin through the same replay", async () => {
+    const chat = useChatStore()
+    chat._instanceId = "session:s1"
+    const importActual = await vi.importActual("@/utils/api")
+    const spy = vi
+      .spyOn(importActual.sessionAPI, "getHistory")
+      .mockImplementation(async (sessionName, tab, params) => {
+        if (params?.before == null) {
+          return {
+            events: [
+              { type: "text", event_id: 10, content: "DUP" },
+              { type: "processing_end", event_id: 11 },
+            ],
+            messages: [],
+            has_more: true,
+            oldest_event_id: 10,
+            total: 11,
+          }
+        }
+        return {
+          events: [
+            { type: "processing_start", event_id: 7 },
+            { type: "text", event_id: 8, content: "A" },
+            { type: "text", event_id: 9, content: "DUP" },
+          ],
+          messages: [],
+          has_more: false,
+          oldest_event_id: 7,
+          total: 11,
+        }
+      })
+    await chat.loadHistoryPage("s1", "alice")
+    await expect(chat.loadOlderHistory("s1", "alice")).resolves.toBe(true)
+    const assistant = chat.messagesByTab.alice.find((m) => m.role === "assistant")
+    // Same contract as the live path above: one text part, twin folded.
+    expect(assistant.parts[0].content).toBe("ADUP")
+    spy.mockRestore()
   })
 })

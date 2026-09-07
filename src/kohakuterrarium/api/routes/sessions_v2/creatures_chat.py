@@ -3,10 +3,15 @@
 Service routing sends remote creature operations to their home workers.
 """
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
 from kohakuterrarium.api.deps import get_service
+from kohakuterrarium.api.routes.persistence.live_paths import live_store_entry
 from kohakuterrarium.api.routes.sessions_v2._helpers import resolve_creature_id
+from kohakuterrarium.session.history_paging import (
+    DEFAULT_HISTORY_PAGE_LIMIT,
+    paged_channel_events,
+)
 from kohakuterrarium.api.schemas import (
     AgentChat,
     BranchMutationResponse,
@@ -144,50 +149,52 @@ async def creature_history(
     session_id: str,
     creature_id: str,
     since_event_id: int | None = None,
+    limit: int = Query(DEFAULT_HISTORY_PAGE_LIMIT, ge=0),
+    before: int | None = Query(None, ge=0),
     service: TerrariumService = Depends(get_service),
 ):
-    """History payload with an optional event cursor.
+    """History payload with cursor paging and an incremental cursor.
 
-    ``since_event_id`` trims ``events`` to those after the cursor so the
-    client can append incrementally instead of re-fetching the whole log
-    after every turn. The full payload remains available (cursor omitted)
-    for the rewind/branch/compact resync path. ``max_event_id`` reports the
-    newest event in the full log so the client can advance its cursor.
+    The response carries the most recent ``limit`` events (400 by default,
+    or ~4MB of event JSON, whichever fills first) plus the paging fields
+    ``has_more`` / ``oldest_event_id`` / ``total``; pass
+    ``oldest_event_id`` back as ``before`` to fetch the next-older page,
+    and ``limit=0`` restores the FULL payload for the rewind/branch/compact
+    resync path that needs the whole log. Paging is applied at the store
+    read (``service.chat_history`` -> ``chat_history_for``), so a 75k-event
+    log costs one key enumeration plus one page of value reads — not the
+    multi-second full build — while still reusing the engine-owned store on
+    the event loop (a second connection to an actively written SQLite file
+    raises ``SQLITE_IOERR`` on POSIX).
+
+    ``since_event_id`` trims the page to events after that id so the client
+    can append incrementally instead of re-fetching. Combined with the
+    default bound the page is the newest ``limit`` events of the log with
+    the already-applied prefix removed; ``has_more`` / ``oldest_event_id``
+    still walk any remainder. Incremental payloads omit the conversation
+    snapshot — it is only valid for the whole conversation and would
+    mislead an appending client. ``max_event_id`` reports the FULL log's
+    true maximum (the session-global counter), never the page maximum,
+    which would desync a client's cursor.
+
+    For ``ch:`` targets the cursor is the per-channel message sequence
+    because channel messages carry no ``event_id``; the page is read from
+    the engine's live store with the same semantics as the saved-session
+    history route. Surfaces without a host-local store (multi-node
+    coordination) keep the legacy full cross-node merge — the merged log
+    has no stable sequence cursor (documented limitation).
     """
     # Channel tabs share this endpoint through the ``ch:`` prefix.
     if creature_id.startswith("ch:"):
-        channel_name = creature_id[3:]
-        try:
-            messages = await service.channel_history(session_id, channel_name)
-        except KeyError:
-            messages = []
-        events = [
-            {
-                "type": "channel_message",
-                "channel": channel_name,
-                "sender": message.get("sender", ""),
-                "content": message.get("content", ""),
-                "ts": message.get("timestamp", message.get("ts", 0)),
-            }
-            for message in messages
-        ]
-        return {
-            "creature_id": creature_id,
-            "session_id": session_id,
-            "messages": [],
-            "events": events,
-            "is_processing": False,
-            # Channel events carry no event_id; report the contract field
-            # explicitly so clients can read it unconditionally.
-            "max_event_id": 0,
-        }
+        return await _channel_history_page(
+            service, session_id, creature_id[3:], limit=limit, before=before
+        )
     cid = await resolve_creature_id(service, creature_id, session_id)
     try:
-        payload = await service.chat_history(cid)
+        payload = await service.chat_history(cid, limit=limit, before=before)
     except KeyError:
         raise HTTPException(404, f"creature {creature_id!r} not found")
     events = payload.get("events") or []
-    max_eid = _history_max_event_id(events)
     if since_event_id is not None:
         payload["events"] = [
             evt
@@ -199,8 +206,68 @@ async def creature_history(
         # Incremental payloads omit the conversation snapshot; it is only
         # valid for the full log and would mislead an appending client.
         payload.pop("messages", None)
-    payload["max_event_id"] = max_eid
+    payload.setdefault("max_event_id", _history_max_event_id(events))
     return payload
+
+
+async def _channel_history_page(
+    service: TerrariumService,
+    session_id: str,
+    channel_name: str,
+    *,
+    limit: int,
+    before: int | None,
+) -> dict:
+    """Paged channel history, or the legacy full merge without a local store/limit."""
+    entry = live_store_entry(service, session_id)
+    if entry is not None and limit > 0:
+        _graph_id, store = entry
+        page = paged_channel_events(store, channel_name, limit=limit, before=before)
+        return {
+            "creature_id": f"ch:{channel_name}",
+            "session_id": session_id,
+            "messages": [],
+            "events": page["events"],
+            "is_processing": False,
+            # Channel events carry no event_id; report the contract field
+            # explicitly so clients can read it unconditionally.
+            "max_event_id": 0,
+            "has_more": page["has_more"],
+            "oldest_event_id": page["oldest_event_id"],
+            "total": page["total"],
+        }
+    if entry is not None:
+        # ``limit=0`` is the documented full-payload escape hatch and the
+        # paging helpers only serve bounded pages — read the host-local
+        # store in full instead of paging.
+        _graph_id, store = entry
+        messages = store.get_channel_messages(channel_name)
+    else:
+        try:
+            messages = await service.channel_history(session_id, channel_name)
+        except KeyError:
+            messages = []
+    events = [
+        {
+            "type": "channel_message",
+            "channel": channel_name,
+            "sender": message.get("sender", ""),
+            "content": message.get("content", ""),
+            "ts": message.get("timestamp", message.get("ts", 0)),
+        }
+        for message in messages
+    ]
+    return {
+        "creature_id": f"ch:{channel_name}",
+        "session_id": session_id,
+        "messages": [],
+        "events": events,
+        "is_processing": False,
+        "max_event_id": 0,
+        "has_more": False,
+        "oldest_event_id": None,
+        "total": len(events),
+    }
 
 
 @router.get("/{session_id}/creatures/{creature_id}/events/{event_id}")

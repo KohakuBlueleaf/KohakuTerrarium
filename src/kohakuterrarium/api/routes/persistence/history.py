@@ -6,7 +6,9 @@ Paths use ``/{session_name}/history[/{target}]`` so mounting under
 Saved-session SQLite reads run in a worker thread. Live sessions reuse the
 engine-owned store on the event loop because a second connection to an actively
 written store can raise ``SQLITE_IOERR`` on POSIX; loop affinity also
-serializes reads with the writer.
+serializes reads with the writer. Target payloads are bounded by default (see
+``GET /{session_name}/history/{target}``), so the on-loop live work is a key
+enumeration plus one page of value reads instead of the whole log.
 """
 
 import asyncio
@@ -14,10 +16,11 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from kohakuterrarium.api.deps import get_service
 from kohakuterrarium.api.routes.persistence.live_paths import live_store_entry
+from kohakuterrarium.session.history_paging import DEFAULT_HISTORY_PAGE_LIMIT
 from kohakuterrarium.session.store import SessionStore
 from kohakuterrarium.studio._runtime import host_engine_or_none
 from kohakuterrarium.studio.persistence.history import (
@@ -92,13 +95,34 @@ async def get_session_history_index(
 async def get_session_history(
     session_name: str,
     target: str,
+    limit: int = Query(DEFAULT_HISTORY_PAGE_LIMIT, ge=0),
+    before: int | None = Query(None, ge=0),
     service: TerrariumService = Depends(get_service),
 ) -> dict[str, Any]:
-    """Return history for an agent, root, or channel target.
+    """Return a bounded page of history for an agent, root, or channel target.
+
+    The response carries the most recent ``limit`` events (400 by default) or
+    about 4MB of event JSON, whichever fills first, plus pagination fields:
+    ``has_more``, ``oldest_event_id`` (exclusive cursor for the previous
+    page), and ``total``. Pass ``oldest_event_id`` back as ``before`` to
+    fetch the next-older page. ``limit=0`` returns the FULL unbounded
+    payload for callers that need everything. Pages after the newest omit
+    the conversation snapshot (``messages``) — it describes the whole
+    conversation and belongs to the newest window. For ``ch:`` targets the
+    cursor is the per-channel message sequence because channel messages
+    carry no ``event_id``.
 
     Live job IDs prevent active background work from appearing interrupted.
-    Saved sessions have no live-job set, so persisted unfinished work receives
-    the normal terminal representation.
+    Saved sessions have no live-job set, so persisted unfinished work
+    receives the normal terminal representation.
+
+    LIVE PATH LOOP-AFFINITY TRADEOFF: a live session's history is built
+    synchronously on the event loop, reusing the engine-owned store — a
+    second connection to an actively written SQLite file raises
+    ``SQLITE_IOERR`` on POSIX, and loop affinity serializes reads with the
+    writer. Pagination keeps that on-loop work bounded (a key enumeration
+    plus one page of value reads) where the full payload once blocked the
+    loop for the whole log.
     """
     target = unquote(target)
     entry = live_store_entry(service, session_name)
@@ -106,7 +130,14 @@ async def get_session_history(
         graph_id, store = entry
         live_job_ids = _live_job_ids_for_graph(service, graph_id)
         return history_from_store(
-            store, _live_session_name(store, session_name), target, live_job_ids
+            store,
+            _live_session_name(store, session_name),
+            target,
+            live_job_ids,
+            limit=limit,
+            before=before,
         )
     path = await _resolve_saved_path(session_name)
-    return await asyncio.to_thread(history_payload, path, target, None)
+    return await asyncio.to_thread(
+        history_payload, path, target, None, limit=limit, before=before
+    )

@@ -78,6 +78,17 @@
               <p class="text-warm-300 dark:text-warm-600 text-xs mt-1">{{ resolvedEmptySubtitle }}</p>
             </div>
           </template>
+          <!-- Server-side paging entry (live tabs): the store records
+               ``historyPagingByTab`` when the attach/tab-switch resync
+               fetched the bounded newest page. Mirrors the saved
+               viewer's "Load earlier messages" affordance. The button
+               below it only expands the CLIENT render window over
+               already-loaded messages; this one fetches the next-older
+               persisted page. -->
+          <button v-if="canLoadOlderLive" class="self-center text-xs flex items-center gap-1 text-iolite dark:text-iolite-light hover:underline disabled:opacity-50" :disabled="loadingOlder" @click="loadOlderLive">
+            <span class="i-carbon-chevron-up" />
+            {{ loadingOlder ? t("chat.loadEarlierLoading") : t("chat.loadEarlier") }}
+          </button>
           <button v-if="windowStart > 0" class="self-center text-xs text-iolite dark:text-iolite-light hover:underline" @click="loadEarlierMessages">
             {{ t("chat.showEarlier", { count: windowStart }) }}
           </button>
@@ -195,7 +206,7 @@ import { inject } from "vue"
 import StatusDot from "@/components/common/StatusDot.vue"
 import ChatMessage from "@/components/chat/ChatMessage.vue"
 import { useChatRenderWindow, CHAT_RENDER_EXPAND_MESSAGE_LIMIT, CHAT_RENDER_EXPAND_UNIT_BUDGET } from "@/components/chat/chatRenderWindow"
-import { createChatHistoryExpander, captureViewportAnchor, restoreViewportAnchor } from "@/components/chat/chatHistoryExpand"
+import { CHAT_AUTO_EXPAND_TOP_PX, createChatHistoryExpander, captureViewportAnchor, restoreViewportAnchor } from "@/components/chat/chatHistoryExpand"
 import { createChatScrollScheduler } from "@/components/chat/chatScrollScheduler"
 import SlashCommandMenu from "@/components/chat/SlashCommandMenu.vue"
 import ModelSwitcher from "@/components/chrome/ModelSwitcher.vue"
@@ -253,6 +264,36 @@ const viewProcessing = computed(() => {
   const t = viewActiveTab.value
   return t ? !!chat.processingByTab[t] : false
 })
+// Server-side history paging ("load earlier") for LIVE tabs. The store's
+// ``historyPagingByTab`` records the bounded newest page fetched by the
+// attach/tab-switch resync; saved-session tabs already have their own
+// entry in SessionHistoryViewer, so this button is live-mode only.
+const loadingOlder = ref(false)
+const activePaging = computed(() => {
+  const t = viewActiveTab.value
+  return t ? chat.historyPagingByTab[t] : null
+})
+const canLoadOlderLive = computed(() => !props.readOnly && !!activePaging.value?.hasMore && !viewProcessing.value)
+async function loadOlderLive() {
+  const tab = viewActiveTab.value
+  if (!tab || loadingOlder.value) return
+  loadingOlder.value = true
+  // A prepended page rebuilds the transcript; keep the viewport anchored on
+  // the rows the reader was looking at (same contract as expandHistory), and
+  // re-anchor the render window at the oldest loaded row so the freshly
+  // fetched page is actually inside the rendered range.
+  const anchor = captureViewportAnchor(() => messagesEl.value)
+  try {
+    await chat.loadOlderLiveHistory(tab)
+    if (viewMessages.value.length) enterHistoryAt(0)
+    await nextTick()
+    restoreViewportAnchor(() => messagesEl.value, anchor)
+  } catch (err) {
+    console.warn("Failed to load older history:", err)
+  } finally {
+    loadingOlder.value = false
+  }
+}
 const viewModelInfo = computed(() => {
   const t = viewActiveTab.value
   const info = (t && chat.modelByTab[t]) || {}
@@ -605,6 +646,13 @@ function onMessagesScroll() {
       scrollScheduler.resume()
     } else if (el) {
       historyExpander.maybeExpandAtTop(el.scrollTop)
+    }
+    // The render window expands over already-loaded messages only; once
+    // the reader is near the very top of the loaded log, further up-scroll
+    // must come from the server — mirror the window auto-expansion with a
+    // persisted-page fetch (the button remains as a manual entry).
+    if (el && !isNearBottom.value && el.scrollTop <= CHAT_AUTO_EXPAND_TOP_PX && canLoadOlderLive.value) {
+      loadOlderLive()
     }
     saveScrollPosition()
   })

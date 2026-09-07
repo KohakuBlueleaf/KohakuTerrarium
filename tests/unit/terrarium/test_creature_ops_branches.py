@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from kohakuterrarium.terrarium import creature_ops as co
+from kohakuterrarium.terrarium import creature_history as ch
 from kohakuterrarium.terrarium.topology import GraphTopology
 
 # ---------------------------------------------------------------------------
@@ -191,14 +192,14 @@ class TestResumableEventsBranches:
             def get_resumable_events(self, name, live_job_ids=None):
                 raise RuntimeError("store down")
 
-        assert co._resumable_events(_Store(), "alice", set()) == []
+        assert ch._resumable_events(_Store(), "alice", set()) == []
 
     def test_store_returns_events(self):
         class _Store:
             def get_resumable_events(self, name, live_job_ids=None):
                 return [{"e": 1}]
 
-        assert co._resumable_events(_Store(), "alice", set()) == [{"e": 1}]
+        assert ch._resumable_events(_Store(), "alice", set()) == [{"e": 1}]
 
 
 # ---------------------------------------------------------------------------

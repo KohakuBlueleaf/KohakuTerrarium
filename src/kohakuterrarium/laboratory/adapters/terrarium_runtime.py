@@ -527,7 +527,14 @@ class TerrariumRuntimeAdapter:
             case "chat_history":
                 cid = msg.body["creature_id"]
                 self._require_hosted(cid)
-                return {"history": chat_history_for(self._engine, cid)}
+                return {
+                    "history": chat_history_for(
+                        self._engine,
+                        cid,
+                        limit=msg.body.get("limit") or 0,
+                        before=msg.body.get("before"),
+                    )
+                }
 
             case "chat_branches":
                 cid = msg.body["creature_id"]
