@@ -34,6 +34,9 @@ import { wsUrl } from "@/utils/wsUrl"
 
 const BRANCH_RESYNC_DELAY_MS = 350
 const COMMAND_INVENTORY_TTL_MS = 30_000
+// Matches the server's default bounded page for
+// ``GET /sessions/{name}/history/{target}`` (400 events or ~4MB).
+const HISTORY_PAGE_SIZE = 400
 // A pending branch op whose expected branch never lands (e.g. the edit
 // request was lost before dispatch) must not keep the stale-history
 // guard alive forever — after this many incomplete retries the guard is
@@ -1780,6 +1783,29 @@ const _chatStoreOptions = {
      * @type {Object<string, any[]>}
      */
     eventsByTab: {},
+    /**
+     * Per-tab pagination state for the read-only session-history
+     * surface (``GET /sessions/{name}/history/{target}``):
+     * ``{hasMore, oldestEventId, total}``. ``oldestEventId`` is the
+     * exclusive cursor for the previous page (the per-channel message
+     * sequence for ``ch:`` targets, which carry no event ids).
+     * @type {Object<string, {hasMore: boolean, oldestEventId: number|null, total: number|null}>}
+     */
+    historyPagingByTab: {},
+    /**
+     * Accumulated raw paged events per tab — newest page first, older
+     * pages prepended by "load earlier". Powers the re-replay after each
+     * append without refetching pages.
+     * @type {Object<string, any[]>}
+     */
+    _historyPagedEventsByTab: {},
+    /**
+     * Conversation snapshot from the newest page per tab. Older pages
+     * omit the snapshot server-side; the newest one stays the replay
+     * fallback source for every prepend.
+     * @type {Object<string, any[]>}
+     */
+    _historyPagedSnapshotByTab: {},
     /**
      * Per-tab branch selection: ``{turnIndex: branchId}``. Empty
      * means "use latest branch for every turn" (the default).
@@ -4640,6 +4666,90 @@ const _chatStoreOptions = {
     },
 
     /**
+     * Load one page of persisted history for a tab through the read-only
+     * session-history endpoint (``sessionAPI.getHistory``). Without
+     * ``before`` this fetches the most recent page (the server's bounded
+     * default) and REPLACES the tab's messages; with
+     * ``before = oldestEventId`` it fetches the next-older page and
+     * PREPENDS it — the dashboard mirror of the TUI's LoadOlderButton.
+     *
+     * Stale-guard: shares ``_historyRequestSeqByTab`` with
+     * ``_resyncHistory`` so of any two overlapping history requests for
+     * the same tab (paged load vs. resync), the one that STARTED LATER
+     * is authoritative — the older one returns ``null`` instead of
+     * clobbering the newer view.
+     *
+     * @param {string} sessionName saved-session name the page belongs to
+     * @param {string} tab history target (agent or ``ch:`` channel)
+     * @param {{before?: number|null}} [options]
+     * @returns {Promise<object|null>} the raw history payload, or null
+     *   when the load was superseded by a newer history request.
+     */
+    async loadHistoryPage(sessionName, tab, options = {}) {
+      const before = options.before ?? null
+      if (!sessionName || !tab) return null
+      const requestId = (this._historyRequestSeqByTab[tab] =
+        (this._historyRequestSeqByTab[tab] || 0) + 1)
+      const mutationGeneration = this._historyMutationSeqByTab[tab] || 0
+      const { sessionAPI } = await import("@/utils/api")
+      const params = { limit: HISTORY_PAGE_SIZE }
+      if (before != null) params.before = before
+      const data = await sessionAPI.getHistory(sessionName, tab, params)
+      if (
+        requestId !== this._historyRequestSeqByTab[tab] ||
+        (this._historyMutationSeqByTab[tab] || 0) !== mutationGeneration
+      ) {
+        return null
+      }
+      this._applyHistoryPage(tab, data, before)
+      return data
+    },
+
+    /**
+     * Fetch the next-older page for a tab using its recorded
+     * ``oldest_event_id`` cursor. Returns true when an older page was
+     * fetched and applied.
+     */
+    async loadOlderHistory(sessionName, tab = this.activeTab) {
+      const paging = tab ? this.historyPagingByTab[tab] : null
+      if (!paging?.hasMore || paging.oldestEventId == null) return false
+      const data = await this.loadHistoryPage(sessionName, tab, {
+        before: paging.oldestEventId,
+      })
+      return data != null
+    },
+
+    /** Apply a fetched history page: replace (newest) or prepend (older). */
+    _applyHistoryPage(tab, data, before) {
+      const events = Array.isArray(data?.events) ? data.events : []
+      this.historyPagingByTab[tab] = {
+        hasMore: !!data?.has_more,
+        oldestEventId: data?.oldest_event_id ?? null,
+        total: data?.total ?? null,
+      }
+      if (before == null) {
+        this._historyPagedEventsByTab[tab] = events
+        this._historyPagedSnapshotByTab[tab] = Array.isArray(data?.messages) ? data.messages : []
+      } else {
+        // Older page: prepend, skipping rows the accumulated log already
+        // holds (a raced double-append must not duplicate history).
+        const accumulated = this._historyPagedEventsByTab[tab] || []
+        const known = new Set(accumulated.map((evt) => evt?.event_id).filter((id) => id != null))
+        const fresh = events.filter((evt) => evt?.event_id == null || !known.has(evt.event_id))
+        this._historyPagedEventsByTab[tab] = [...fresh, ...accumulated]
+      }
+      // Read-only saved history: never populate ``runningJobs`` — a
+      // frozen session has no live work, and its unfinished jobs already
+      // replay as ``interrupted`` via the backend's synthetic terminals
+      // (UXI-04).
+      const { messages } = _replayEvents(
+        this._historyPagedSnapshotByTab[tab] || [],
+        this._historyPagedEventsByTab[tab] || [],
+      )
+      this._setMessages(tab, messages)
+    },
+
+    /**
      * Rebuild ``messagesByTab[tab]`` from the cached event log,
      * applying the current ``branchViewByTab[tab]`` override.
      */
@@ -5344,6 +5454,9 @@ const _chatStoreOptions = {
       this._historyRequestSeqByTab = {}
       this._pendingCommandResultContextsByTab = {}
       this._appliedMaxEventIdByTab = {}
+      this.historyPagingByTab = {}
+      this._historyPagedEventsByTab = {}
+      this._historyPagedSnapshotByTab = {}
       this._clearBranchResyncTimers()
       if (this._reconnectTimer) {
         clearTimeout(this._reconnectTimer)

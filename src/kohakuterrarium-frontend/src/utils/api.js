@@ -896,8 +896,20 @@ export const sessionAPI = {
     return data
   },
 
-  async getHistory(sessionName, target) {
-    const { data } = await api.get(`/sessions/${sessionName}/history/${encodeTarget(target)}`)
+  /**
+   * Get history for one target. By default the server returns a bounded
+   * most-recent page (400 events / ~4MB) plus ``has_more`` /
+   * ``oldest_event_id`` / ``total``. Pass ``{ before: oldest_event_id }``
+   * for the next-older page, or ``{ limit: 0 }`` for the full payload.
+   * @param {string} sessionName
+   * @param {string} target
+   * @param {{limit?: number, before?: number}} [params]
+   */
+  async getHistory(sessionName, target, params = null) {
+    const { data } = await api.get(
+      `/sessions/${sessionName}/history/${encodeTarget(target)}`,
+      params ? { params } : {},
+    )
     return data
   },
 

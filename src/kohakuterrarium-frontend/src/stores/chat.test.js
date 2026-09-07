@@ -5861,3 +5861,163 @@ describe("chat store — attention accumulator bounds", () => {
     expect(edges[0].summary.endsWith("…")).toBe(true)
   })
 })
+
+describe("chat store — paged history (load earlier)", () => {
+  const PAGE_EVENTS = (ids) =>
+    ids.map((id) => ({ type: "user_input", event_id: id, content: `m${id}` }))
+
+  async function spySessionHistory(mock) {
+    const importActual = await vi.importActual("@/utils/api")
+    return vi.spyOn(importActual.sessionAPI, "getHistory").mockImplementation(mock)
+  }
+
+  it("loads the most recent page and records pagination state", async () => {
+    const chat = useChatStore()
+    chat._instanceId = "session:s1"
+    chat.messagesByTab = { alice: [] }
+    const getHistory = await spySessionHistory(async () => ({
+      target: "alice",
+      messages: [],
+      events: PAGE_EVENTS([389, 390, 450]),
+      has_more: true,
+      oldest_event_id: 389,
+      total: 450,
+    }))
+
+    const data = await chat.loadHistoryPage("s1", "alice")
+
+    expect(getHistory).toHaveBeenCalledWith("s1", "alice", { limit: 400 })
+    expect(data).not.toBeNull()
+    expect(chat.historyPagingByTab.alice).toEqual({
+      hasMore: true,
+      oldestEventId: 389,
+      total: 450,
+    })
+    expect(chat.messagesByTab.alice.map((m) => m.content)).toEqual(["m389", "m390", "m450"])
+    getHistory.mockRestore()
+  })
+
+  it("prepends an older page without clobbering or duplicating rows", async () => {
+    const chat = useChatStore()
+    chat._instanceId = "session:s1"
+    chat.messagesByTab = { alice: [] }
+    let latest = true
+    const getHistory = await spySessionHistory(async (_s, _t, params) => {
+      if (latest) {
+        latest = false
+        return {
+          target: "alice",
+          messages: [],
+          events: PAGE_EVENTS([3, 4]),
+          has_more: true,
+          oldest_event_id: 3,
+          total: 4,
+        }
+      }
+      expect(params).toEqual({ limit: 400, before: 3 })
+      return {
+        target: "alice",
+        messages: [],
+        events: PAGE_EVENTS([1, 2, 3]),
+        has_more: false,
+        oldest_event_id: 1,
+        total: 4,
+      }
+    })
+
+    await chat.loadHistoryPage("s1", "alice")
+    const applied = await chat.loadOlderHistory("s1", "alice")
+
+    expect(applied).toBe(true)
+    // Event 3 was already on the newest page — the prepend must skip it.
+    expect(chat.messagesByTab.alice.map((m) => m.content)).toEqual(["m1", "m2", "m3", "m4"])
+    expect(chat.historyPagingByTab.alice).toEqual({
+      hasMore: false,
+      oldestEventId: 1,
+      total: 4,
+    })
+    getHistory.mockRestore()
+  })
+
+  it("renders the conversation snapshot for a target with no events", async () => {
+    const chat = useChatStore()
+    chat._instanceId = "session:s1"
+    chat.messagesByTab = { alice: [] }
+    const getHistory = await spySessionHistory(async () => ({
+      target: "alice",
+      // Legacy empty-history shape: no events, snapshot only.
+      messages: [{ role: "user", content: "snapshot text" }],
+      events: [],
+      has_more: false,
+      oldest_event_id: null,
+      total: 0,
+    }))
+
+    const data = await chat.loadHistoryPage("s1", "alice")
+
+    // Events win when present (replay semantic); without any, the
+    // conversation snapshot is the fallback render — same as the
+    // previous non-paged viewer path.
+    expect(data).not.toBeNull()
+    expect(chat.messagesByTab.alice.map((m) => m.content)).toEqual(["snapshot text"])
+    await expect(chat.loadOlderHistory("s1", "alice")).resolves.toBe(false)
+    getHistory.mockRestore()
+  })
+
+  it("drops a page load superseded by a newer history request", async () => {
+    const chat = useChatStore()
+    chat._instanceId = "session:s1"
+    chat.messagesByTab = { alice: [] }
+    let resolveFirst
+    const first = new Promise((resolve) => {
+      resolveFirst = resolve
+    })
+    let call = 0
+    const getHistory = await spySessionHistory(() => {
+      call += 1
+      return call === 1
+        ? first
+        : Promise.resolve({
+            target: "alice",
+            messages: [],
+            events: PAGE_EVENTS([9]),
+            has_more: false,
+            oldest_event_id: 9,
+            total: 1,
+          })
+    })
+
+    const stale = chat.loadHistoryPage("s1", "alice")
+    const fresh = chat.loadHistoryPage("s1", "alice")
+    resolveFirst({
+      target: "alice",
+      messages: [],
+      events: PAGE_EVENTS([1]),
+      has_more: true,
+      oldest_event_id: 1,
+      total: 9,
+    })
+
+    // The request that STARTED LATER is authoritative; the stale one is
+    // discarded without touching messages or pagination state.
+    await expect(stale).resolves.toBeNull()
+    await expect(fresh).resolves.not.toBeNull()
+    expect(chat.messagesByTab.alice.map((m) => m.content)).toEqual(["m9"])
+    expect(chat.historyPagingByTab.alice.hasMore).toBe(false)
+    getHistory.mockRestore()
+  })
+
+  it("does not page past the oldest recorded cursor", async () => {
+    const chat = useChatStore()
+    chat._instanceId = "session:s1"
+    const getHistory = await spySessionHistory(async () => {
+      throw new Error("must not fetch")
+    })
+
+    await expect(chat.loadOlderHistory("s1", "alice")).resolves.toBe(false)
+    chat.historyPagingByTab.alice = { hasMore: true, oldestEventId: null, total: 0 }
+    await expect(chat.loadOlderHistory("s1", "alice")).resolves.toBe(false)
+    expect(getHistory).not.toHaveBeenCalled()
+    getHistory.mockRestore()
+  })
+})
