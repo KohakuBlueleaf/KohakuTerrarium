@@ -348,6 +348,26 @@ class TestLiveChannelPaging:
         finally:
             store.close()
 
+    def test_channel_limit_zero_returns_full_log(self, tmp_path):
+        # ``limit=0`` is the documented full-payload escape hatch; the
+        # channel target must honor it instead of answering with an
+        # empty page (the paging helpers only serve bounded pages).
+        store = _make_store(tmp_path, channel_messages=30)
+        engine = _FakeEngine(_FakeCreature(_FakeAgent("alice", store)), store)
+        client = _client(engine)
+        try:
+            body = client.get(
+                f"/sessions/{GRAPH_ID}/creatures/ch:ops/history",
+                params={"limit": 0},
+            ).json()
+            assert [e["content"] for e in body["events"]] == [
+                f"c{i}" for i in range(30)
+            ]
+            assert body["has_more"] is False
+            assert body["total"] == 30
+        finally:
+            store.close()
+
     def test_channel_without_local_store_keeps_full_merge(self):
         # No host-local store surface on the service: the legacy full
         # cross-node merge answers, with has_more explicitly false because

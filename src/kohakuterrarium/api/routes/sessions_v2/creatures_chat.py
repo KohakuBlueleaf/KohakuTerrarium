@@ -218,9 +218,9 @@ async def _channel_history_page(
     limit: int,
     before: int | None,
 ) -> dict:
-    """Paged channel history, or the legacy full merge without a local store."""
+    """Paged channel history, or the legacy full merge without a local store/limit."""
     entry = live_store_entry(service, session_id)
-    if entry is not None:
+    if entry is not None and limit > 0:
         _graph_id, store = entry
         page = paged_channel_events(store, channel_name, limit=limit, before=before)
         return {
@@ -236,10 +236,17 @@ async def _channel_history_page(
             "oldest_event_id": page["oldest_event_id"],
             "total": page["total"],
         }
-    try:
-        messages = await service.channel_history(session_id, channel_name)
-    except KeyError:
-        messages = []
+    if entry is not None:
+        # ``limit=0`` is the documented full-payload escape hatch and the
+        # paging helpers only serve bounded pages — read the host-local
+        # store in full instead of paging.
+        _graph_id, store = entry
+        messages = store.get_channel_messages(channel_name)
+    else:
+        try:
+            messages = await service.channel_history(session_id, channel_name)
+        except KeyError:
+            messages = []
     events = [
         {
             "type": "channel_message",
