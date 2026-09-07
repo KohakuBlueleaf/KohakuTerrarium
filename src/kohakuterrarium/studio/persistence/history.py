@@ -53,14 +53,23 @@ def history_from_store(
     session_name: str,
     target: str,
     live_job_ids: set[str] | None = None,
+    *,
+    limit: int = 0,
+    before: int | None = None,
 ) -> dict[str, Any]:
-    """Build validated target history from an already-open store."""
+    """Build validated target history from an already-open store.
+
+    ``limit`` / ``before`` bound and cursor the payload — see
+    :func:`session_history_payload`. The default keeps the full payload.
+    """
     try:
         meta = store.load_meta()
         valid_targets = set(session_targets(store, meta))
         if target not in valid_targets:
             raise NotFoundError(f"Target not found in session: {target}")
-        payload = session_history_payload(store, target, live_job_ids=live_job_ids)
+        payload = session_history_payload(
+            store, target, live_job_ids=live_job_ids, limit=limit, before=before
+        )
         payload["session_name"] = session_name
         payload["meta"] = meta
         return payload
@@ -74,11 +83,16 @@ def history_payload(
     path: Path,
     target: str,
     live_job_ids: set[str] | None = None,
+    *,
+    limit: int = 0,
+    before: int | None = None,
 ) -> dict[str, Any]:
     """Return read-only history for an agent, root, or channel target.
 
     ``live_job_ids`` prevents active work from being synthesized as interrupted.
     Saved sessions omit it because unmatched starts are no longer running.
+    ``limit`` / ``before`` bound and cursor the payload — see
+    :func:`session_history_payload`; the default keeps the full payload.
     Missing sessions and targets retain their typed errors; other failures are
     wrapped in ``SessionError``.
     """
@@ -88,7 +102,9 @@ def history_payload(
     store: SessionStore | None = None
     try:
         store = SessionStore(path)
-        return history_from_store(store, path.stem, target, live_job_ids)
+        return history_from_store(
+            store, path.stem, target, live_job_ids, limit=limit, before=before
+        )
     except (NotFoundError, SessionError):
         raise
     except Exception as e:
