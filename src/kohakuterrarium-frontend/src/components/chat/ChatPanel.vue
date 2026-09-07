@@ -78,6 +78,17 @@
               <p class="text-warm-300 dark:text-warm-600 text-xs mt-1">{{ resolvedEmptySubtitle }}</p>
             </div>
           </template>
+          <!-- Server-side paging entry (live tabs): the store records
+               ``historyPagingByTab`` when the attach/tab-switch resync
+               fetched the bounded newest page. Mirrors the saved
+               viewer's "Load earlier messages" affordance. The button
+               below it only expands the CLIENT render window over
+               already-loaded messages; this one fetches the next-older
+               persisted page. -->
+          <button v-if="canLoadOlderLive" class="self-center text-xs flex items-center gap-1 text-iolite dark:text-iolite-light hover:underline disabled:opacity-50" :disabled="loadingOlder" @click="loadOlderLive">
+            <span class="i-carbon-chevron-up" />
+            {{ loadingOlder ? t("chat.loadEarlierLoading") : t("chat.loadEarlier") }}
+          </button>
           <button v-if="windowStart > 0" class="self-center text-xs text-iolite dark:text-iolite-light hover:underline" @click="loadEarlierMessages">
             {{ t("chat.showEarlier", { count: windowStart }) }}
           </button>
@@ -253,6 +264,28 @@ const viewProcessing = computed(() => {
   const t = viewActiveTab.value
   return t ? !!chat.processingByTab[t] : false
 })
+// Server-side history paging ("load earlier") for LIVE tabs. The store's
+// ``historyPagingByTab`` records the bounded newest page fetched by the
+// attach/tab-switch resync; saved-session tabs already have their own
+// entry in SessionHistoryViewer, so this button is live-mode only.
+const loadingOlder = ref(false)
+const activePaging = computed(() => {
+  const t = viewActiveTab.value
+  return t ? chat.historyPagingByTab[t] : null
+})
+const canLoadOlderLive = computed(() => !props.readOnly && !!activePaging.value?.hasMore && !viewProcessing.value)
+async function loadOlderLive() {
+  const tab = viewActiveTab.value
+  if (!tab || loadingOlder.value) return
+  loadingOlder.value = true
+  try {
+    await chat.loadOlderLiveHistory(tab)
+  } catch (err) {
+    console.warn("Failed to load older history:", err)
+  } finally {
+    loadingOlder.value = false
+  }
+}
 const viewModelInfo = computed(() => {
   const t = viewActiveTab.value
   const info = (t && chat.modelByTab[t]) || {}

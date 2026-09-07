@@ -37,6 +37,11 @@ const COMMAND_INVENTORY_TTL_MS = 30_000
 // Matches the server's default bounded page for
 // ``GET /sessions/{name}/history/{target}`` (400 events or ~4MB).
 const HISTORY_PAGE_SIZE = 400
+// Ceiling on ``before``-walk iterations during one incremental resync.
+// Beyond it the escalation to a single full fetch is cheaper than more
+// round-trips (and correctness is identical — the full log covers the
+// cursor by construction).
+const MAX_INCREMENTAL_PAGES = 50
 // A pending branch op whose expected branch never lands (e.g. the edit
 // request was lost before dispatch) must not keep the stale-history
 // guard alive forever — after this many incomplete retries the guard is
@@ -4455,15 +4460,41 @@ const _chatStoreOptions = {
         const { agentAPI } = await import("@/utils/api")
         const [sid, cid] = [this._instanceGraphId, tab]
         await agentAPI.rewindTo(sid, cid, messageIdx)
-        await this._resyncHistory(tab)
+        // Rewind TRUNCATES the log — the new max can fall below the
+        // applied watermark, which an incremental ``since_event_id``
+        // cursor cannot express (the out-of-order guard would reject
+        // the truncated snapshot as stale). Full fetch is mandatory.
+        await this._resyncHistory(tab, { full: true })
       } catch (e) {
         console.warn("Failed to rewind:", e)
       }
     },
 
-    /** Re-fetch conversation history from the backend and rebuild the
-     *  local message list. Called after edit/regenerate/rewind so the
-     *  frontend matches the backend's truncated conversation.
+    /** Re-fetch conversation history and rebuild the tab's message list.
+     *
+     *  Fetch modes (one shared apply pipeline):
+     *  - FULL (``options.full`` or a pending branch op): ``limit=0``,
+     *    the whole log. Branch completeness needs the full parent
+     *    chain; rewind truncation lowers the log max, which an
+     *    incremental cursor cannot express.
+     *    PAGE TRADEOFF: on huge sessions (75k+ events) this is again
+     *    the multi-second full build — kept deliberately, correctness
+     *    over latency. Related known cost: ``<k/N>`` branch metadata
+     *    for turns older than a bounded page only reappears after such
+     *    a full resync or enough load-older pages walked back to them.
+     *  - INITIAL (``options.initialLoad``): the server-bounded newest
+     *    page (400 events / ~4MB, server-side default). Records
+     *    ``historyPagingByTab`` so the transcript can offer "load
+     *    earlier".
+     *  - INCREMENTAL (default with a warm cache and no branch op):
+     *    ``since_event_id`` = the applied watermark, bounded page,
+     *    APPENDED to the cached log — cheaper than the old full
+     *    refetch after every turn. When more than a page landed since
+     *    the cursor the remainder is walked with ``before`` pages
+     *    (still bounded); a capped walk escalates to one FULL fetch.
+     *    Responses carrying rows at/below the cursor (older servers,
+     *    or transports that ignore the cursor) degrade to the full
+     *    snapshot REPLACE below.
      *
      *  Robustness: ALWAYS rebuild messages from whatever events the
      *  backend has at the moment of the call, even when the expected
@@ -4495,21 +4526,37 @@ const _chatStoreOptions = {
       const mutationGeneration = this._historyMutationSeqByTab[tab] || 0
       const requestedInstanceId = this._instanceId
       const preFetchMessages = options.initialLoad ? this.messagesByTab[tab] || [] : null
+      const isStale = () =>
+        requestId !== this._historyRequestSeqByTab[tab] ||
+        this._instanceId !== requestedInstanceId ||
+        this._instanceGeneration !== instanceGeneration ||
+        (this._historyMutationSeqByTab[tab] || 0) !== mutationGeneration
+      // Mode dispatch happens NOW (a branch op started mid-flight is
+      // re-read after the await below, like the original guard did).
+      const watermarkAtStart = this._appliedMaxEventIdByTab[tab]
+      const incrementalMode =
+        !options.initialLoad &&
+        !options.full &&
+        watermarkAtStart != null &&
+        Array.isArray(this.eventsByTab[tab]) &&
+        this.eventsByTab[tab].length > 0 &&
+        !this._branchResyncPendingByTab[tab]?.active
       try {
         const { terrariumAPI } = await import("@/utils/api")
         // Capture BEFORE the fetch: a tab-owned job that starts while
         // this request is in flight is newer than the history it
         // returns, so job-reconciliation must not prune it.
         const fetchedAt = Date.now()
-        const data = await terrariumAPI.getHistory(this._instanceGraphId, tab)
-        if (
-          requestId !== this._historyRequestSeqByTab[tab] ||
-          this._instanceId !== requestedInstanceId ||
-          this._instanceGeneration !== instanceGeneration ||
-          (this._historyMutationSeqByTab[tab] || 0) !== mutationGeneration
-        ) {
-          return false
-        }
+        let fetchOpts = null
+        if (options.full) fetchOpts = { limit: 0 }
+        else if (incrementalMode) fetchOpts = { sinceEventId: watermarkAtStart }
+        // Omit the options arg entirely for the unbounded default call —
+        // the server's bounded page applies either way, and the 2-arg
+        // shape is what the pre-paging callers/tests observed.
+        let data = fetchOpts
+          ? await terrariumAPI.getHistory(this._instanceGraphId, tab, fetchOpts)
+          : await terrariumAPI.getHistory(this._instanceGraphId, tab)
+        if (isStale()) return false
         if (!data?.events) {
           if (this._branchResyncPendingByTab[tab]?.active) return false
           if (Array.isArray(data?.messages)) {
@@ -4553,18 +4600,110 @@ const _chatStoreOptions = {
           return true
         }
 
+        if (incrementalMode) {
+          const watermark = watermarkAtStart
+          // Full-log truth preferred over a page maximum: advancing the
+          // since-cursor from a page-bounded value would re-fetch or
+          // skip events. The live route guarantees the FULL log's max.
+          const incomingMax =
+            typeof data?.max_event_id === "number"
+              ? data.max_event_id
+              : this._maxEventId(data?.events)
+          if (incomingMax != null && incomingMax < watermark) {
+            // Out-of-order guard: an older snapshot must not clobber.
+            return true
+          }
+          const rows = Array.isArray(data?.events) ? data.events : []
+          // A response holding rows at/below the cursor is a FULL
+          // snapshot (server ignored the cursor) — REPLACE below.
+          const isSnapshot = rows.some(
+            (evt) => typeof evt?.event_id === "number" && evt.event_id <= watermark,
+          )
+          if (!isSnapshot) {
+            let delta = rows
+            let page = data
+            let pages = 1
+            // The trim lost its head when the page lies entirely past
+            // the cursor: walk older pages (still bounded) until the
+            // cursor is covered.
+            while (
+              page?.has_more &&
+              page?.oldest_event_id != null &&
+              page.oldest_event_id > watermark &&
+              pages < MAX_INCREMENTAL_PAGES
+            ) {
+              pages += 1
+              page = await terrariumAPI.getHistory(this._instanceGraphId, tab, {
+                limit: HISTORY_PAGE_SIZE,
+                before: page.oldest_event_id,
+              })
+              if (isStale()) return false
+              delta = [...(Array.isArray(page?.events) ? page.events : []), ...delta]
+            }
+            const covered = !(
+              page?.has_more &&
+              page?.oldest_event_id != null &&
+              page.oldest_event_id > watermark
+            )
+            if (covered && !this._branchResyncPendingByTab[tab]?.active) {
+              const cached = (this.eventsByTab[tab] || []).filter((evt) => !evt?._optimistic)
+              const known = new Set(
+                cached.map((evt) => evt?.event_id).filter((id) => typeof id === "number"),
+              )
+              // ``before`` pages can straddle the cursor; rows the
+              // cache already holds (or predate the cursor) are dropped.
+              const fresh = delta.filter((evt) => {
+                if (!evt || evt._optimistic) return false
+                if (typeof evt.event_id !== "number") return true
+                return evt.event_id > watermark && !known.has(evt.event_id)
+              })
+              if (isStale()) return false
+              if (!this.branchViewByTab[tab]) this.branchViewByTab[tab] = {}
+              const prepared = _prepareReplayEvents(
+                [...cached, ...fresh],
+                this.branchViewByTab[tab],
+              )
+              this._setEvents(tab, prepared.events)
+              this._restoreTokenUsage(tab, prepared.events, true)
+              this._rebuildMessages(tab, fetchedAt, prepared)
+              const scope = scopeOfStoreId(this.$id) || "default"
+              this.attentionByTab[tab] = restoreAttentionFromHistory(
+                this.eventsByTab[tab],
+                this.attentionByTab[tab] || createAttentionState(),
+              )
+              publishAttention(scope, tab, this.attentionByTab[tab])
+              this._appliedMaxEventIdByTab[tab] = incomingMax ?? watermark
+              if (data.is_processing === true) this.processingByTab[tab] = true
+              return true
+            }
+            // Walk capped, or a branch op started mid-flight: fall back
+            // to the FULL log so the completeness machinery below sees
+            // the whole parent chain.
+            data = await terrariumAPI.getHistory(this._instanceGraphId, tab, { limit: 0 })
+            if (isStale()) return false
+          }
+        }
+
+        // ---- snapshot pipeline (full / initial page / legacy replace) ----
+
         // Out-of-order guard by content: a response whose newest
         // persisted event predates what we already applied for this tab
         // is stale and must not clobber it. event_id is monotonic and
         // append-only, so a lower max means an earlier backend snapshot.
         // Branch ops are exempt — a pending regen/edit legitimately
         // presents a smaller live view until the new branch lands, and
-        // the completeness logic below governs that case.
+        // the completeness logic below governs that case. FULL fetches
+        // are exempt too: an explicit full pull is authoritative by
+        // definition (rewind TRUNCATES the log, so its max legitimately
+        // lands below the watermark); request-order is already governed
+        // by the per-tab request sequence above.
         const branchOpActive = !!this._branchResyncPendingByTab[tab]?.active
-        const incomingMax = this._maxEventId(data.events)
+        const incomingMax =
+          typeof data?.max_event_id === "number" ? data.max_event_id : this._maxEventId(data.events)
         const watermark = this._appliedMaxEventIdByTab[tab]
         if (
           !branchOpActive &&
+          !options.full &&
           incomingMax != null &&
           watermark != null &&
           incomingMax < watermark
@@ -4653,6 +4792,15 @@ const _chatStoreOptions = {
         // Advance the applied-history watermark so a later out-of-order
         // response carrying an older snapshot is rejected above.
         if (incomingMax != null) this._appliedMaxEventIdByTab[tab] = incomingMax
+        // Record the cursor window this snapshot covers. A FULL (or
+        // escalated) fetch legitimately ends paging (the whole log is
+        // local); a bounded page keeps ``has_more`` for the transcript's
+        // "load earlier" entry.
+        this.historyPagingByTab[tab] = {
+          hasMore: !!data.has_more,
+          oldestEventId: data.oldest_event_id ?? null,
+          total: data.total ?? null,
+        }
         // Restore a running turn's flag (e.g. after a cap-drop forced
         // it off); the false edge stays WS-owned (idle frame).
         if (data.is_processing === true) this.processingByTab[tab] = true
@@ -4663,6 +4811,60 @@ const _chatStoreOptions = {
         if (options.suppressErrors) return false
         throw e
       }
+    },
+
+    /**
+     * "Load earlier" for a LIVE tab: fetch the next-older bounded page
+     * from the live history endpoint (``before`` = exclusive event_id
+     * cursor; per-channel sequence on ``ch:`` tabs) and PREPEND it to
+     * the cached event log, re-replaying ``messagesByTab``.
+     *
+     * Shares the per-tab request sequence with ``_resyncHistory`` so of
+     * any two overlapping history requests for the tab, the one that
+     * STARTED LATER wins. ``event_id`` overlap is dropped on merge, and
+     * adjacent duplicate pairs split by the page boundary fold during
+     * replay (``_prepareReplayEvents`` dedupes the whole merged array,
+     * mirroring the server's page-level collapse).
+     */
+    async loadOlderLiveHistory(tab = this.activeTab) {
+      const paging = tab ? this.historyPagingByTab[tab] : null
+      if (!tab || !this._instanceId || !paging?.hasMore || paging.oldestEventId == null) {
+        return false
+      }
+      const requestId = (this._historyRequestSeqByTab[tab] =
+        (this._historyRequestSeqByTab[tab] || 0) + 1)
+      const mutationGeneration = this._historyMutationSeqByTab[tab] || 0
+      const requestedInstanceId = this._instanceId
+      const { terrariumAPI } = await import("@/utils/api")
+      const data = await terrariumAPI.getHistory(this._instanceGraphId, tab, {
+        limit: HISTORY_PAGE_SIZE,
+        before: paging.oldestEventId,
+      })
+      if (
+        requestId !== this._historyRequestSeqByTab[tab] ||
+        this._instanceId !== requestedInstanceId ||
+        (this._historyMutationSeqByTab[tab] || 0) !== mutationGeneration
+      ) {
+        return false
+      }
+      const cached = this.eventsByTab[tab] || []
+      const known = new Set(
+        cached.map((evt) => evt?.event_id).filter((id) => typeof id === "number"),
+      )
+      const events = Array.isArray(data?.events) ? data.events : []
+      const fresh = events.filter(
+        (evt) => typeof evt?.event_id !== "number" || !known.has(evt.event_id),
+      )
+      this._setEvents(tab, [...fresh, ...cached])
+      this.historyPagingByTab[tab] = {
+        hasMore: !!data?.has_more,
+        oldestEventId: data?.oldest_event_id ?? null,
+        total: data?.total ?? null,
+      }
+      // Add-only job reconciliation (fetchedAt null): prepending older
+      // events must never prune currently running work.
+      this._rebuildMessages(tab)
+      return true
     },
 
     /**

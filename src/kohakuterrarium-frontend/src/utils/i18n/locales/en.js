@@ -516,6 +516,8 @@ export default {
   "chat.dropToAttach": "Drop files to attach",
   "chat.queueShowMore": ({ count }) => `+${count} more queued`,
   "chat.showEarlier": ({ count }) => `Show ${count} earlier messages`,
+  "chat.loadEarlier": "Load earlier messages",
+  "chat.loadEarlierLoading": "Loading older messages…",
   "chat.queueCollapse": "Show fewer",
   "chat.queueEdit": "Edit queued message",
   "chat.queueCancel": "Cancel queued message",
