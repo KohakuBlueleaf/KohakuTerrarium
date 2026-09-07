@@ -33,8 +33,16 @@ from kohakuterrarium.core.agent_tool_options import (
 )
 from kohakuterrarium.core.scratchpad import is_reserved_scratchpad_key
 from kohakuterrarium.modules.user_command.base import UserCommandContext
-from kohakuterrarium.session.history import project_branch_metadata
 from kohakuterrarium.terrarium.command_inventory import build_command_inventory
+
+# Live chat-history builders live in their own module; re-exported here so
+# every existing ``creature_ops`` importer (service.py, routes, tests) keeps
+# resolving the same names.
+from kohakuterrarium.terrarium.creature_history import (
+    agent_live_job_ids,
+    chat_branches_for,
+    chat_history_for,
+)
 from kohakuterrarium.terrarium.engine import Terrarium
 from kohakuterrarium.terrarium.events import EngineEvent, EventKind
 from kohakuterrarium.terrarium.topology import GraphTopology
@@ -596,99 +604,6 @@ async def agent_execute_command(
     if result.data is not None:
         resp["data"] = result.data
     return resp
-
-
-# ---------------------------------------------------------------------------
-# Chat history / branches — touches agent + session_store
-# ---------------------------------------------------------------------------
-
-
-def _resumable_events(
-    store: Any, name: str, live_jobs: set[str]
-) -> list[dict[str, Any]]:
-    if store is None:
-        return []
-    try:
-        return store.get_resumable_events(name, live_job_ids=live_jobs)
-    except Exception:
-        return []
-
-
-def agent_live_job_ids(agent: Any) -> set[str]:
-    """Best-effort union of "still actually running" job ids on an agent.
-
-    ``_direct_job_meta`` only tracks jobs the controller is *currently*
-    awaiting in the foreground turn. A background-promoted sub-agent
-    (or executor-backed background tool) is dropped from
-    ``_direct_job_meta`` the moment it's promoted, even though
-    ``subagent_manager`` / ``executor`` still own its live task. Bug 1
-    surfaces because ``normalize_resumable_events`` synthesised an
-    "Interrupted by session resume" terminal for those background jobs
-    — the frontend then rendered the still-live bubble as interrupted.
-    Union all three sources so the synthesis only fires for genuinely
-    dead jobs.
-    """
-    live: set[str] = set(getattr(agent, "_direct_job_meta", {}).keys())
-    sub_mgr = getattr(agent, "subagent_manager", None)
-    if sub_mgr is not None:
-        try:
-            for status in sub_mgr.get_running_jobs():
-                jid = getattr(status, "job_id", None)
-                if isinstance(jid, str) and jid:
-                    live.add(jid)
-        except Exception:  # pragma: no cover - defensive
-            pass
-    executor = getattr(agent, "executor", None)
-    if executor is not None:
-        get_running = getattr(executor, "get_running_jobs", None)
-        if callable(get_running):
-            try:
-                for status in get_running():
-                    jid = getattr(status, "job_id", None)
-                    if isinstance(jid, str) and jid:
-                        live.add(jid)
-            except Exception:  # pragma: no cover - defensive
-                pass
-    return live
-
-
-def chat_history_for(engine: Terrarium, creature_id: str) -> dict[str, Any]:
-    creature = engine.get_creature(creature_id)
-    agent = creature.agent
-    live_jobs = agent_live_job_ids(agent)
-    # Agent-attached store is primary; the engine's lifecycle-attached
-    # store (``_session_stores[graph_id]``) is the fallback for agents
-    # that never got an agent-level attach (older terrarium recipes).
-    events = _resumable_events(
-        getattr(agent, "session_store", None), creature.name, live_jobs
-    )
-    if not events:
-        fallback = engine._session_stores.get(creature.graph_id)
-        events = _resumable_events(fallback, creature.name, live_jobs)
-    return {
-        "creature_id": creature_id,
-        "session_id": creature.graph_id,
-        "messages": list(getattr(agent, "conversation_history", []) or []),
-        "events": events,
-        "is_processing": bool(agent.is_processing),
-    }
-
-
-def chat_branches_for(engine: Terrarium, creature_id: str) -> list[dict[str, Any]]:
-    creature = engine.get_creature(creature_id)
-    agent = creature.agent
-    live_jobs = agent_live_job_ids(agent)
-    events = _resumable_events(
-        getattr(agent, "session_store", None), creature.name, live_jobs
-    )
-    if not events:
-        fallback = engine._session_stores.get(creature.graph_id)
-        events = _resumable_events(fallback, creature.name, live_jobs)
-    projection = project_branch_metadata(events)
-    return [
-        {"turn_index": turn_index, **metadata}
-        for turn_index, metadata in projection.items()
-    ]
 
 
 # ---------------------------------------------------------------------------

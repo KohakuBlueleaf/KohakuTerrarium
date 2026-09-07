@@ -281,8 +281,19 @@ class TerrariumService(DriveServiceProtocol, Protocol):
 
     # === Per-creature chat ops (route-by-home) ===
 
-    async def chat_history(self, creature_id: str) -> dict[str, Any]:
-        """Return conversation snapshot + event log for replay."""
+    async def chat_history(
+        self,
+        creature_id: str,
+        *,
+        limit: int = 0,
+        before: int | None = None,
+    ) -> dict[str, Any]:
+        """Return conversation snapshot + event log for replay.
+
+        ``limit`` / ``before`` page the event log at the store read (same
+        cursor contract as the saved-session history route); the default
+        ``limit=0`` keeps the full build.
+        """
         ...
 
     async def chat_branches(self, creature_id: str) -> list[dict[str, Any]]:
@@ -714,8 +725,10 @@ class LocalTerrariumService(LocalCommandServiceMixin, DriveServiceMixin):
     def _agent(self, creature_id: str):
         return self._engine.get_creature(creature_id).agent
 
-    async def chat_history(self, creature_id: str) -> dict[str, Any]:
-        return _chat_history_for(self._engine, creature_id)
+    async def chat_history(
+        self, creature_id: str, *, limit: int = 0, before: int | None = None
+    ) -> dict[str, Any]:
+        return _chat_history_for(self._engine, creature_id, limit=limit, before=before)
 
     async def chat_event(self, creature_id: str, event_id: int) -> dict[str, Any]:
         """Fetch one persisted event (lazy full-output companion of history)."""

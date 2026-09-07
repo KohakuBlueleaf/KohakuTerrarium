@@ -371,11 +371,11 @@ class TestHistoryPagination:
             store.close()
 
     def test_byte_budget_caps_page_below_limit(self, monkeypatch, tmp_path):
-        from kohakuterrarium.studio.persistence import store as store_mod
+        from kohakuterrarium.session import history_paging as paging_mod
 
         store = _make_store(tmp_path, events=50, content_size=100)
         try:
-            monkeypatch.setattr(store_mod, "DEFAULT_HISTORY_PAGE_BYTES", 10_000)
+            monkeypatch.setattr(paging_mod, "DEFAULT_HISTORY_PAGE_BYTES", 10_000)
             client = _saved_client(monkeypatch, store)
             body = client.get("/api/sess/history/alice", params={"limit": 400}).json()
             assert 1 <= len(body["events"]) < 50
@@ -496,5 +496,81 @@ class TestHistoryPagination:
             assert len(payload["events"]) == 450
             assert payload["has_more"] is False
             assert payload["total"] == 450
+        finally:
+            store.close()
+
+
+class TestPageBoundaryInterruptSynthesis:
+    """A page boundary must not fabricate "Interrupted by session resume".
+
+    A ``before`` page can end on a ``tool_call`` whose real ``tool_result``
+    lives in a NEWER page; synthesizing an interrupt there would fabricate
+    a terminal that then coexists with the genuine result after the client
+    accumulates both pages (P1). Older pages therefore skip the synthesis;
+    the newest window keeps it (an unfinished call at the log tail IS dead
+    for a saved session).
+    """
+
+    def _tool_store(self, tmp_path: Path) -> SessionStore:
+        path = tmp_path / "alice_3f2a9c11.kohakutr"
+        store = SessionStore(str(path))
+        store.init_meta("alice", "agent", "/p", "/w", ["alice"])
+        store.append_event("alice", "user_message", {"content": "u1"})  # id 1
+        store.append_event(
+            "alice", "tool_call", {"call_id": "j1", "name": "bash", "args": {}}
+        )  # id 2
+        store.append_event(
+            "alice", "tool_result", {"call_id": "j1", "output": "ok"}
+        )  # id 3
+        store.append_event("alice", "user_message", {"content": "u2"})  # id 4
+        store.append_event(
+            "alice", "tool_call", {"call_id": "j2", "name": "bash", "args": {}}
+        )  # id 5 — never finished (genuinely dead)
+        store.flush()
+        return store
+
+    def test_older_page_does_not_synthesize_interrupt(self, monkeypatch, tmp_path):
+        store = self._tool_store(tmp_path)
+        try:
+            monkeypatch.setattr(history_mod, "live_store_entry", lambda svc, n: None)
+            monkeypatch.setattr(
+                history_mod, "resolve_session_path_default", lambda n: Path(store.path)
+            )
+            client = TestClient(_app(history_mod.router))
+            # Page ending exactly between tool_call j1 (id 2) and its
+            # result (id 3): the boundary splits the pair.
+            body = client.get(
+                "/api/sess/history/alice",
+                params={"limit": 10, "before": 3},
+            ).json()
+            ids = [e.get("event_id") for e in body["events"]]
+            assert 2 in ids and 3 not in ids
+            # Announcement repair may inject id-less assistant rows, but no
+            # synthetic interrupt terminal may appear.
+            assert not any(
+                e.get("_synthetic_resume") or e.get("final_state") == "interrupted"
+                for e in body["events"]
+            )
+        finally:
+            store.close()
+
+    def test_newest_page_still_synthesizes_for_dead_jobs(self, monkeypatch, tmp_path):
+        store = self._tool_store(tmp_path)
+        try:
+            monkeypatch.setattr(history_mod, "live_store_entry", lambda svc, n: None)
+            monkeypatch.setattr(
+                history_mod, "resolve_session_path_default", lambda n: Path(store.path)
+            )
+            client = TestClient(_app(history_mod.router))
+            body = client.get("/api/sess/history/alice", params={"limit": 2}).json()
+            # The tail holds tool_call j2 with no result anywhere: the
+            # interrupt synthesis must still fire on the newest window.
+            synthetic = [
+                e
+                for e in body["events"]
+                if e.get("_synthetic_resume") and e.get("call_id") == "j2"
+            ]
+            assert len(synthetic) == 1
+            assert synthetic[0]["final_state"] == "interrupted"
         finally:
             store.close()

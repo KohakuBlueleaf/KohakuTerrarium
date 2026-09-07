@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from kohakuterrarium.api.deps import get_service
 from kohakuterrarium.api.routes.persistence.live_paths import live_store_entry
+from kohakuterrarium.session.history_paging import DEFAULT_HISTORY_PAGE_LIMIT
 from kohakuterrarium.session.store import SessionStore
 from kohakuterrarium.studio._runtime import host_engine_or_none
 from kohakuterrarium.studio.persistence.history import (
@@ -28,10 +29,7 @@ from kohakuterrarium.studio.persistence.history import (
     history_index_payload,
     history_payload,
 )
-from kohakuterrarium.studio.persistence.store import (
-    DEFAULT_HISTORY_PAGE_LIMIT,
-    resolve_session_path_default,
-)
+from kohakuterrarium.studio.persistence.store import resolve_session_path_default
 from kohakuterrarium.terrarium.creature_ops import agent_live_job_ids
 from kohakuterrarium.terrarium.service import TerrariumService
 

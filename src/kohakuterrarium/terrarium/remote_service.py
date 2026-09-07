@@ -346,9 +346,14 @@ class RemoteTerrariumService(
     # Per-creature chat ops
     # ------------------------------------------------------------------
 
-    async def chat_history(self, creature_id: str) -> dict[str, Any]:
+    async def chat_history(
+        self, creature_id: str, *, limit: int = 0, before: int | None = None
+    ) -> dict[str, Any]:
         body = _maybe_raise(
-            await self._req("chat_history", {"creature_id": creature_id})
+            await self._req(
+                "chat_history",
+                {"creature_id": creature_id, "limit": limit, "before": before},
+            )
         )
         return body.get("history", {})
 

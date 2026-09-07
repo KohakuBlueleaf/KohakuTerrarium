@@ -96,7 +96,8 @@ class _FakeService:
         if "rewind" in self._raise:
             raise self._raise["rewind"]
 
-    async def chat_history(self, cid):
+    async def chat_history(self, cid, **kw):
+        self.history_kwargs = kw
         if "chat_history" in self._raise:
             raise self._raise["chat_history"]
         return self._history
