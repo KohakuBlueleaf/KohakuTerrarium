@@ -91,11 +91,9 @@ def _load_conversation_with_replay_fallback(
     counter is NOT an upper bound of the event table. ``append_event``
     flushes the events cache BEFORE ``persist_event_counter`` runs, and
     that persist swallows failures (session/store.py), so the stored
-    counter can lag the table by any amount (measured on a production
-    331MB session copy: counter=75699 vs true max=75700). A snapshot
-    watermarked at the lagging counter would then pass a
-    ``cached_up_to >= counter`` check while newer events exist, silently
-    dropping the tail replay.
+    counter can lag the table by any amount. A snapshot watermarked at a
+    lagging counter would then pass a ``cached_up_to >= counter`` check
+    while newer events exist, silently dropping the tail replay.
     """
     snapshot = store.load_conversation(agent_name)
     if events is None:
